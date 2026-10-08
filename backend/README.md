@@ -5,7 +5,7 @@ that currently exposes a single health-check endpoint.
 
 ## Requirements
 
-- Python 3.11
+- Python 3.14
 - venv + pip
 
 ## Setup
