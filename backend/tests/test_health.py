@@ -20,5 +20,4 @@ def test_health_status_is_ok():
 def test_health_timestamp_is_valid_iso_8601():
     timestamp = client.get("/api/health").json()["timestamp"]
     # datetime.fromisoformat raises ValueError if the string is not valid
-    # ISO 8601; "Z" is normalized to "+00:00" so this works on Python <3.14 too.
     assert datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
