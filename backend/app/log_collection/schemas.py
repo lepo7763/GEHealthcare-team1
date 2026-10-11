@@ -29,3 +29,10 @@ class LogErrorEntry(BaseModel):
     container: str
     reason: str
     status: Optional[int] = None
+
+
+class LogCollectionManifest(BaseModel):
+    timestamp_utc: str
+    total_logs_collected: int
+    collected_files: List[str] = []
+    errors: List[LogErrorEntry] = []
