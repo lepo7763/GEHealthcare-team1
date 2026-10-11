@@ -125,6 +125,7 @@ def _process_pod(
         if params.throttle_delay_ms > 0:
             time.sleep(params.throttle_delay_ms / 1000.0)
 
+
 # TODO: works, but is synchronous so will crash if UI locks. Also idk how to track progress
 def collect_all_cluster_logs(
     v1: client.CoreV1Api, params: LogCollectionParams
