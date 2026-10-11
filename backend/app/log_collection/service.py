@@ -124,3 +124,50 @@ def _process_pod(
         # stall a little to avoid spiking CPU/disk I/O. Server is already in bad shape
         if params.throttle_delay_ms > 0:
             time.sleep(params.throttle_delay_ms / 1000.0)
+
+# TODO: works, but is synchronous so will crash if UI locks. Also idk how to track progress
+def collect_all_cluster_logs(
+    v1: client.CoreV1Api, params: LogCollectionParams
+) -> tempfile.SpooledTemporaryFile:
+    """High-level entry point: queries pods, zips all logs, and writes manifest.
+
+    WHY `SpooledTemporaryFile` INSTEAD OF `io.BytesIO` OR A REGULAR FILE:
+    - `io.BytesIO` keeps everything in RAM. If a cluster has too many logs, backend crashes (OOM).
+    - A normal disk file is slower for small zips and leaves leftover files if you forget to delete it.
+    - `SpooledTemporaryFile` stays in fast RAM up to set limit, and automatically spills
+      over to an invisible temporary file on disk if the zip grows larger than limit
+    """
+    temp_zip = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024, mode="w+b")
+
+    # Initialize our tracking manifest with an ISO-8601 UTC timestamp
+    manifest = LogCollectionManifest(
+        timestamp_utc=datetime.now(timezone.utc).isoformat(), total_logs_collected=0
+    )
+
+    # Without `compression=zipfile.ZIP_DEFLATED`, Python's zipfile module just stores raw uncompressed files.
+    # Plain text log files are super repetitive and compress a lot using standard DEFLATE.
+    with zipfile.ZipFile(temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        try:
+            pods = v1.list_pod_for_all_namespaces(
+                watch=False, _request_timeout=30
+            ).items
+        except Exception as e:
+            # Even if the entire K8s cluster is unreachable or RBAC denies listing pods,
+            # we still return a valid zip containing `manifest.json` explaining what went wrong.
+            manifest.errors.append(
+                LogErrorEntry(
+                    namespace="ALL", pod="ALL", container="ALL", reason=str(e)
+                )
+            )
+            pods = []
+
+        for pod in pods:
+            _process_pod(v1, pod, zf, manifest, params)
+
+        manifest.total_logs_collected = len(manifest.collected_files)
+        zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
+
+    # If we pass to FastAPI's StreamingResponse without seeking to start,
+    # FastAPI will read from the end and send a 0-byte empty file.
+    temp_zip.seek(0)
+    return temp_zip
