@@ -18,6 +18,3 @@ def get_core_v1_api() -> client.CoreV1Api:
                 detail=f"Could not connect to Kubernetes cluster: {str(e)}",
             )
     return client.CoreV1Api()
-
-
-get_core_v1_api()
