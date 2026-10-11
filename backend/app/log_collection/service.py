@@ -29,7 +29,7 @@ def _get_pod_targets(pod: client.V1Pod) -> List[Tuple[str, bool]]:
         for status in status_list or []:
             if (status.restart_count or 0) > 0:
                 # If restart_count > 0, it means the container crashed or exited at least once,
-                # so Kubernetes is holding onto a `previous` log that could explain the crash.
+                # so Kubernetes is holding onto a previous log that could explain the crash.
                 restarted_containers.add(status.name)
 
     return [(c.name, c.name in restarted_containers) for c in containers]
@@ -82,3 +82,45 @@ def _fetch_single_log(
                 reason=str(e),
             ),
         )
+
+
+def _process_pod(
+    v1: client.CoreV1Api,
+    pod: client.V1Pod,
+    zf: zipfile.ZipFile,
+    manifest: LogCollectionManifest,
+    params: LogCollectionParams,
+) -> None:
+    """Collects and zips all container logs for a single pod."""
+    ns = pod.metadata.namespace
+    pod_name = pod.metadata.name
+
+    for c_name, has_restarted in _get_pod_targets(pod):
+        # Fetch current logs for this container
+        log_text, err = _fetch_single_log(
+            v1, ns, pod_name, c_name, params, previous=False
+        )
+
+        if err:
+            # Record why we couldn't get this container's log in manifest.json
+            manifest.errors.append(err)
+        else:
+            path = f"logs/{ns}/{pod_name}/{c_name}.log"
+            zf.writestr(path, log_text)
+            manifest.collected_files.append(path)
+
+        # If the container restarted earlier, also grab the log from right before it crashed
+        if params.include_previous and has_restarted:
+            # '_' for the error because k8s might've garbage collected old log.
+            # No problem, probably shouldn't pollute manifest with this
+            prev_text, _ = _fetch_single_log(
+                v1, ns, pod_name, c_name, params, previous=True
+            )
+            if prev_text is not None:
+                prev_path = f"logs/{ns}/{pod_name}/{c_name}_previous.log"
+                zf.writestr(prev_path, prev_text)
+                manifest.collected_files.append(prev_path)
+
+        # stall a little to avoid spiking CPU/disk I/O. Server is already in bad shape
+        if params.throttle_delay_ms > 0:
+            time.sleep(params.throttle_delay_ms / 1000.0)
