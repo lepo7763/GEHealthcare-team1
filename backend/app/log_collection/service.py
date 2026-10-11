@@ -14,25 +14,31 @@ def _get_pod_targets(pod: client.V1Pod) -> List[Tuple[str, bool]]:
     Extracts all container names from a pod and checks if they have restarted.
     Returns a list of (container_name, has_restarted) tuples.
     """
+    spec = pod.spec
+    if not spec:
+        return []
+
     containers = (
-        (pod.spec.containers or [])
-        + (pod.spec.init_containers or [])
-        + (pod.spec.ephemeral_containers or [])
+        (spec.containers or [])
+        + (spec.init_containers or [])
+        + (spec.ephemeral_containers or [])
     )
 
-    restarted_containers = set()
-    for status_list in [
-        pod.status.container_statuses,
-        pod.status.init_container_statuses,
-        pod.status.ephemeral_container_statuses,
-    ]:
-        for status in status_list or []:
-            if (status.restart_count or 0) > 0:
-                # If restart_count > 0, it means the container crashed or exited at least once,
-                # so Kubernetes is holding onto a previous log that could explain the crash.
-                restarted_containers.add(status.name)
+    restarted_containers: set[str] = set()
+    status = pod.status
+    if status:
+        for status_list in [
+            status.container_statuses,
+            status.init_container_statuses,
+            status.ephemeral_container_statuses,
+        ]:
+            for st in status_list or []:
+                if (st.restart_count or 0) > 0:
+                    # If restart_count > 0, it means the container crashed or exited at least once,
+                    # so Kubernetes is holding onto a previous log that could explain the crash.
+                    restarted_containers.add(st.name)
 
-    return [(c.name, c.name in restarted_containers) for c in containers]
+    return [(c.name, c.name in restarted_containers) for c in containers if c.name]
 
 
 def _fetch_single_log(
@@ -42,7 +48,7 @@ def _fetch_single_log(
     container_name: str,
     params: LogCollectionParams,
     previous: bool = False,
-) -> Tuple[Optional[str], Optional[LogErrorEntry]]:
+) -> Tuple[str, Optional[LogErrorEntry]]:
     """
     Fetches a single container log from K8s.
     Returns (log_text, None) on success, or (None, LogErrorEntry) on failure.
@@ -63,7 +69,7 @@ def _fetch_single_log(
         return (log_text or "", None)
     except ApiException as e:
         return (
-            None,
+            "",
             LogErrorEntry(
                 namespace=namespace,
                 pod=pod_name,
@@ -74,7 +80,7 @@ def _fetch_single_log(
         )
     except Exception as e:
         return (
-            None,
+            "",
             LogErrorEntry(
                 namespace=namespace,
                 pod=pod_name,
@@ -92,6 +98,9 @@ def _process_pod(
     params: LogCollectionParams,
 ) -> None:
     """Collects and zips all container logs for a single pod."""
+    if not pod.metadata or not pod.metadata.namespace or not pod.metadata.name:
+        return
+
     ns = pod.metadata.namespace
     pod_name = pod.metadata.name
 
