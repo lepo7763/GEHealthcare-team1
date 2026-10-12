@@ -8,9 +8,12 @@ from kubernetes.client.exceptions import ApiException
 
 from .schemas import LogCollectionParams, LogCollectionManifest, LogErrorEntry
 
+
 class ClusterUnreachableError(Exception):
     """Raised when the initial connection or pod listing to the K8s cluster fails."""
+
     pass
+
 
 def _get_pod_targets(pod: client.V1Pod) -> List[Tuple[str, bool]]:
     """
@@ -129,8 +132,12 @@ def _process_pod(
                 v1, ns, pod_name, c_name, params, previous=True
             )
             if params.include_previous and has_restarted:
-                prev_text, prev_err = _fetch_single_log(v1, ns, pod_name, c_name, params, previous=True)
-                if not prev_err:  # Only write the file if the K8s call actually succeeded
+                prev_text, prev_err = _fetch_single_log(
+                    v1, ns, pod_name, c_name, params, previous=True
+                )
+                if (
+                    not prev_err
+                ):  # Only write the file if the K8s call actually succeeded
                     prev_path = f"logs/{ns}/{pod_name}/{c_name}_previous.log"
                     zf.writestr(prev_path, prev_text)
                     manifest.collected_files.append(prev_path)

@@ -17,6 +17,7 @@ test_client = TestClient(app)
 # Fixtures & Helpers to Build Realistic (and Broken) K8s Objects
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_k8s_v1():
     """
@@ -58,8 +59,12 @@ def make_pod(
         metadata=client.V1ObjectMeta(namespace=namespace, name=name),
         spec=client.V1PodSpec(
             containers=[client.V1Container(name=c) for c in containers],
-            init_containers=[client.V1Container(name=c) for c in init_containers] or None,
-            ephemeral_containers=[client.V1EphemeralContainer(name=c) for c in ephemeral_containers] or None,
+            init_containers=[client.V1Container(name=c) for c in init_containers]
+            or None,
+            ephemeral_containers=[
+                client.V1EphemeralContainer(name=c) for c in ephemeral_containers
+            ]
+            or None,
         ),
         status=client.V1PodStatus(
             container_statuses=_make_statuses(containers),
@@ -100,6 +105,7 @@ def unzip_response(response) -> tuple[dict, dict[str, str]]:
 # 1. Happy Path & Multi-Container Discovery Tests
 # ---------------------------------------------------------------------------
 
+
 def test_collects_logs_across_multiple_namespaces_and_container_types(mock_k8s_v1):
     """
     Verifies standard, init, and ephemeral (e.g., Netshoot) containers across
@@ -117,7 +123,9 @@ def test_collects_logs_across_multiple_namespaces_and_container_types(mock_k8s_v
         containers=["monitor-api", "sidecar-proxy"],
         ephemeral_containers=["netshoot-debug"],
     )
-    mock_k8s_v1.list_pod_for_all_namespaces.return_value = client.V1PodList(items=[pod1, pod2])
+    mock_k8s_v1.list_pod_for_all_namespaces.return_value = client.V1PodList(
+        items=[pod1, pod2]
+    )
 
     # Return unique log text based on which container was requested
     def fake_read_log(name, namespace, container, **kwargs):
@@ -162,6 +170,7 @@ def test_empty_log_output_when_k8s_returns_none(mock_k8s_v1):
 # 2. Crashed Containers & Previous Logs Tests
 # ---------------------------------------------------------------------------
 
+
 def test_fetches_previous_logs_only_when_restart_count_positive(mock_k8s_v1):
     """
     If a pod has 2 containers, one with restart_count=3 and one with restart_count=0,
@@ -188,7 +197,9 @@ def test_fetches_previous_logs_only_when_restart_count_positive(mock_k8s_v1):
         "logs/iomt/flaky-pod/crashing.log",
         "logs/iomt/flaky-pod/crashing_previous.log",
     }
-    assert files["logs/iomt/flaky-pod/crashing_previous.log"] == "crashing (previous=True)"
+    assert (
+        files["logs/iomt/flaky-pod/crashing_previous.log"] == "crashing (previous=True)"
+    )
 
 
 def test_crashloopbackoff_where_current_fails_but_previous_succeeds(mock_k8s_v1):
@@ -208,7 +219,9 @@ def test_crashloopbackoff_where_current_fails_but_previous_succeeds(mock_k8s_v1)
 
     def fake_read_log(name, namespace, container, previous=False, **kwargs):
         if not previous:
-            raise ApiException(status=400, reason="ContainerCreating or CrashLoopBackOff")
+            raise ApiException(
+                status=400, reason="ContainerCreating or CrashLoopBackOff"
+            )
         return "FATAL: NullPointerException before crash"
 
     mock_k8s_v1.read_namespaced_pod_log.side_effect = fake_read_log
@@ -223,7 +236,10 @@ def test_crashloopbackoff_where_current_fails_but_previous_succeeds(mock_k8s_v1)
 
     # Previous log succeeded and was still saved!
     assert "logs/iomt/crashloop-pod/backend_previous.log" in files
-    assert files["logs/iomt/crashloop-pod/backend_previous.log"] == "FATAL: NullPointerException before crash"
+    assert (
+        files["logs/iomt/crashloop-pod/backend_previous.log"]
+        == "FATAL: NullPointerException before crash"
+    )
 
 
 def test_rotated_out_previous_log_does_not_pollute_manifest_errors(mock_k8s_v1):
@@ -231,12 +247,16 @@ def test_rotated_out_previous_log_does_not_pollute_manifest_errors(mock_k8s_v1):
     If `restart_count > 0` from a crash 2 weeks ago, kubelet may have already garbage-collected
     the previous log file (404/400). That shouldn't be flagged as a collection failure if current logs work.
     """
-    pod = make_pod(namespace="iomt", name="old-restart", containers=["app"], restarts={"app": 1})
+    pod = make_pod(
+        namespace="iomt", name="old-restart", containers=["app"], restarts={"app": 1}
+    )
     mock_k8s_v1.list_pod_for_all_namespaces.return_value = client.V1PodList(items=[pod])
 
     def fake_read_log(name, namespace, container, previous=False, **kwargs):
         if previous:
-            raise ApiException(status=400, reason="previous terminated container not found")
+            raise ApiException(
+                status=400, reason="previous terminated container not found"
+            )
         return "current healthy log"
 
     mock_k8s_v1.read_namespaced_pod_log.side_effect = fake_read_log
@@ -251,6 +271,7 @@ def test_rotated_out_previous_log_does_not_pollute_manifest_errors(mock_k8s_v1):
 # ---------------------------------------------------------------------------
 # 3. Partial Results & Failure Resilience Tests
 # ---------------------------------------------------------------------------
+
 
 def test_preserves_partial_results_when_one_pod_is_pending(mock_k8s_v1):
     """
@@ -308,11 +329,17 @@ def test_handles_malformed_k8s_pod_objects_without_crashing(mock_k8s_v1):
     """
     broken_pods = [
         client.V1Pod(metadata=None, spec=None, status=None),
-        client.V1Pod(metadata=client.V1ObjectMeta(name=None, namespace="default"), spec=None),
-        client.V1Pod(metadata=client.V1ObjectMeta(name="no-spec", namespace="default"), spec=None),
+        client.V1Pod(
+            metadata=client.V1ObjectMeta(name=None, namespace="default"), spec=None
+        ),
+        client.V1Pod(
+            metadata=client.V1ObjectMeta(name="no-spec", namespace="default"), spec=None
+        ),
         make_pod(namespace="default", name="valid-pod", containers=["app"]),
     ]
-    mock_k8s_v1.list_pod_for_all_namespaces.return_value = client.V1PodList(items=broken_pods)
+    mock_k8s_v1.list_pod_for_all_namespaces.return_value = client.V1PodList(
+        items=broken_pods
+    )
     mock_k8s_v1.read_namespaced_pod_log.return_value = "works"
 
     response = test_client.get("/api/logs/zip?throttle_delay_ms=0")
@@ -326,12 +353,15 @@ def test_handles_malformed_k8s_pod_objects_without_crashing(mock_k8s_v1):
 # 4. Query Parameter Forwarding & Validation Tests
 # ---------------------------------------------------------------------------
 
+
 def test_query_params_are_forwarded_to_k8s_sdk(mock_k8s_v1):
     """
     Verifies custom max_bytes_per_container, tail_lines, and include_previous=False
     actually reach the Kubernetes client call.
     """
-    pod = make_pod(namespace="default", name="pod-1", containers=["app"], restarts={"app": 2})
+    pod = make_pod(
+        namespace="default", name="pod-1", containers=["app"], restarts={"app": 2}
+    )
     mock_k8s_v1.list_pod_for_all_namespaces.return_value = client.V1PodList(items=[pod])
     mock_k8s_v1.read_namespaced_pod_log.return_value = "line 1"
 
