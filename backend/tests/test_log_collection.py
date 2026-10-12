@@ -287,20 +287,19 @@ def test_preserves_partial_results_when_one_pod_is_pending(mock_k8s_v1):
     assert "Kubelet connection timed out" in reasons["unreachable-node-pod"]
 
 
-def test_cluster_wide_list_pods_failure_still_returns_valid_zip_with_manifest(mock_k8s_v1):
+def test_cluster_unreachable_returns_503_instead_of_empty_zip(mock_k8s_v1):
     """
-    If RBAC blocks listing pods or the API server drops mid-flight,
-    the endpoint should still return a valid ZIP containing manifest.json explaining the error.
+    If the cluster is disconnected (No route to host) or blocks listing pods,
+    fail fast with 503 Service Unavailable instead of returning a fake 200 OK zip.
     """
-    mock_k8s_v1.list_pod_for_all_namespaces.side_effect = ApiException(status=403, reason="Forbidden")
+    mock_k8s_v1.list_pod_for_all_namespaces.side_effect = Exception(
+        "[Errno 113] No route to host"
+    )
 
     response = test_client.get("/api/logs/zip?throttle_delay_ms=0")
-    manifest, files = unzip_response(response)
 
-    assert manifest["total_logs_collected"] == 0
-    assert files == {}
-    assert len(manifest["errors"]) == 1
-    assert manifest["errors"][0]["namespace"] == "ALL"
+    assert response.status_code == 503
+    assert "No route to host" in response.json()["detail"]
 
 
 def test_handles_malformed_k8s_pod_objects_without_crashing(mock_k8s_v1):

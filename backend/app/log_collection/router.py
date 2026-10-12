@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from kubernetes import client
 
 from app.core.k8s_client import get_core_v1_api
 from .schemas import LogCollectionParams
-from .service import collect_all_cluster_logs
+from .service import collect_all_cluster_logs, ClusterUnreachableError
 
 router = APIRouter(prefix="/api/logs", tags=["Log Collection"])
 
@@ -23,7 +23,10 @@ def download_all_k8s_logs(
     params: LogCollectionParams = Depends(),
     v1: client.CoreV1Api = Depends(get_core_v1_api),
 ):
-    temp_zip = collect_all_cluster_logs(v1=v1, params=params)
+    try:
+        temp_zip = collect_all_cluster_logs(v1=v1, params=params)
+    except ClusterUnreachableError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     filename = f"k8s_cluster_logs_{ts}.zip"
 

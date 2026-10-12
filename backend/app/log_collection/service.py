@@ -8,6 +8,9 @@ from kubernetes.client.exceptions import ApiException
 
 from .schemas import LogCollectionParams, LogCollectionManifest, LogErrorEntry
 
+class ClusterUnreachableError(Exception):
+    """Raised when the initial connection or pod listing to the K8s cluster fails."""
+    pass
 
 def _get_pod_targets(pod: client.V1Pod) -> List[Tuple[str, bool]]:
     """
@@ -149,6 +152,11 @@ def collect_all_cluster_logs(
     - `SpooledTemporaryFile` stays in fast RAM up to set limit, and automatically spills
       over to an invisible temporary file on disk if the zip grows larger than limit
     """
+    try:
+        pods = v1.list_pod_for_all_namespaces(watch=False, _request_timeout=10).items
+    except Exception as e:
+        raise ClusterUnreachableError(f"Failed to query Kubernetes cluster: {e}") from e
+
     temp_zip = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024, mode="w+b")
 
     # Initialize our tracking manifest with an ISO-8601 UTC timestamp
@@ -159,20 +167,6 @@ def collect_all_cluster_logs(
     # Without `compression=zipfile.ZIP_DEFLATED`, Python's zipfile module just stores raw uncompressed files.
     # Plain text log files are super repetitive and compress a lot using standard DEFLATE.
     with zipfile.ZipFile(temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        try:
-            pods = v1.list_pod_for_all_namespaces(
-                watch=False, _request_timeout=30
-            ).items
-        except Exception as e:
-            # Even if the entire K8s cluster is unreachable or RBAC denies listing pods,
-            # we still return a valid zip containing `manifest.json` explaining what went wrong.
-            manifest.errors.append(
-                LogErrorEntry(
-                    namespace="ALL", pod="ALL", container="ALL", reason=str(e)
-                )
-            )
-            pods = []
-
         for pod in pods:
             _process_pod(v1, pod, zf, manifest, params)
 
