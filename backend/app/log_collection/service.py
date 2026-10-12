@@ -125,10 +125,12 @@ def _process_pod(
             prev_text, _ = _fetch_single_log(
                 v1, ns, pod_name, c_name, params, previous=True
             )
-            if prev_text is not None:
-                prev_path = f"logs/{ns}/{pod_name}/{c_name}_previous.log"
-                zf.writestr(prev_path, prev_text)
-                manifest.collected_files.append(prev_path)
+            if params.include_previous and has_restarted:
+                prev_text, prev_err = _fetch_single_log(v1, ns, pod_name, c_name, params, previous=True)
+                if not prev_err:  # Only write the file if the K8s call actually succeeded
+                    prev_path = f"logs/{ns}/{pod_name}/{c_name}_previous.log"
+                    zf.writestr(prev_path, prev_text)
+                    manifest.collected_files.append(prev_path)
 
         # stall a little to avoid spiking CPU/disk I/O. Server is already in bad shape
         if params.throttle_delay_ms > 0:
