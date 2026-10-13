@@ -100,7 +100,7 @@ const Dashboard = ({ user, onSignOut }) => {
   const renderActivePage = () => {
     switch (activeTab) {
       case 'overview':
-        return <Overview />;
+        return <Overview onNavigate={setActiveTab} />;
       case 'environments':
         return <Environments />;
       case 'sessions':
