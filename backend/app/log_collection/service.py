@@ -126,21 +126,15 @@ def _process_pod(
 
         # If the container restarted earlier, also grab the log from right before it crashed
         if params.include_previous and has_restarted:
-            # '_' for the error because k8s might've garbage collected old log.
-            # No problem, probably shouldn't pollute manifest with this
-            prev_text, _ = _fetch_single_log(
+            prev_text, prev_err = _fetch_single_log(
                 v1, ns, pod_name, c_name, params, previous=True
             )
-            if params.include_previous and has_restarted:
-                prev_text, prev_err = _fetch_single_log(
-                    v1, ns, pod_name, c_name, params, previous=True
-                )
-                if (
-                    not prev_err
-                ):  # Only write the file if the K8s call actually succeeded
-                    prev_path = f"logs/{ns}/{pod_name}/{c_name}_previous.log"
-                    zf.writestr(prev_path, prev_text)
-                    manifest.collected_files.append(prev_path)
+            # Only write the file if the K8s call actually succeeded.
+            # We don't append prev_err to manifest.errors because k8s might've garbage collected the old log.
+            if not prev_err:
+                prev_path = f"logs/{ns}/{pod_name}/{c_name}_previous.log"
+                zf.writestr(prev_path, prev_text)
+                manifest.collected_files.append(prev_path)
 
         # stall a little to avoid spiking CPU/disk I/O. Server is already in bad shape
         if params.throttle_delay_ms > 0:
