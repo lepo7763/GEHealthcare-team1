@@ -1,11 +1,70 @@
-:root {
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* GE Healthcare - Edison Design System (EDS) Foundation & Tokens */
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #0f172a;
+:root {
+  /* Typography */
+  --eds-font-family: 'Source Sans Pro', 'Source Sans 3', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --eds-font-size-xs: 0.75rem;    /* 12px */
+  --eds-font-size-sm: 0.875rem;   /* 14px */
+  --eds-font-size-md: 1rem;       /* 16px */
+  --eds-font-size-lg: 1.25rem;    /* 20px */
+  --eds-font-size-xl: 1.5rem;     /* 24px */
+  --eds-font-size-2xl: 2.25rem;   /* 36px */
+
+  --eds-font-weight-regular: 400;
+  --eds-font-weight-semibold: 600;
+  --eds-font-weight-bold: 700;
+
+  /* Official Brand Palette */
+  --eds-color-purple: #6022A6;       /* Compassion Purple (Pantone 267 C, RGB 96/34/166) */
+  --eds-color-purple-hover: #4F1B8A;
+  --eds-color-purple-active: #431778;
+  --eds-color-purple-subtle: rgba(96, 34, 166, 0.08);
+  --eds-color-purple-glow: rgba(96, 34, 166, 0.25);
+
+  --eds-color-white: #FFFFFF;
+  --eds-color-gray-100: #E4E4E4;     /* Pantone Cool Gray 1 C, RGB 228/228/228 */
+  --eds-color-gray-50: #F8F9FA;      /* Canvas neutral background */
+  --eds-color-gray-200: #D4D4D8;
+  --eds-color-gray-500: #71717A;
+  --eds-color-gray-700: #3F3F46;
+  --eds-color-gray-900: #18181B;     /* High-contrast clinical typography */
+
+  /* Clinical Status Feedback */
+  --eds-color-success: #059669;
+  --eds-color-success-bg: rgba(5, 150, 105, 0.1);
+  --eds-color-warning: #D97706;
+  --eds-color-warning-bg: rgba(217, 119, 6, 0.1);
+  --eds-color-error: #DC2626;
+  --eds-color-error-bg: rgba(220, 38, 38, 0.1);
+
+  /* Spacing Scale (Based on standard 4px / 8px grid) */
+  --eds-spacing-2xs: 0.25rem;  /* 4px */
+  --eds-spacing-xs: 0.5rem;    /* 8px */
+  --eds-spacing-sm: 0.75rem;   /* 12px */
+  --eds-spacing-md: 1rem;      /* 16px */
+  --eds-spacing-lg: 1.5rem;    /* 24px */
+  --eds-spacing-xl: 2rem;      /* 32px */
+  --eds-spacing-2xl: 3rem;     /* 48px */
+
+  /* Borders & Radius */
+  --eds-border-width: 1px;
+  --eds-border-color: var(--eds-color-gray-100);
+  --eds-radius-sm: 4px;        /* Controls, inputs, buttons */
+  --eds-radius-md: 8px;        /* Panels, cards */
+  --eds-radius-full: 9999px;   /* Pills, badges, avatars */
+
+  /* Accessibility & Focus */
+  --eds-focus-ring: 0 0 0 2px var(--eds-color-white), 0 0 0 4px var(--eds-color-purple);
+
+  /* Elevation */
+  --eds-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --eds-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+
+  font-family: var(--eds-font-family);
+  line-height: 1.5;
+  font-weight: var(--eds-font-weight-regular);
+  color: var(--eds-color-gray-900);
+  background-color: var(--eds-color-white);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -13,12 +72,16 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--eds-color-gray-50);
+  color: var(--eds-color-gray-900);
 }
 
 #root {
@@ -26,4 +89,12 @@ body {
   min-height: 100vh;
   margin: 0;
   padding: 0;
+}
+
+/* Common EDS accessible interactive focus ring */
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--eds-focus-ring);
 }

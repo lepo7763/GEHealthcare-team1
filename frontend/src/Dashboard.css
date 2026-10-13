@@ -1,0 +1,321 @@
+/* GE Healthcare - Edison Design System (EDS) Workstation Styles */
+
+.eds-workstation-layout {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  font-family: var(--eds-font-family);
+  background-color: var(--eds-color-gray-50);
+  color: var(--eds-color-gray-900);
+}
+
+/* ==========================================================================
+   EDS SIDE NAVIGATION DRAWER (PERSISTENT / COLLAPSIBLE)
+   ========================================================================== */
+
+.eds-nav-drawer {
+  width: 260px;
+  background: linear-gradient(180deg, var(--eds-color-purple) 0%, var(--eds-color-purple-active) 100%);
+  color: var(--eds-color-white);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid var(--eds-color-gray-100);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.08);
+  transition: width 0.25s cubic-bezier(0.2, 0, 0, 1);
+  overflow: hidden;
+  z-index: 50;
+}
+
+.eds-nav-drawer.collapsed {
+  width: 68px;
+}
+
+/* DRAWER HEADER */
+.eds-drawer-header {
+  height: 60px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(228, 228, 228, 0.2);
+  gap: 8px;
+}
+
+.eds-drawer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.eds-brand-logo-circle {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  background: var(--eds-color-white);
+  color: var(--eds-color-purple);
+  border-radius: var(--eds-radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--eds-font-weight-bold);
+  font-size: 1.05rem;
+  letter-spacing: -0.05em;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.eds-brand-text-group {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.eds-brand-title {
+  font-size: 0.95rem;
+  font-weight: var(--eds-font-weight-bold);
+  color: var(--eds-color-white);
+  line-height: 1.2;
+}
+
+.eds-brand-tag {
+  font-size: 0.7rem;
+  color: var(--eds-color-gray-100);
+  opacity: 0.85;
+}
+
+.eds-drawer-toggle-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  color: var(--eds-color-white);
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: var(--eds-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.eds-drawer-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* DRAWER NAVIGATION LIST */
+.eds-drawer-nav {
+  flex: 1;
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.eds-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: var(--eds-radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--eds-color-gray-100);
+  font-family: var(--eds-font-family);
+  font-size: var(--eds-font-size-sm);
+  font-weight: var(--eds-font-weight-regular);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.eds-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  color: var(--eds-color-gray-100);
+}
+
+.eds-nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eds-nav-item:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--eds-color-white);
+}
+
+.eds-nav-item:hover .eds-nav-icon {
+  color: var(--eds-color-white);
+}
+
+/* EDS ACTIVE ITEM */
+.eds-nav-item.active {
+  background: var(--eds-color-white);
+  color: var(--eds-color-purple);
+  font-weight: var(--eds-font-weight-semibold);
+  box-shadow: var(--eds-shadow-sm);
+}
+
+.eds-nav-item.active .eds-nav-icon {
+  color: var(--eds-color-purple);
+}
+
+/* DRAWER FOOTER / USER DETAILS */
+.eds-drawer-footer {
+  padding: 12px;
+  border-top: 1px solid rgba(228, 228, 228, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.eds-user-profile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.eds-user-avatar {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: var(--eds-radius-full);
+  background: var(--eds-color-white);
+  color: var(--eds-color-purple);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--eds-font-weight-bold);
+  font-size: 0.8rem;
+}
+
+.eds-user-meta {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.eds-user-name {
+  font-size: var(--eds-font-size-xs);
+  font-weight: var(--eds-font-weight-semibold);
+  color: var(--eds-color-white);
+  line-height: 1.2;
+}
+
+.eds-user-role {
+  font-size: 0.7rem;
+  color: var(--eds-color-gray-100);
+  opacity: 0.85;
+}
+
+.eds-btn-signout {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  color: var(--eds-color-white);
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: var(--eds-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.eds-btn-signout:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: var(--eds-color-white);
+}
+
+/* ==========================================================================
+   EDS MAIN CONTENT AREA / WORKSPACE
+   ========================================================================== */
+
+.eds-main-workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  overflow-y: auto;
+  background-color: var(--eds-color-gray-50);
+}
+
+/* EDS APPLICATION TOPBAR (56px) */
+.eds-topbar {
+  height: 56px;
+  background: var(--eds-color-white);
+  border-bottom: 1px solid var(--eds-color-gray-100);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--eds-spacing-lg);
+  box-shadow: var(--eds-shadow-sm);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.eds-topbar-title {
+  font-size: var(--eds-font-size-lg);
+  font-weight: var(--eds-font-weight-semibold);
+  color: var(--eds-color-purple);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.eds-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--eds-font-size-xs);
+  color: var(--eds-color-gray-700);
+  background: var(--eds-color-gray-50);
+  border: 1px solid var(--eds-color-gray-100);
+  padding: 4px 10px;
+  border-radius: var(--eds-radius-full);
+}
+
+.eds-status-indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--eds-radius-full);
+  background-color: var(--eds-color-purple);
+  box-shadow: 0 0 6px var(--eds-color-purple-glow);
+}
+
+/* EDS CANVAS BODY & PAGE CARDS */
+.eds-canvas-body {
+  flex: 1;
+  padding: var(--eds-spacing-lg);
+}
+
+.page-content {
+  background: var(--eds-color-white);
+  border: 1px solid var(--eds-color-gray-100);
+  border-radius: var(--eds-radius-md);
+  padding: var(--eds-spacing-xl);
+  min-height: 480px;
+  box-shadow: var(--eds-shadow-sm);
+}
+
+.page-content h2 {
+  margin: 0 0 var(--eds-spacing-md) 0;
+  font-size: var(--eds-font-size-xl);
+  font-weight: var(--eds-font-weight-semibold);
+  color: var(--eds-color-purple);
+  border-bottom: 1px solid var(--eds-color-gray-100);
+  padding-bottom: var(--eds-spacing-sm);
+  letter-spacing: -0.01em;
+}

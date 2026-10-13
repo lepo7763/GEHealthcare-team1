@@ -1,1 +1,0 @@
-# GEHealthcare-team1

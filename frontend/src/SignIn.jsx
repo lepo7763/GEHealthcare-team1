@@ -1,7 +1,23 @@
-import React from 'react';
+import { useState } from 'react';
 import './SignIn.css';
 
-const SignIn = () => {
+const SignIn = ({ onSignIn }) => {
+  const [email, setEmail] = useState('12345');
+  const [password, setPassword] = useState('12345');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!email.trim() || !password.trim()) {
+      setError('Please provide your workstation credentials.');
+      return;
+    }
+
+    if (onSignIn) {
+      onSignIn({ email: email.trim(), password });
+    }
+  };
+
   return (
     <div className="signin-split-container">
       <div className="signin-left">
@@ -29,15 +45,35 @@ const SignIn = () => {
             <p>Welcome back! Use an authorized account.</p>
           </div>
 
-          <form className="signin-form-light" onSubmit={(e) => e.preventDefault()}>
+          {error && (
+            <div className="eds-alert-error" role="alert">
+              {error}
+            </div>
+          )}
+
+          <form className="signin-form-light" onSubmit={handleSubmit}>
             <div className="form-group-light">
               <label htmlFor="email">Email</label>
-              <input type="email" id="email" placeholder="name@gehealthcare.com" required />
+              <input
+                type="text"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@gehealthcare.com"
+                required
+              />
             </div>
 
             <div className="form-group-light">
               <label htmlFor="password">Password</label>
-              <input type="password" id="password" placeholder="********" required />
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="********"
+                required
+              />
             </div>
 
             <div className="form-options">
