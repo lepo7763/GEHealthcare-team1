@@ -102,11 +102,11 @@ const Dashboard = ({ user, onSignOut }) => {
       case 'overview':
         return <Overview onNavigate={setActiveTab} />;
       case 'environments':
-        return <Environments />;
+        return <Environments onNavigate={setActiveTab} />;
       case 'sessions':
-        return <Sessions />;
+        return <Sessions onNavigate={setActiveTab} />;
       case 'diagnostic_packages':
-        return <DiagnosticPackages />;
+        return <DiagnosticPackages onNavigate={setActiveTab} />;
       case 'audit_log':
         return <AuditLog />;
       case 'settings':

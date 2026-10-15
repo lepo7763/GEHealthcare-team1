@@ -18,7 +18,7 @@ const SUMMARY = [
   { label: 'Platform version', value: '3.4.2' },
 ];
 
-const Environments = () => {
+const Environments = ({ onNavigate }) => {
   const [host, setHost] = useState('192.168.0.4');
   const [port, setPort] = useState('22');
   const [account, setAccount] = useState('diagnostic-ops');
@@ -122,7 +122,12 @@ const Environments = () => {
               </div>
             ))}
           </dl>
-          <button className="btn btn-primary btn-block">Continue to configuration</button>
+          <button
+            className="btn btn-primary btn-block"
+            onClick={() => onNavigate?.('sessions')}
+          >
+            Continue to configuration
+          </button>
         </aside>
       </section>
     </div>
