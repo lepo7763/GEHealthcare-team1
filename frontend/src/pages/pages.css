@@ -1,5 +1,16 @@
 /* Shared styles for Overview and Environments pages */
 
+code {
+  background-color: #f6f8fa; /* Light gray background */
+  color: #24292f;            /* Dark charcoal text */
+  padding: 0.2em 0.4em;      /* Breathing room around the text */
+  margin: 0;
+  font-size: 85%;            /* Slightly smaller than body text */
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  border-radius: 6px;        /* Rounded corners */
+  border: 1px solid #d0d7de; /* Optional subtle border */
+}
+
 .page-stack {
   display: flex;
   flex-direction: column;

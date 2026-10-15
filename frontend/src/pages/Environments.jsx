@@ -53,7 +53,7 @@ const Environments = () => {
         <div className="card">
           <h3 className="card-title">Platform access</h3>
           <p className="card-subtitle">
-            Credentials are used for this discovery only and are not included in the package.
+            Must have a valid <code>~/.kube/config</code> file on this machine.
           </p>
 
           <div className="form-row">
@@ -62,52 +62,10 @@ const Environments = () => {
               <input value={host} onChange={(e) => setHost(e.target.value)} />
               <small>IPv4, IPv6, or resolvable host name</small>
             </label>
-            <label className="field port">
-              <span>SSH port</span>
-              <input value={port} onChange={(e) => setPort(e.target.value)} />
-              <small>1–65535</small>
-            </label>
-          </div>
-
-          <div className="form-row">
-            <label className="field grow">
-              <span>Service account</span>
-              <input value={account} onChange={(e) => setAccount(e.target.value)} />
-            </label>
-            <label className="field grow">
-              <span>Password or token</span>
-              <div className="input-with-action">
-                <input
-                  type={showSecret ? 'text' : 'password'}
-                  value={secret}
-                  placeholder="••••••••••••"
-                  onChange={(e) => setSecret(e.target.value)}
-                />
-                <button type="button" onClick={() => setShowSecret(!showSecret)}>
-                  {showSecret ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </label>
-          </div>
-
-          <label className="field">
-            <span>Kubernetes context</span>
-            <input value={context} onChange={(e) => setContext(e.target.value)} />
-            <small>Context validated · 3 accessible nodes</small>
-          </label>
-
-          <div className="alert alert-success">
-            <strong>Validation passed</strong>
-            <span>
-              Host key verified. TLS certificate is trusted. Service account has read access and
-              scoped temporary deployment permissions.
-            </span>
           </div>
 
           <div className="action-row">
             <button className="btn btn-primary">Discover system</button>
-            <button className="btn btn-secondary">Test credentials</button>
-            <span className="card-subtitle">Last run 09:44:12 UTC · 8.3s</span>
           </div>
         </div>
 
