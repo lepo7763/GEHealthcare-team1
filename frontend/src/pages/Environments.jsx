@@ -142,7 +142,7 @@ const Environments = () => {
                   <li>
                     <div>
                       <div className="check-title">
-                        Kubernetes reachable ({result.host}:{result.port})
+                        Kubernetes unreachable ({result.host}:{result.port})
                       </div>
                       <div className="check-detail">{result.reachability.message}</div>
                     </div>
