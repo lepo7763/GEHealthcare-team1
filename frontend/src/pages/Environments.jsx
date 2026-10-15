@@ -19,7 +19,7 @@ const SUMMARY = [
 ];
 
 const Environments = () => {
-  const [host, setHost] = useState('192.168.0.4');
+  const [host, setHost] = useState('192.168.0.3');
   const [port, setPort] = useState('22');
   const [account, setAccount] = useState('diagnostic-ops');
   const [secret, setSecret] = useState('');
@@ -56,10 +56,10 @@ const Environments = () => {
             Must have a valid <code>~/.kube/config</code> file on this machine.
           </p>
 
-          <div className="form-row">
+          <div className="form-row" style={{ marginBottom: "1.15rem" }}>
             <label className="field grow">
               <span>Platform IP or hostname</span>
-              <input value={host} onChange={(e) => setHost(e.target.value)} />
+              <input placeholder={host} onChange={(e) => setHost(e.target.value)} />
               <small>IPv4, IPv6, or resolvable host name</small>
             </label>
           </div>
