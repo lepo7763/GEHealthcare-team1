@@ -94,13 +94,13 @@ code {
   align-items: start;
 }
 
-.two-col-form {
-  grid-template-columns: 2fr 1fr;
+.section-narrow {
+  max-width: 760px;
 }
 
 @media (max-width: 1000px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
-  .two-col, .two-col-form { grid-template-columns: 1fr; }
+  .two-col { grid-template-columns: 1fr; }
   .page-hero { flex-direction: column; }
 }
 
@@ -138,6 +138,7 @@ code {
 
 .badge-success { background: var(--eds-color-success-bg); color: var(--eds-color-success); }
 .badge-warning { background: var(--eds-color-warning-bg); color: var(--eds-color-warning); }
+.badge-error   { background: var(--eds-color-error-bg); color: var(--eds-color-error); }
 .badge-purple  { background: var(--eds-color-purple-subtle); color: var(--eds-color-purple); }
 
 /* Buttons */
@@ -191,6 +192,18 @@ code {
 .progress-fill {
   height: 100%;
   background: var(--eds-color-success);
+}
+
+/* Indeterminate variant: used while we don't know how long a check will take. */
+.progress-indeterminate .progress-fill {
+  width: 40%;
+  background: var(--eds-color-purple);
+  animation: eds-progress-indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes eds-progress-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
 }
 
 /* Lists */
@@ -268,6 +281,8 @@ code {
 .alert-warning strong { color: var(--eds-color-warning); }
 .alert-success { background: var(--eds-color-success-bg); }
 .alert-success strong { color: var(--eds-color-success); }
+.alert-error { background: var(--eds-color-error-bg); }
+.alert-error strong { color: var(--eds-color-error); }
 
 /* Stepper */
 .stepper {
@@ -349,15 +364,3 @@ code {
   flex-wrap: wrap;
 }
 .action-row .card-subtitle { margin: 0; }
-
-/* Discovery summary */
-.summary-list { margin: 0 0 var(--eds-spacing-md); }
-.summary-list > div {
-  display: flex;
-  justify-content: space-between;
-  padding: var(--eds-spacing-2xs) 0;
-  font-size: var(--eds-font-size-sm);
-}
-.summary-list dt { color: var(--eds-color-gray-700); }
-.summary-list dd { margin: 0; font-weight: var(--eds-font-weight-semibold); }
-.summary-list dd.warn { color: var(--eds-color-warning); }
