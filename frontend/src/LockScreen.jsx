@@ -4,16 +4,28 @@ import './SignIn.css';
 
 // Shown on top of the dashboard after the idle timeout. The dashboard stays
 // mounted underneath so running collections keep going.
+const MAX_FAILED_ATTEMPTS = 3;
+
 const LockScreen = ({ user, onUnlock, onSignOut }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [failedAttempts, setFailedAttempts] = useState(0);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!onUnlock(password)) {
-      setError('Incorrect password. Please try again.');
-      setPassword('');
+    if (onUnlock(password)) return;
+
+    const attempts = failedAttempts + 1;
+    if (attempts >= MAX_FAILED_ATTEMPTS) {
+      onSignOut();
+      return;
     }
+    const remaining = MAX_FAILED_ATTEMPTS - attempts;
+    setFailedAttempts(attempts);
+    setError(
+      `Incorrect password. ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} left before you are signed out.`,
+    );
+    setPassword('');
   };
 
   return (
