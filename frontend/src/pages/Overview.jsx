@@ -37,7 +37,7 @@ const Overview = ({ onNavigate }) => {
             Readiness, active collection, and recent diagnostic evidence for the connected environment.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => onNavigate?.('diagnostic')}>
+        <button className="btn btn-primary" onClick={() => onNavigate?.('diagnostics')}>
           Start diagnostic session
         </button>
       </section>
@@ -94,7 +94,7 @@ const Overview = ({ onNavigate }) => {
               </li>
             ))}
           </ul>
-          <button className="btn btn-secondary btn-block" onClick={() => onNavigate?.('diagnostic')}>
+          <button className="btn btn-secondary btn-block" onClick={() => onNavigate?.('diagnostics')}>
             Start diagnostics
           </button>
         </div>
@@ -107,7 +107,7 @@ const Overview = ({ onNavigate }) => {
               <h3 className="card-title">Recent sessions</h3>
               <p className="card-subtitle">Collection history retained on this workstation</p>
             </div>
-            <button className="link-btn" onClick={() => onNavigate?.('sessions')}>
+            <button className="link-btn" onClick={() => onNavigate?.('diagnostics')}>
               View all sessions
             </button>
           </div>

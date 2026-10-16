@@ -2,9 +2,7 @@ import { useState } from 'react';
 import './Dashboard.css';
 
 import Overview from './pages/Overview';
-import Diagnostic from './pages/Diagnostic';
-import Environments from './pages/Environments';
-import Sessions from './pages/Sessions';
+import Diagnostics from './pages/Diagnostics';
 import DiagnosticPackages from './pages/DiagnosticPackages';
 import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
@@ -24,25 +22,13 @@ const NAV_ITEMS = [
     ),
   },
   {
-    id: 'diagnostic',
-    label: 'Diagnostic',
+    id: 'diagnostics',
+    label: 'Diagnostics',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
         <polyline points="2 17 12 22 22 17"></polyline>
         <polyline points="2 12 12 17 22 12"></polyline>
-      </svg>
-    ),
-  },
-  {
-    id: 'sessions',
-    label: 'Sessions',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-        <circle cx="9" cy="7" r="4"></circle>
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
       </svg>
     ),
   },
@@ -100,7 +86,6 @@ const CORNER_ITEMS = [
 const ALL_PAGES = [
   ...NAV_ITEMS,
   ...CORNER_ITEMS,
-  { id: 'environments', label: 'Diagnostic' },
 ];
 
 const Dashboard = ({ user, onSignOut }) => {
@@ -111,13 +96,10 @@ const Dashboard = ({ user, onSignOut }) => {
     switch (activeTab) {
       case 'overview':
         return <Overview onNavigate={setActiveTab} />;
-      case 'diagnostic':
-      case 'environments':
-        return <Diagnostic onNavigate={setActiveTab} />;
-      case 'sessions':
-        return <Sessions onNavigate={setActiveTab} />;
+      case 'diagnostics':
+        return <Diagnostics onNavigate={setActiveTab} />;
       case 'diagnostic_packages':
-        return <DiagnosticPackages onNavigate={setActiveTab} />;
+        return <DiagnosticPackages />;
       case 'audit_log':
         return <AuditLog />;
       case 'settings':
