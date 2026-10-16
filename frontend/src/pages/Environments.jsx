@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './pages.css';
 
 // # GEHealthcare-team1
@@ -52,6 +52,21 @@ const STEP_INFO = {
   },
 };
 
+// Progress statuses that mean the backend is actively collecting.
+const RUNNING_STATUSES = ['listing', 'collecting', 'packaging'];
+
+const parseFilename = (disposition) => {
+  if (!disposition) return null;
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  return match ? match[1] : null;
+};
+
+const STATUS_LABEL = {
+  idle: 'Starting collection…',
+  listing: 'Listing pods across the cluster…',
+  packaging: 'Packaging logs…',
+};
+
 const Environments = () => {
   const [host, setHost] = useState('192.168.0.3');
   const [step, setStep] = useState(1);
@@ -61,8 +76,106 @@ const Environments = () => {
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(['container-logs']);
 
+  // Collection (Step 4) state.
+  const [collect, setCollect] = useState(null);
+  const [collectError, setCollectError] = useState('');
+  const [download, setDownload] = useState(null);
+  const pollRef = useRef(null);
+  const abortRef = useRef(null);
+  const downloadUrlRef = useRef(null);
+
   const isChecking = phase === 'checking';
   const info = STEP_INFO[step] || STEP_INFO[1];
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const pollProgress = () => {
+    fetch('/api/logs/progress')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setCollect(data);
+      })
+      .catch(() => {
+        /* keep polling */
+      });
+  };
+
+  const startPolling = () => {
+    stopPolling();
+    pollRef.current = setInterval(pollProgress, 400);
+  };
+
+  const startCollection = async () => {
+    setCollectError('');
+    setDownload(null);
+    if (downloadUrlRef.current) {
+      URL.revokeObjectURL(downloadUrlRef.current);
+      downloadUrlRef.current = null;
+    }
+
+    // Attach to a run that's already in progress instead of starting a second.
+    let current = null;
+    try {
+      const res = await fetch('/api/logs/progress');
+      if (res.ok) current = await res.json();
+    } catch {
+      /* ignore — fall through and try to start */
+    }
+    if (current) setCollect(current);
+    if (current && RUNNING_STATUSES.includes(current.status)) {
+      startPolling();
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    fetch('/api/logs/zip', { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          let detail = `Collection failed (${res.status}).`;
+          try {
+            const body = await res.json();
+            if (body?.detail) detail = body.detail;
+          } catch {
+            /* non-JSON error body */
+          }
+          throw new Error(detail);
+        }
+        const filename =
+          parseFilename(res.headers.get('Content-Disposition')) || 'k8s_cluster_logs.zip';
+        const blob = await res.blob();
+        return { blob, filename };
+      })
+      .then(({ blob, filename }) => {
+        stopPolling();
+        pollProgress();
+        const url = URL.createObjectURL(blob);
+        downloadUrlRef.current = url;
+        setDownload({ url, filename });
+      })
+      .catch((e) => {
+        if (e.name === 'AbortError') return;
+        stopPolling();
+        setCollectError(e.message || 'Collection failed.');
+      });
+
+    startPolling();
+  };
+
+  // Stop polling and abort any in-flight request if the page is left.
+  useEffect(() => {
+    return () => {
+      stopPolling();
+      if (abortRef.current) abortRef.current.abort();
+      if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
+    };
+  }, []);
 
   const toggleService = (id) => {
     setSelected((prev) =>
@@ -72,38 +185,65 @@ const Environments = () => {
 
   const selectedServices = SERVICES.filter((service) => selected.includes(service.id));
 
+  const collectServices = collect?.services || [];
+  const containersTotal = collectServices.reduce((sum, s) => sum + (s.containers_total || 0), 0);
+  const containersDone = collectServices.reduce((sum, s) => sum + (s.containers_done || 0), 0);
+  const collectErrors = collectServices.reduce((sum, s) => sum + (s.errors || 0), 0);
+  const currentPod = collectServices.find((s) => s.current)?.current;
+  const collectStatus = collect?.status || 'idle';
+  const isDeterminate = collectStatus === 'collecting' && containersTotal > 0;
+  const percent = containersTotal > 0 ? Math.round((containersDone / containersTotal) * 100) : 0;
+  const collectFailed =
+    collectError || (collectStatus === 'error' ? collect?.message || 'Collection failed.' : '');
+  const statusLabel =
+    collectStatus === 'collecting'
+      ? `${containersDone} of ${containersTotal} containers (${percent}%)`
+      : STATUS_LABEL[collectStatus] || 'Working…';
+
   const resetCheck = () => {
     setPhase('idle');
     setResult(null);
     setError('');
   };
 
-  const handleCheck = () => {
-    // TEMP (dev session): hardcoded pass so we can build past Step 1 while the
-    // server is unreachable. Restore the fetch flow before shipping.
-    const mockedHost = host.trim() || '192.168.0.3';
-    setResult({
-      ok: true,
-      host: mockedHost,
-      port: 6443,
-      reachability: {
-        ok: true,
-        status: 'reachable',
-        message: `Kubernetes API server is reachable at ${mockedHost}:6443.`,
-        latency_ms: 12,
-      },
-      authentication: {
-        ok: true,
-        status: 'authenticated',
-        message: 'Credentials in ~/.kube/config authenticated successfully.',
-        allowed: true,
-        context: 'dev-mock-context',
-        server: 'https://dev-mock:6443',
-        user: 'dev-mock-user',
-      },
-    });
-    setPhase('done');
-    setStep(2);
+  const handleCheck = async () => {
+    setPhase('checking');
+    setResult(null);
+    setError('');
+
+    try {
+      const response = await fetch('/api/environments/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ host: host.trim() }),
+      });
+
+      if (!response.ok) {
+        let detail = `Request failed (${response.status}).`;
+        try {
+          const body = await response.json();
+          if (body?.detail) {
+            detail =
+              typeof body.detail === 'string'
+                ? body.detail
+                : body.detail.map?.((d) => d.msg).join(', ') || JSON.stringify(body.detail);
+          }
+        } catch {
+          // Non-JSON error body; keep the generic message.
+        }
+        throw new Error(detail);
+      }
+
+      const data = await response.json();
+      setResult(data);
+      setPhase('done');
+      if (data.ok) {
+        setStep(2);
+      }
+    } catch (e) {
+      setError(e.message || 'Could not reach the analysis tool backend.');
+      setPhase('done');
+    }
   };
 
   const handleBackToConnect = () => {
@@ -334,7 +474,13 @@ const Environments = () => {
               <button className="btn btn-secondary" onClick={() => setStep(2)}>
                 Back
               </button>
-              <button className="btn btn-primary" onClick={() => setStep(4)}>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setStep(4);
+                  startCollection();
+                }}
+              >
                 Start collection
               </button>
             </div>
@@ -347,8 +493,61 @@ const Environments = () => {
           <div className="card">
             <h3 className="card-title">Collect</h3>
             <p className="card-subtitle">
-              Running the collection will be added in a later step.
+              Collecting logs from the selected services. This can take a while on large clusters.
             </p>
+
+            <div className="collect-panel">
+              {collectFailed && (
+                <div className="alert alert-error">
+                  <strong>Collection failed</strong>
+                  <span>{collectFailed}</span>
+                </div>
+              )}
+
+              {!collectFailed && collectStatus === 'done' && (
+                <div className="alert alert-success">
+                  <strong>Collection complete</strong>
+                  <span>
+                    {containersDone} of {containersTotal} containers collected
+                    {collectErrors > 0
+                      ? ` · ${collectErrors} error${collectErrors === 1 ? '' : 's'}`
+                      : ''}
+                    .
+                  </span>
+                </div>
+              )}
+
+              {!collectFailed && collectStatus !== 'done' && (
+                <>
+                  <div
+                    className={`progress ${isDeterminate ? '' : 'progress-indeterminate'}`}
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={isDeterminate ? percent : undefined}
+                  >
+                    <div
+                      className="progress-fill"
+                      style={isDeterminate ? { width: `${percent}%` } : undefined}
+                    />
+                  </div>
+                  <p className="collect-meta">{statusLabel}</p>
+                  {currentPod && (
+                    <p className="collect-meta">
+                      Current: <span className="mono">{currentPod}</span>
+                    </p>
+                  )}
+                </>
+              )}
+
+              {download && (
+                <div className="action-row">
+                  <a className="btn btn-primary" href={download.url} download={download.filename}>
+                    Download logs
+                  </a>
+                </div>
+              )}
+            </div>
 
             <div className="action-row">
               <button className="btn btn-secondary" onClick={() => setStep(3)}>

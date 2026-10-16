@@ -184,6 +184,12 @@ code {
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s ease;
+  /* Also used on <a> elements (e.g. the download link). */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
 .btn-primary {
@@ -302,6 +308,21 @@ code {
 }
 
 .check-list + .action-row {
+  margin-top: var(--eds-spacing-lg);
+}
+
+/* Collection progress (Collect step) */
+.collect-panel {
+  margin-top: var(--eds-spacing-md);
+}
+
+.collect-meta {
+  margin: var(--eds-spacing-xs) 0 0;
+  font-size: var(--eds-font-size-sm);
+  color: var(--eds-color-gray-700);
+}
+
+.collect-panel + .action-row {
   margin-top: var(--eds-spacing-lg);
 }
 
