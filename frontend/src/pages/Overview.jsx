@@ -9,7 +9,7 @@ const STATS = [
 
 const CHECKS = [
   { title: 'Platform reachability', detail: 'Viewer, hub, MiniEdge reachable', status: 'Passed' },
-  { title: 'Kubernetes access', detail: '3 nodes healthy · 18 pods running', status: 'Passed' },
+  { title: 'System access', detail: '3 nodes healthy · 18 services running', status: 'Passed' },
   { title: 'Local storage', detail: '286 GB available', status: 'Passed' },
   { title: 'Clock alignment', detail: 'Drift detected: 2.8 seconds', status: 'Advisory' },
 ];
@@ -37,7 +37,7 @@ const Overview = ({ onNavigate }) => {
             Readiness, active collection, and recent diagnostic evidence for the connected environment.
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => onNavigate?.('environments')}>
+        <button className="btn btn-primary" onClick={() => onNavigate?.('diagnostic')}>
           Start diagnostic session
         </button>
       </section>
@@ -94,8 +94,8 @@ const Overview = ({ onNavigate }) => {
               </li>
             ))}
           </ul>
-          <button className="btn btn-secondary btn-block" onClick={() => onNavigate?.('environments')}>
-            View environment
+          <button className="btn btn-secondary btn-block" onClick={() => onNavigate?.('diagnostic')}>
+            Start diagnostics
           </button>
         </div>
       </section>

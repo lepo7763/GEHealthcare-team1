@@ -1,6 +1,8 @@
+import io
+import zipfile
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from kubernetes import client
 
 from app.core.k8s_client import get_core_v1_api
@@ -36,5 +38,47 @@ def download_all_k8s_logs(
         _stream_and_close(temp_zip),
         media_type="application/zip",
         # 'attachment' so don't try open in browser
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/demo.zip")
+def download_demo_logs():
+    collected_at = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"demo_diagnostic_logs_{timestamp}.zip"
+    files = {
+        "session-summary.txt": (
+            "SIMULATED DIAGNOSTIC SESSION\n"
+            "This archive contains demonstration data only, not results from a live system.\n"
+            f"Collection time (UTC): {collected_at}\n"
+        ),
+        "logs/system.log": (
+            f"{collected_at} INFO [DEMO] System services initialized.\n"
+            f"{collected_at} INFO [DEMO] Resource checks completed successfully.\n"
+        ),
+        "logs/application.log": (
+            f"{collected_at} INFO [DEMO] Application service is responding.\n"
+            f"{collected_at} WARN [DEMO] Example warning for interface demonstration.\n"
+        ),
+        "network-diagnostics.txt": (
+            "SIMULATED DATA: No live network checks or packet captures are included.\n"
+        ),
+        "configuration-snapshot.txt": (
+            "SIMULATED DATA: No live environment configuration is included.\n"
+        ),
+        "health-metrics.txt": (
+            "SIMULATED DATA: No live health metrics are included.\n"
+        ),
+    }
+
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+        for path, content in files.items():
+            zip_file.writestr(path, content)
+
+    return Response(
+        content=archive.getvalue(),
+        media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

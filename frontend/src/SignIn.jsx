@@ -4,6 +4,7 @@ import './SignIn.css';
 const SignIn = ({ onSignIn }) => {
   const [email, setEmail] = useState('12345');
   const [password, setPassword] = useState('12345');
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = (e) => {
@@ -14,7 +15,11 @@ const SignIn = ({ onSignIn }) => {
     }
 
     if (onSignIn) {
-      onSignIn({ email: email.trim(), password });
+      try {
+        onSignIn({ email: email.trim(), password }, rememberMe);
+      } catch {
+        setError('Could not save your sign-in session. Check browser storage settings and try again.');
+      }
     }
   };
 
@@ -78,7 +83,11 @@ const SignIn = ({ onSignIn }) => {
 
             <div className="form-options">
               <label className="remember-me">
-                <input type="checkbox" />
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
                 <span>Remember me</span>
               </label>
               <a href="#" className="forgot-password-light">Forgot password?</a>

@@ -5,7 +5,7 @@ const SESSIONS = [
   { id: 'SES-240927-1612', tag: 'Partial results preserved', meta: 'Netshoot · tshark', time: '64% complete' },
 ];
 
-const Sessions = () => {
+const Sessions = ({ onNavigate }) => {
   return (
     <div className="page-stack">
       <section className="page-hero">
@@ -16,6 +16,13 @@ const Sessions = () => {
             Manage active and completed diagnostic capture sessions across connected environments.
           </p>
         </div>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => onNavigate?.('diagnostic')}
+        >
+          New Diagnostic Session
+        </button>
       </section>
 
       <section className="card">
