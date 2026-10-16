@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import PasswordInput from './components/PasswordInput';
 import './SignIn.css';
 
 const SignIn = ({ onSignIn }) => {
-  const [email, setEmail] = useState('12345');
+  const [email, setEmail] = useState('WeGotThis@GEHealthCare.com');
   const [password, setPassword] = useState('12345');
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
@@ -71,12 +72,12 @@ const SignIn = ({ onSignIn }) => {
 
             <div className="form-group-light">
               <label htmlFor="password">Password</label>
-              <input
-                type="password"
+              <PasswordInput
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="********"
+                autoComplete="current-password"
                 required
               />
             </div>

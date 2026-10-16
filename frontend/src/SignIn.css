@@ -345,3 +345,91 @@
     padding: var(--eds-spacing-xl) var(--eds-spacing-md);
   }
 }
+
+/* Password field with show/hide eye button */
+.password-field {
+  position: relative;
+  display: flex;
+}
+
+.password-field input {
+  width: 100%;
+  padding-right: 44px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--eds-color-gray-500);
+  cursor: pointer;
+}
+
+.password-toggle:hover,
+.password-toggle[aria-pressed='true'] {
+  color: var(--eds-color-purple);
+}
+
+/* Inactivity lock screen */
+.lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--eds-spacing-md);
+  background: rgba(248, 249, 250, 0.92);
+  backdrop-filter: blur(12px);
+}
+
+.lock-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--eds-color-white);
+  border: 1px solid var(--eds-color-gray-100);
+  border-radius: var(--eds-radius-md);
+  box-shadow: var(--eds-shadow-md);
+  padding: var(--eds-spacing-xl);
+  text-align: center;
+}
+
+.lock-card h2 {
+  margin: var(--eds-spacing-sm) 0 var(--eds-spacing-xs);
+  color: var(--eds-color-purple);
+}
+
+.lock-card .signin-form-light,
+.lock-card .form-group-light {
+  text-align: left;
+}
+
+.lock-logo {
+  margin: 0 auto;
+  background: var(--eds-color-purple);
+  color: var(--eds-color-white);
+}
+
+.lock-text {
+  margin: 0 0 var(--eds-spacing-md);
+  font-size: var(--eds-font-size-sm);
+  color: var(--eds-color-gray-700);
+}
+
+.lock-signout {
+  background: none;
+  border: none;
+  padding: var(--eds-spacing-xs);
+  color: var(--eds-color-purple);
+  font-family: var(--eds-font-family);
+  font-size: var(--eds-font-size-sm);
+  font-weight: var(--eds-font-weight-semibold);
+  cursor: pointer;
+}
