@@ -1,8 +1,7 @@
-<<<<<<< HEAD
 __pycache__
 .venv
 .pytest_cache
-=======
+
 # Logs
 logs
 *.log
@@ -24,6 +23,8 @@ dist-ssr
 .env.development.local
 .env.test.local
 .env.production.local
+.kube/
+*.kubeconfig
 
 # Editor directories and OS files
 .vscode/*
@@ -35,4 +36,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
->>>>>>> origin/sojung_frontend
