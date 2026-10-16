@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { SERVICE_STATUS_LABEL, STATUS_LABEL } from './constants';
+import AnalysisReport from '../logAnalysis/AnalysisReport';
+import { analyzeZip } from '../logAnalysis/analyzeZip';
 
 const ServiceProgressCard = ({ service }) => {
   const status = service.status || 'pending';
@@ -59,6 +62,26 @@ const ServiceProgressCard = ({ service }) => {
 };
 
 const Step4Collect = ({ collect, collectError, download, onBack }) => {
+  // Analysis of the zip that was just collected (POST /api/analysis/zip)
+  const [report, setReport] = useState(null);
+  const [analyzeError, setAnalyzeError] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const analyzeDownload = async () => {
+    setIsAnalyzing(true);
+    setAnalyzeError('');
+    setReport(null);
+    try {
+      // download.url is a blob: URL for the zip already in the browser, so this doesn't refetch from the cluster
+      const blob = await fetch(download.url).then((res) => res.blob());
+      setReport(await analyzeZip(blob, download.filename));
+    } catch (err) {
+      setAnalyzeError(err.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const services = collect?.services || [];
   const collectStatus = collect?.status || 'idle';
   const collectFailed =
@@ -68,6 +91,7 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
   const allDone = collectStatus === 'done';
 
   return (
+    <>
     <section className="section-narrow">
       <div className="card">
         <h3 className="card-title">Collect</h3>
@@ -136,6 +160,22 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
               <a className="btn btn-primary" href={download.url} download={download.filename}>
                 Download diagnostic package
               </a>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={analyzeDownload}
+                disabled={isAnalyzing}
+                aria-busy={isAnalyzing}
+              >
+                {isAnalyzing ? 'Analyzing…' : 'Analyze logs'}
+              </button>
+            </div>
+          )}
+
+          {analyzeError && (
+            <div className="alert alert-error" role="alert">
+              <strong>Analysis failed</strong>
+              <span>{analyzeError}</span>
             </div>
           )}
         </div>
@@ -147,6 +187,8 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
         </div>
       </div>
     </section>
+    {report && <AnalysisReport report={report} />}
+    </>
   );
 };
 
