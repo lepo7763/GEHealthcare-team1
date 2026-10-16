@@ -445,9 +445,7 @@ const Environments = () => {
                   <div className="check-title">Platform connection</div>
                   {result && (
                     <div className="check-detail">
-                      {result.host}:{result.port} · authenticated
-                      {result.authentication.user ? ` as ${result.authentication.user}` : ''} via{' '}
-                      {result.authentication.context || '~/.kube/config'}
+                      {result.host}:{result.port}
                     </div>
                   )}
                 </div>
