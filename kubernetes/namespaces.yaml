@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iomt-dev-1
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iomt-dev-2
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iomt-dev-3
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iomt-dev-4
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iomt-dev-5
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iomt-dev-6
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iomt-integration
+
+
