@@ -275,10 +275,6 @@ const Environments = () => {
               })}
             </ul>
 
-            <p className="future-note">
-              More collection services will appear here as they are implemented.
-            </p>
-
             <div className="action-row">
               <button className="btn btn-secondary" onClick={handleBackToConnect}>
                 Back
@@ -292,9 +288,14 @@ const Environments = () => {
               </button>
             </div>
 
-            {selected.length === 0 && (
-              <p className="future-note">Select at least one service to continue.</p>
-            )}
+            {/* Always rendered (visibility-toggled) so showing the hint doesn't
+                change the page height and jolt the layout/scrollbar. */}
+            <p
+              className="future-note"
+              style={{ visibility: selected.length === 0 ? 'visible' : 'hidden' }}
+            >
+              Select at least one service to continue.
+            </p>
           </div>
         </section>
       )}
