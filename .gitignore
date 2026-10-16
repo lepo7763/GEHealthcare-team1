@@ -19,6 +19,8 @@ dist-ssr
 .env.development.local
 .env.test.local
 .env.production.local
+.kube/
+*.kubeconfig
 
 # Editor directories and OS files
 .vscode/*
@@ -30,6 +32,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python
 __pycache__
 .venv
 .pytest_cache
