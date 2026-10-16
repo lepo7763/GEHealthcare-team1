@@ -33,6 +33,29 @@ class ErrorPattern(BaseModel):
     recommendation: Optional[Recommendation] = None
 
 
+class PrivacyExample(BaseModel):
+    container: str
+    line_number: int
+    # The match with most of the value hidden. Never the raw value: the point of the scan
+    # is to find PHI, so the report itself must not leak it.
+    masked: str
+
+
+class PrivacyCategory(BaseModel):
+    category: str
+    label: str
+    count: int
+    containers: List[str]
+    examples: List[PrivacyExample] = []
+
+
+class PrivacyReport(BaseModel):
+    files_scanned: int
+    total_findings: int
+    categories: List[PrivacyCategory] = []
+    skipped_files: List[str] = []
+
+
 class AnalysisReport(BaseModel):
     collected_at: Optional[str] = None
     files_analyzed: int

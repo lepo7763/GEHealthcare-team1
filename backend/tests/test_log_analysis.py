@@ -343,3 +343,84 @@ def test_report_includes_suggestion_for_each_known_pattern():
     ).json()
 
     assert report["top_errors"][0]["recommendation"]["title"] == "Request timed out"
+
+
+# ---------------------------------------------------------------------------
+# 6. Privacy (PHI/PII) scan
+# ---------------------------------------------------------------------------
+
+
+def scan(data: bytes):
+    return test_client.post(
+        "/api/analysis/privacy", files={"file": ("logs.zip", data, "application/zip")}
+    )
+
+
+def test_privacy_scan_finds_each_kind_of_identifier():
+    data = make_zip(
+        {
+            "logs/portrait/api/web.log": (
+                "INFO lookup mrn=00482913 dob=1957-03-14\n"
+                'INFO {"patient_name": "Jane Doe"}\n'
+                "INFO notify clinician jane.doe@hospital.org at 608-555-0142\n"
+                "INFO ssn 123-45-6789\n"
+            )
+        }
+    )
+
+    report = scan(data).json()
+
+    found = {c["category"]: c["count"] for c in report["categories"]}
+    assert found == {"mrn": 1, "dob": 1, "name": 1, "email": 1, "phone": 1, "ssn": 1}
+    assert report["total_findings"] == 6
+
+
+def test_privacy_report_never_contains_the_raw_values():
+    raw = ["00482913", "1957-03-14", "Jane Doe", "jane.doe@hospital.org", "608-555-0142", "123-45-6789"]
+    data = make_zip(
+        {
+            "logs/portrait/api/web.log": (
+                "mrn=00482913 dob=1957-03-14 patient_name=Jane Doe "
+                "jane.doe@hospital.org 608-555-0142 123-45-6789\n"
+            )
+        }
+    )
+
+    body = scan(data).text
+
+    for value in raw:
+        assert value not in body
+    assert "mrn=0***" in body
+    assert "j***@hospital.org" in body
+
+
+def test_privacy_examples_point_to_container_and_line():
+    data = make_zip({"logs/ns/pod/app.log": "INFO start\nINFO mrn=12345\n"})
+
+    example = scan(data).json()["categories"][0]["examples"][0]
+
+    assert example["container"] == "ns/pod/app"
+    assert example["line_number"] == 2
+
+
+def test_normal_cluster_logs_have_no_privacy_findings():
+    """Timestamps, IPs, durations and klog headers must not look like PHI."""
+    data = make_zip(
+        {
+            "logs/kube-system/k3s/k3s.log": (
+                'E1003 21:10:23.197077   12600 finisher.go:175] "Unhandled Error"\n'
+                "2026-10-03T21:12:31.120Z ERROR timed out connecting to 10.42.0.17:9200 after 60000ms\n"
+                "INFO took 1m46.687493817s\n"
+            )
+        }
+    )
+
+    report = scan(data).json()
+
+    assert report["total_findings"] == 0
+
+
+def test_privacy_scan_rejects_non_zip():
+    response = scan(b"not a zip")
+
+    assert response.status_code == 400
