@@ -273,6 +273,62 @@ code {
 .check-title { font-weight: var(--eds-font-weight-semibold); font-size: var(--eds-font-size-sm); }
 .check-detail { font-size: var(--eds-font-size-xs); color: var(--eds-color-gray-500); }
 
+/* Selectable service cards (Configure step) */
+.service-list {
+  list-style: none;
+  margin: var(--eds-spacing-sm) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--eds-spacing-sm);
+}
+
+.service-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--eds-spacing-md);
+  width: 100%;
+  text-align: left;
+  background: var(--eds-color-white);
+  border: 1px solid var(--eds-color-gray-200);
+  border-radius: var(--eds-radius-md);
+  padding: var(--eds-spacing-sm) var(--eds-spacing-md);
+  font-family: var(--eds-font-family);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.service-option:hover {
+  border-color: var(--eds-color-purple);
+  background: var(--eds-color-purple-subtle);
+  box-shadow: var(--eds-shadow-sm);
+}
+
+.service-option.selected {
+  border-color: var(--eds-color-purple);
+  background: var(--eds-color-purple-subtle);
+}
+
+.service-check {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--eds-radius-full);
+  border: 1px solid var(--eds-color-gray-200);
+  color: var(--eds-color-white);
+  font-size: var(--eds-font-size-xs);
+  font-weight: var(--eds-font-weight-bold);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.service-option.selected .service-check {
+  background: var(--eds-color-purple);
+  border-color: var(--eds-color-purple);
+}
+
 .mono,
 .mono-strong {
   font-family: ui-monospace, 'SF Mono', Consolas, monospace;

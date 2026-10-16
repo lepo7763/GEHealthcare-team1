@@ -10,6 +10,30 @@ import './pages.css';
 
 const STEPS = ['Connect & discover', 'Configure', 'Review & deploy', 'Collect'];
 
+const SERVICES = [
+  {
+    id: 'container-logs',
+    name: 'Container Log Collection',
+    description:
+      'Collects logs from every container across all namespaces in the verified cluster.',
+  },
+  {
+    id: 'wireshark',
+    name: 'Wireshark',
+    description: "Placeholder — capture network traffic across the platform's interfaces.",
+  },
+  {
+    id: 'netshoot',
+    name: 'Netshoot',
+    description: 'Placeholder — run network diagnostics from a temporary debug container.',
+  },
+  {
+    id: 'umf-rti',
+    name: 'UMF RTI',
+    description: 'Placeholder — collect real-time interface data from the UMF service.',
+  },
+];
+
 const STEP_INFO = {
   1: {
     title: 'Connect & discover',
@@ -32,9 +56,18 @@ const Environments = () => {
   const [phase, setPhase] = useState('idle');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [selected, setSelected] = useState(['container-logs']);
 
   const isChecking = phase === 'checking';
   const info = STEP_INFO[step] || STEP_INFO[1];
+
+  const toggleService = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((serviceId) => serviceId !== id) : [...prev, id],
+    );
+  };
+
+  const selectedServices = SERVICES.filter((service) => selected.includes(service.id));
 
   const resetCheck = () => {
     setPhase('idle');
@@ -215,19 +248,31 @@ const Environments = () => {
               Select and configure the services to include in this diagnostic session.
             </p>
 
-            {/* TODO: expose Container Log Collection options (max bytes per container,
-                tail lines, include previous, throttle delay) once collection is wired up. */}
-            <ul className="check-list">
-              <li>
-                <div>
-                  <div className="check-title">Container Log Collection</div>
-                  <div className="check-detail">
-                    Collects logs from every container across all namespaces in the verified
-                    cluster.
-                  </div>
-                </div>
-                <span className="badge badge-success">Available</span>
-              </li>
+            {/* TODO: expose per-service options (e.g. Container Log Collection: max bytes
+                per container, tail lines, include previous, throttle delay) once collection
+                is wired up. */}
+            <ul className="service-list">
+              {SERVICES.map((service) => {
+                const isSelected = selected.includes(service.id);
+                return (
+                  <li key={service.id}>
+                    <button
+                      type="button"
+                      className={`service-option ${isSelected ? 'selected' : ''}`}
+                      aria-pressed={isSelected}
+                      onClick={() => toggleService(service.id)}
+                    >
+                      <div>
+                        <div className="check-title">{service.name}</div>
+                        <div className="check-detail">{service.description}</div>
+                      </div>
+                      <span className="service-check" aria-hidden="true">
+                        {isSelected ? '✓' : ''}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
 
             <p className="future-note">
@@ -238,10 +283,18 @@ const Environments = () => {
               <button className="btn btn-secondary" onClick={handleBackToConnect}>
                 Back
               </button>
-              <button className="btn btn-primary" onClick={() => setStep(3)}>
+              <button
+                className="btn btn-primary"
+                onClick={() => setStep(3)}
+                disabled={selected.length === 0}
+              >
                 Continue to review
               </button>
             </div>
+
+            {selected.length === 0 && (
+              <p className="future-note">Select at least one service to continue.</p>
+            )}
           </div>
         </section>
       )}
@@ -273,7 +326,11 @@ const Environments = () => {
               <li>
                 <div>
                   <div className="check-title">Collection services</div>
-                  <div className="check-detail">Container Log Collection</div>
+                  <div className="check-detail">
+                    {selectedServices.length > 0
+                      ? selectedServices.map((service) => service.name).join(', ')
+                      : 'None selected'}
+                  </div>
                 </div>
                 <button className="link-btn" onClick={() => setStep(2)}>
                   Edit
