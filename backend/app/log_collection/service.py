@@ -7,6 +7,9 @@ from kubernetes import client
 from kubernetes.client.exceptions import ApiException
 
 from .schemas import LogCollectionParams, LogCollectionManifest, LogErrorEntry
+from .progress import CONTAINER_LOGS_SERVICE_ID, ServiceProgress, tracker
+
+CONTAINER_LOGS_LABEL = "Container Log Collection"
 
 
 class ClusterUnreachableError(Exception):
@@ -124,6 +127,10 @@ def _process_pod(
             zf.writestr(path, log_text)
             manifest.collected_files.append(path)
 
+        tracker.record_container(
+            CONTAINER_LOGS_SERVICE_ID, f"{ns}/{pod_name}", had_error=bool(err)
+        )
+
         # If the container restarted earlier, also grab the log from right before it crashed
         if params.include_previous and has_restarted:
             prev_text, prev_err = _fetch_single_log(
@@ -141,11 +148,30 @@ def _process_pod(
             time.sleep(params.throttle_delay_ms / 1000.0)
 
 
-# TODO: works, but is synchronous so will crash if UI locks. Also idk how to track progress
+# TODO: the collection itself is still synchronous (the zip is built before any
+# bytes are sent). Progress is exposed via a side channel (tracker + /progress).
+# When all services are combined into one zip, this becomes an orchestrator that
+# owns the ZipFile and runs each service under its own prefix.
 def collect_all_cluster_logs(
     v1: client.CoreV1Api, params: LogCollectionParams
 ) -> tempfile.SpooledTemporaryFile:
-    """High-level entry point: queries pods, zips all logs, and writes manifest.
+    """High-level entry point: queries pods, zips all logs, and writes manifest."""
+    tracker.begin(
+        [ServiceProgress(id=CONTAINER_LOGS_SERVICE_ID, label=CONTAINER_LOGS_LABEL)]
+    )
+    try:
+        temp_zip = _run_log_collection(v1, params)
+    except Exception as e:
+        tracker.fail(str(e))
+        raise
+    tracker.finish()
+    return temp_zip
+
+
+def _run_log_collection(
+    v1: client.CoreV1Api, params: LogCollectionParams
+) -> tempfile.SpooledTemporaryFile:
+    """Does the actual work.
 
     WHY `SpooledTemporaryFile` INSTEAD OF `io.BytesIO` OR A REGULAR FILE:
     - `io.BytesIO` keeps everything in RAM. If a cluster has too many logs, backend crashes (OOM).
@@ -157,6 +183,12 @@ def collect_all_cluster_logs(
         pods = v1.list_pod_for_all_namespaces(watch=False, _request_timeout=10).items
     except Exception as e:
         raise ClusterUnreachableError(f"Failed to query Kubernetes cluster: {e}") from e
+
+    tracker.set_service_totals(
+        CONTAINER_LOGS_SERVICE_ID,
+        pods_total=len(pods),
+        containers_total=sum(len(_get_pod_targets(pod)) for pod in pods),
+    )
 
     temp_zip = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024, mode="w+b")
 
@@ -170,7 +202,9 @@ def collect_all_cluster_logs(
     with zipfile.ZipFile(temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for pod in pods:
             _process_pod(v1, pod, zf, manifest, params)
+            tracker.record_pod_done(CONTAINER_LOGS_SERVICE_ID)
 
+        tracker.set_status("packaging")
         manifest.total_logs_collected = len(manifest.collected_files)
         zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
 
