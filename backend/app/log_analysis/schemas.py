@@ -14,6 +14,13 @@ class ContainerSummary(BaseModel):
     first_error: Optional[str] = None
 
 
+class Recommendation(BaseModel):
+    # Short name of the likely cause, e.g. "Lost etcd leadership"
+    title: str
+    # What the field engineer should check or do next
+    action: str
+
+
 class ErrorPattern(BaseModel):
     # Error line with timestamps, numbers and IDs replaced so repeats group together
     pattern: str
@@ -22,6 +29,8 @@ class ErrorPattern(BaseModel):
     example: str
     # "namespace/pod/container" of every container this error showed up in
     containers: List[str]
+    # Suggested next step, when the error matches a known rule (None if we don't recognize it)
+    recommendation: Optional[Recommendation] = None
 
 
 class AnalysisReport(BaseModel):

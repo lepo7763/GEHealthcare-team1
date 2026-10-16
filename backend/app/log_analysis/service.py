@@ -4,6 +4,7 @@ import zipfile
 from collections import defaultdict
 from typing import BinaryIO, Optional, Tuple
 
+from .recommendations import recommend_action
 from .schemas import AnalysisReport, ContainerSummary, ErrorPattern
 
 
@@ -92,20 +93,36 @@ def _parse_log_path(path: str) -> Optional[Tuple[str, str, str, bool]]:
     return namespace, pod, container, is_previous
 
 
-def analyze_log_archive(file: BinaryIO) -> AnalysisReport:
-    """Reads a zip produced by GET /api/logs/zip and summarizes errors and warnings in it."""
+def open_log_archive(file: BinaryIO) -> Tuple[zipfile.ZipFile, list]:
+    """
+    Opens an uploaded zip and returns (zipfile, file entries). Shared by the analysis and the
+    privacy scan so both reject bad uploads the same way.
+    """
     try:
         zf = zipfile.ZipFile(file)
     except zipfile.BadZipFile as e:
         raise InvalidLogArchiveError("File is not a valid zip archive") from e
 
-    with zf:
-        entries = [info for info in zf.infolist() if not info.is_dir()]
-        if sum(info.file_size for info in entries) > MAX_UNCOMPRESSED_BYTES:
-            raise InvalidLogArchiveError(
-                f"Archive unzips to more than {MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} MB"
-            )
+    entries = [info for info in zf.infolist() if not info.is_dir()]
+    if sum(info.file_size for info in entries) > MAX_UNCOMPRESSED_BYTES:
+        zf.close()
+        raise InvalidLogArchiveError(
+            f"Archive unzips to more than {MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} MB"
+        )
+    return zf, entries
 
+
+def read_log_text(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> str:
+    """Reads one file from the zip as text. Raises zipfile.BadZipFile/RuntimeError if unreadable."""
+    # errors="replace" so one bad byte in a binary-ish log doesn't drop the whole file
+    return zf.read(info).decode("utf-8", errors="replace")
+
+
+def analyze_log_archive(file: BinaryIO) -> AnalysisReport:
+    """Reads a zip produced by GET /api/logs/zip and summarizes errors and warnings in it."""
+    zf, entries = open_log_archive(file)
+
+    with zf:
         report = AnalysisReport(
             files_analyzed=0, total_lines=0, error_lines=0, warning_lines=0
         )
@@ -124,8 +141,7 @@ def analyze_log_archive(file: BinaryIO) -> AnalysisReport:
             namespace, pod, container, is_previous = parsed
 
             try:
-                # errors="replace" so one bad byte in a binary-ish log doesn't drop the whole file
-                text = zf.read(info).decode("utf-8", errors="replace")
+                text = read_log_text(zf, info)
             except (zipfile.BadZipFile, RuntimeError) as e:
                 report.skipped_files.append(f"{info.filename} (could not read: {e})")
                 continue
@@ -181,6 +197,7 @@ def analyze_log_archive(file: BinaryIO) -> AnalysisReport:
             count=data["count"],
             example=data["example"],
             containers=sorted(data["containers"]),
+            recommendation=recommend_action(data["example"]),
         )
         for pattern, data in sorted(patterns.items(), key=lambda kv: -kv[1]["count"])[
             :TOP_ERRORS_LIMIT
