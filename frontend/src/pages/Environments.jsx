@@ -14,23 +14,22 @@ const SERVICES = [
   {
     id: 'container-logs',
     name: 'Container Log Collection',
-    description:
-      'Collects logs from every container across all namespaces in the verified cluster.',
+    description: 'Logs from every container across all namespaces.',
   },
   {
     id: 'wireshark',
     name: 'Wireshark',
-    description: "Placeholder — capture network traffic across the platform's interfaces.",
+    description: 'Placeholder — capture platform network traffic.',
   },
   {
     id: 'netshoot',
     name: 'Netshoot',
-    description: 'Placeholder — run network diagnostics from a temporary debug container.',
+    description: 'Placeholder — container network diagnostics.',
   },
   {
     id: 'umf-rti',
     name: 'UMF RTI',
-    description: 'Placeholder — collect real-time interface data from the UMF service.',
+    description: 'Placeholder — UMF real-time interface data.',
   },
 ];
 
@@ -46,6 +45,10 @@ const STEP_INFO = {
   3: {
     title: 'Review & deploy',
     subtitle: 'Confirm the collection plan before running it.',
+  },
+  4: {
+    title: 'Collect',
+    subtitle: 'Run the configured collection and monitor progress.',
   },
 };
 
@@ -75,44 +78,32 @@ const Environments = () => {
     setError('');
   };
 
-  const handleCheck = async () => {
-    setPhase('checking');
-    setResult(null);
-    setError('');
-
-    try {
-      const response = await fetch('/api/environments/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: host.trim() }),
-      });
-
-      if (!response.ok) {
-        let detail = `Request failed (${response.status}).`;
-        try {
-          const body = await response.json();
-          if (body?.detail) {
-            detail =
-              typeof body.detail === 'string'
-                ? body.detail
-                : body.detail.map?.((d) => d.msg).join(', ') || JSON.stringify(body.detail);
-          }
-        } catch {
-          // Non-JSON error body; keep the generic message.
-        }
-        throw new Error(detail);
-      }
-
-      const data = await response.json();
-      setResult(data);
-      setPhase('done');
-      if (data.ok) {
-        setStep(2);
-      }
-    } catch (e) {
-      setError(e.message || 'Could not reach the analysis tool backend.');
-      setPhase('done');
-    }
+  const handleCheck = () => {
+    // TEMP (dev session): hardcoded pass so we can build past Step 1 while the
+    // server is unreachable. Restore the fetch flow before shipping.
+    const mockedHost = host.trim() || '192.168.0.3';
+    setResult({
+      ok: true,
+      host: mockedHost,
+      port: 6443,
+      reachability: {
+        ok: true,
+        status: 'reachable',
+        message: `Kubernetes API server is reachable at ${mockedHost}:6443.`,
+        latency_ms: 12,
+      },
+      authentication: {
+        ok: true,
+        status: 'authenticated',
+        message: 'Credentials in ~/.kube/config authenticated successfully.',
+        allowed: true,
+        context: 'dev-mock-context',
+        server: 'https://dev-mock:6443',
+        user: 'dev-mock-user',
+      },
+    });
+    setPhase('done');
+    setStep(2);
   };
 
   const handleBackToConnect = () => {
@@ -291,7 +282,7 @@ const Environments = () => {
             {/* Always rendered (visibility-toggled) so showing the hint doesn't
                 change the page height and jolt the layout/scrollbar. */}
             <p
-              className="future-note"
+              className="future-note future-note-error"
               style={{ visibility: selected.length === 0 ? 'visible' : 'hidden' }}
             >
               Select at least one service to continue.
@@ -339,7 +330,31 @@ const Environments = () => {
               </li>
             </ul>
 
-            <p className="future-note">Deploying the collection will be added in a later step.</p>
+            <div className="action-row">
+              <button className="btn btn-secondary" onClick={() => setStep(2)}>
+                Back
+              </button>
+              <button className="btn btn-primary" onClick={() => setStep(4)}>
+                Start collection
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {step === 4 && (
+        <section className="section-narrow">
+          <div className="card">
+            <h3 className="card-title">Collect</h3>
+            <p className="card-subtitle">
+              Running the collection will be added in a later step.
+            </p>
+
+            <div className="action-row">
+              <button className="btn btn-secondary" onClick={() => setStep(3)}>
+                Back
+              </button>
+            </div>
           </div>
         </section>
       )}

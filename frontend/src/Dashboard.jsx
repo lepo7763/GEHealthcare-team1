@@ -204,12 +204,6 @@ const Dashboard = ({ user, onSignOut }) => {
           <div className="eds-topbar-left">
             <h1 className="eds-topbar-title">{currentItem.label}</h1>
           </div>
-          <div className="eds-topbar-right">
-            <div className="eds-status-pill">
-              <span className="eds-status-indicator-dot" aria-hidden="true"></span>
-              <span>Cluster: <strong>HOSP-US-EAST-01</strong> • TLS 1.3 Active</span>
-            </div>
-          </div>
         </header>
 
         <div className="eds-canvas-body">

@@ -74,6 +74,11 @@ code {
   color: var(--eds-color-gray-500);
 }
 
+.future-note-error {
+  color: var(--eds-color-error);
+  font-weight: var(--eds-font-weight-semibold);
+}
+
 /* Cards */
 .card {
   background: var(--eds-color-white);
@@ -276,27 +281,55 @@ code {
 /* Selectable service cards (Configure step) */
 .service-list {
   list-style: none;
-  margin: var(--eds-spacing-sm) 0 0;
+  margin: var(--eds-spacing-md) 0 0;
   padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: 1fr;
+  gap: var(--eds-spacing-md);
+}
+
+@media (max-width: 700px) {
+  .service-list { grid-template-columns: 1fr; }
+}
+
+.service-list > li {
   display: flex;
-  flex-direction: column;
-  gap: var(--eds-spacing-sm);
+}
+
+.service-list + .action-row {
+  margin-top: var(--eds-spacing-lg);
+}
+
+.check-list + .action-row {
+  margin-top: var(--eds-spacing-lg);
 }
 
 .service-option {
+  position: relative;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--eds-spacing-md);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   width: 100%;
+  height: 100%;
   text-align: left;
   background: var(--eds-color-white);
   border: 1px solid var(--eds-color-gray-200);
   border-radius: var(--eds-radius-md);
-  padding: var(--eds-spacing-sm) var(--eds-spacing-md);
+  padding: var(--eds-spacing-md);
   font-family: var(--eds-font-family);
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.service-option > div {
+  padding-right: var(--eds-spacing-xl);
+}
+
+.service-option .check-detail {
+  font-size: var(--eds-font-size-sm);
+  line-height: 1.35;
 }
 
 .service-option:hover {
@@ -311,7 +344,9 @@ code {
 }
 
 .service-check {
-  flex: none;
+  position: absolute;
+  top: var(--eds-spacing-sm);
+  right: var(--eds-spacing-sm);
   width: 22px;
   height: 22px;
   border-radius: var(--eds-radius-full);
