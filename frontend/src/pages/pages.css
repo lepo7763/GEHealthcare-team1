@@ -208,6 +208,15 @@ code {
 
 .btn-block { width: 100%; }
 
+/* Make disabled buttons look disabled (and skip the hover color). */
+.btn:disabled,
+.btn:disabled:hover {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-primary:disabled:hover { background: var(--eds-color-purple); }
+.btn-secondary:disabled:hover { background: var(--eds-color-white); }
+
 .link-btn {
   background: none;
   border: none;
