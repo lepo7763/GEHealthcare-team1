@@ -6,6 +6,7 @@ import Diagnostics from './pages/Diagnostics';
 import AxoneLogs from './pages/AxoneLogs';
 import DiagnosticPackages from './pages/DiagnosticPackages';
 import LogAnalysis from './pages/LogAnalysis';
+import PrivacyScan from './pages/PrivacyScan';
 import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
 import Help from './pages/Help';
@@ -69,6 +70,15 @@ const NAV_ITEMS = [
     ),
   },
   {
+    id: 'privacy_scan',
+    label: 'Privacy Scan',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+      </svg>
+    ),
+  },
+  {
     id: 'audit_log',
     label: 'Audit Log',
     icon: (
@@ -128,6 +138,8 @@ const Dashboard = ({ user, onSignOut }) => {
         return <DiagnosticPackages />;
       case 'log_analysis':
         return <LogAnalysis />;
+      case 'privacy_scan':
+        return <PrivacyScan />;
       case 'audit_log':
         return <AuditLog />;
       case 'settings':
