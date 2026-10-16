@@ -299,3 +299,47 @@ def test_zip_from_log_collection_endpoint_can_be_analyzed():
     assert report["error_lines"] == 1
     assert report["warning_lines"] == 1
     assert report["collected_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# 5. Suggested actions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line, title",
+    [
+        ('level=fatal msg="leaderelection lost for k3s-etcd"', "Lost etcd leadership"),
+        ("ERROR write /var/lib: no space left on device", "Disk full"),
+        ("FATAL: OutOfMemory before crash", "Out of memory"),
+        ("ERROR dial tcp 10.0.0.5:8080: connection refused", "Can't reach a dependency"),
+        ("ERROR upstream timed out after 60000ms", "Request timed out"),
+        ("java.lang.NullPointerException: calibration data was null", "Application error"),
+    ],
+)
+def test_known_errors_get_a_suggested_action(line, title):
+    from app.log_analysis.recommendations import recommend_action
+
+    assert recommend_action(line).title == title
+
+
+def test_specific_cause_wins_over_generic_timeout():
+    """etcd leader loss lines also say 'deadline exceeded'; the specific rule must win."""
+    from app.log_analysis.recommendations import recommend_action
+
+    line = "leaderelection lost for k3s-etcd: context deadline exceeded"
+    assert recommend_action(line).title == "Lost etcd leadership"
+
+
+def test_unknown_error_has_no_suggestion():
+    report = upload(make_zip({"logs/ns/pod/app.log": "ERROR something nobody has seen\n"})).json()
+
+    assert report["top_errors"][0]["recommendation"] is None
+
+
+def test_report_includes_suggestion_for_each_known_pattern():
+    report = upload(
+        make_zip({"logs/ns/pod/app.log": "ERROR upstream timed out after 900ms\n"})
+    ).json()
+
+    assert report["top_errors"][0]["recommendation"]["title"] == "Request timed out"
