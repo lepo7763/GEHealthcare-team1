@@ -10,6 +10,21 @@ import './pages.css';
 
 const STEPS = ['Connect & discover', 'Configure', 'Review & deploy', 'Collect'];
 
+const STEP_INFO = {
+  1: {
+    title: 'Connect & discover',
+    subtitle: 'Verify Kubernetes reachability and cluster access from this workstation.',
+  },
+  2: {
+    title: 'Configure collection',
+    subtitle: 'Choose which services to include in this diagnostic session.',
+  },
+  3: {
+    title: 'Review & deploy',
+    subtitle: 'Confirm the collection plan before running it.',
+  },
+};
+
 const Environments = () => {
   const [host, setHost] = useState('192.168.0.3');
   const [step, setStep] = useState(1);
@@ -19,6 +34,7 @@ const Environments = () => {
   const [error, setError] = useState('');
 
   const isChecking = phase === 'checking';
+  const info = STEP_INFO[step] || STEP_INFO[1];
 
   const resetCheck = () => {
     setPhase('idle');
@@ -66,23 +82,16 @@ const Environments = () => {
     }
   };
 
-  const handleBack = () => {
+  const handleBackToConnect = () => {
     setStep(1);
     resetCheck();
   };
 
   return (
     <div className="page-stack">
-      <section className="page-hero">
-        <div>
-          <span className="page-eyebrow">New diagnostic session · Step {step} of 4</span>
-          <h2 className="page-title">{step === 2 ? 'Configure' : 'Connect & discover'}</h2>
-          <p className="page-subtitle">
-            {step === 2
-              ? 'Configure the collection once the platform has been verified.'
-              : 'Verify that Kubernetes is reachable and that this workstation is authenticated before collecting data.'}
-          </p>
-        </div>
+      <section className="page-header-compact">
+        <h2 className="page-title-sm">{info.title}</h2>
+        <p className="page-subtitle-sm">{info.subtitle}</p>
       </section>
 
       <ol className="stepper">
@@ -94,7 +103,7 @@ const Environments = () => {
         ))}
       </ol>
 
-      {step === 1 ? (
+      {step === 1 && (
         <section className="section-narrow">
           <div className="card">
             <h3 className="card-title">Platform access</h3>
@@ -142,7 +151,8 @@ const Environments = () => {
                   <li>
                     <div>
                       <div className="check-title">
-                        Kubernetes unreachable ({result.host}:{result.port})
+                        {result.reachability.ok ? 'Kubernetes reachable' : 'Kubernetes unreachable'} (
+                        {result.host}:{result.port})
                       </div>
                       <div className="check-detail">{result.reachability.message}</div>
                     </div>
@@ -195,28 +205,83 @@ const Environments = () => {
             )}
           </div>
         </section>
-      ) : (
+      )}
+
+      {step === 2 && (
         <section className="section-narrow">
           <div className="card">
-            <h3 className="card-title">Configure</h3>
-            <p className="card-subtitle">Configuration options are coming soon.</p>
+            <h3 className="card-title">Collection services</h3>
+            <p className="card-subtitle">
+              Select and configure the services to include in this diagnostic session.
+            </p>
 
-            {result?.ok && (
-              <div className="alert alert-success">
-                <strong>Platform connected</strong>
-                <span>
-                  Kubernetes reachable at {result.host}:{result.port} and authenticated
-                  {result.authentication.user ? ` as ${result.authentication.user}` : ''} via{' '}
-                  {result.authentication.context || '~/.kube/config'}.
-                </span>
-              </div>
-            )}
+            {/* TODO: expose Container Log Collection options (max bytes per container,
+                tail lines, include previous, throttle delay) once collection is wired up. */}
+            <ul className="check-list">
+              <li>
+                <div>
+                  <div className="check-title">Container Log Collection</div>
+                  <div className="check-detail">
+                    Collects logs from every container across all namespaces in the verified
+                    cluster.
+                  </div>
+                </div>
+                <span className="badge badge-success">Available</span>
+              </li>
+            </ul>
+
+            <p className="future-note">
+              More collection services will appear here as they are implemented.
+            </p>
 
             <div className="action-row">
-              <button className="btn btn-secondary" onClick={handleBack}>
+              <button className="btn btn-secondary" onClick={handleBackToConnect}>
                 Back
               </button>
+              <button className="btn btn-primary" onClick={() => setStep(3)}>
+                Continue to review
+              </button>
             </div>
+          </div>
+        </section>
+      )}
+
+      {step === 3 && (
+        <section className="section-narrow">
+          <div className="card">
+            <h3 className="card-title">Review &amp; deploy</h3>
+            <p className="card-subtitle">
+              Confirm the details below, then go back to any step to make changes.
+            </p>
+
+            <ul className="check-list">
+              <li>
+                <div>
+                  <div className="check-title">Platform connection</div>
+                  {result && (
+                    <div className="check-detail">
+                      {result.host}:{result.port} · authenticated
+                      {result.authentication.user ? ` as ${result.authentication.user}` : ''} via{' '}
+                      {result.authentication.context || '~/.kube/config'}
+                    </div>
+                  )}
+                </div>
+                <button className="link-btn" onClick={() => setStep(1)}>
+                  Edit
+                </button>
+              </li>
+              <li>
+                <div>
+                  <div className="check-title">Collection services</div>
+                  <div className="check-detail">Container Log Collection</div>
+                </div>
+                <button className="link-btn" onClick={() => setStep(2)}>
+                  Edit
+                </button>
+              </li>
+            </ul>
+
+            <p className="future-note">Deploying the collection will be added in a later step.</p>
           </div>
         </section>
       )}

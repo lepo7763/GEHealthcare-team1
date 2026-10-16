@@ -47,6 +47,33 @@ code {
   color: var(--eds-color-gray-700);
 }
 
+/* Compact header variant (used by Environments to save vertical space) */
+.page-header-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.page-title-sm {
+  margin: 0;
+  font-size: var(--eds-font-size-xl);
+  font-weight: var(--eds-font-weight-bold);
+  color: var(--eds-color-gray-900);
+}
+
+.page-subtitle-sm {
+  margin: 0;
+  max-width: 640px;
+  font-size: var(--eds-font-size-sm);
+  color: var(--eds-color-gray-700);
+}
+
+.future-note {
+  margin: var(--eds-spacing-md) 0 0;
+  font-size: var(--eds-font-size-xs);
+  color: var(--eds-color-gray-500);
+}
+
 /* Cards */
 .card {
   background: var(--eds-color-white);
