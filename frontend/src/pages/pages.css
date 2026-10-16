@@ -602,3 +602,6 @@ code {
   margin-top: 3px;
   background: var(--eds-color-warning);
 }
+.analysis-action { min-width: 240px; }
+.analysis-action strong { display: block; color: var(--eds-color-purple); }
+.analysis-action span { display: block; }

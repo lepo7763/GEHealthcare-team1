@@ -52,7 +52,7 @@ const AnalysisReport = ({ report }) => {
           <div className="analysis-table-wrap">
             <table className="analysis-table">
               <thead>
-                <tr><th>Count</th><th aria-hidden="true" /><th>Example</th><th>Where</th></tr>
+                <tr><th>Count</th><th aria-hidden="true" /><th>Example</th><th>Where</th><th>Suggested action</th></tr>
               </thead>
               <tbody>
                 {report.top_errors.map((p) => (
@@ -63,6 +63,16 @@ const AnalysisReport = ({ report }) => {
                     </td>
                     <td><code className="mono">{p.example}</code></td>
                     <td>{p.containers.map((c) => <div key={c}>{c}</div>)}</td>
+                    <td className="analysis-action">
+                      {p.recommendation ? (
+                        <>
+                          <strong>{p.recommendation.title}</strong>
+                          <span>{p.recommendation.action}</span>
+                        </>
+                      ) : (
+                        <span className="check-detail">No known fix — send to engineering.</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
