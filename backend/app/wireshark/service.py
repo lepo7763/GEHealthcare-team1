@@ -1,0 +1,1 @@
+# own the capture lifecycle: create workload, wait, retrieve output, package it, and clean up
