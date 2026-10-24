@@ -38,7 +38,10 @@ __pycache__
 .venv
 .pytest_cache
 
+# Local reference repo & commercial license (do not commit to Git)
+axone-umf-rtitools/
+rti_license.dat
+
 # UMF RTI Collector build & extracted proprietary SDK
-*.jar
 collector/lib/
 collector/build/
