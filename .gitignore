@@ -37,3 +37,6 @@ dist-ssr
 __pycache__
 .venv
 .pytest_cache
+
+# Java binaries
+*.jar
