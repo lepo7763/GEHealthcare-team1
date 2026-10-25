@@ -8,7 +8,7 @@ from kubernetes import client
 from kubernetes.client.exceptions import ApiException
 
 from app.main import app
-from app.core.k8s_client import get_core_v1_api
+from app.core.k8s_client import get_batch_v1_api, get_core_v1_api
 
 test_client = TestClient(app)
 
@@ -53,7 +53,9 @@ def mock_k8s_v1():
     Automatically cleans up after each test so tests never leak state.
     """
     mock_api = MagicMock(spec=client.CoreV1Api)
+    mock_batch = MagicMock(spec=client.BatchV1Api)
     app.dependency_overrides[get_core_v1_api] = lambda: mock_api
+    app.dependency_overrides[get_batch_v1_api] = lambda: mock_batch
     yield mock_api
     app.dependency_overrides.clear()
 

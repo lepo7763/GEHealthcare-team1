@@ -37,3 +37,10 @@ dist-ssr
 __pycache__
 .venv
 .pytest_cache
+
+# Local scratch / generated collector inputs
+.tmp/
+collector/build/
+collector/lib/*.jar
+
+axone-umf-rtitools/

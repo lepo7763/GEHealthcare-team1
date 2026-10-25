@@ -385,6 +385,82 @@ code {
   border-color: var(--eds-color-purple);
 }
 
+/* Per-service options (UMF RTI domain/duration) */
+.service-options {
+  margin-top: var(--eds-spacing-md);
+  padding: var(--eds-spacing-md);
+  border: 1px solid var(--eds-color-purple-subtle);
+  border-radius: var(--eds-radius-md);
+  background: var(--eds-color-purple-faint);
+}
+
+.service-options-title {
+  margin: 0;
+  font-size: var(--eds-font-size-md);
+  font-weight: var(--eds-font-weight-semibold);
+}
+
+.service-options .form-row {
+  margin-top: var(--eds-spacing-sm);
+}
+
+.field-error {
+  color: var(--eds-color-error) !important;
+  font-weight: var(--eds-font-weight-semibold);
+}
+
+/* Per-service collection progress */
+.service-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--eds-spacing-sm);
+  margin-top: var(--eds-spacing-sm);
+}
+
+.service-progress-card {
+  border: 1px solid var(--eds-color-gray-100);
+  border-radius: var(--eds-radius-md);
+  padding: var(--eds-spacing-md);
+  background: var(--eds-color-white);
+}
+
+.service-progress-card .progress {
+  margin: var(--eds-spacing-sm) 0 var(--eds-spacing-xs);
+}
+
+.service-progress-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--eds-spacing-md);
+}
+
+.service-progress-percent {
+  font-size: var(--eds-font-size-sm);
+  font-weight: var(--eds-font-weight-semibold);
+  color: var(--eds-color-gray-700);
+  white-space: nowrap;
+}
+
+.service-progress-error {
+  border-color: var(--eds-color-error-bg);
+  background: var(--eds-color-error-bg);
+}
+
+.service-progress-done {
+  border-color: var(--eds-color-success-bg);
+}
+
+.collect-error {
+  color: var(--eds-color-error);
+  font-weight: var(--eds-font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.service-progress-card .check-detail {
+  overflow-wrap: anywhere;
+}
+
 .mono,
 .mono-strong {
   font-family: ui-monospace, 'SF Mono', Consolas, monospace;

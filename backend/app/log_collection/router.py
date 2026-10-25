@@ -1,16 +1,21 @@
 import io
 import zipfile
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
 from kubernetes import client
 
-from app.core.k8s_client import get_core_v1_api
-from .schemas import CollectionProgressResponse, LogCollectionParams
-from .service import collect_all_cluster_logs, ClusterUnreachableError
-from .progress import tracker
+from app.core.k8s_client import get_batch_v1_api, get_core_v1_api
+from app.diagnostics.service import CollectionInProgressError, collect_diagnostics
+from app.log_collection.progress import tracker
+from app.log_collection.schemas import CollectionProgressResponse, LogCollectionParams
+from app.log_collection.service import ClusterUnreachableError
+from app.umf_rti.schemas import UmfRtiParams
+from app.umf_rti.service import UmfRtiPrerequisiteError
 
-router = APIRouter(prefix="/api/logs", tags=["Log Collection"])
+router = APIRouter(prefix="/api/logs", tags=["Diagnostics"])
 
 
 def _stream_and_close(temp_file, chunk_size: int = 64 * 1024):
@@ -28,21 +33,49 @@ def get_collection_progress() -> dict:
 
 
 @router.get("/zip")
-def download_all_k8s_logs(
-    params: LogCollectionParams = Depends(),
-    v1: client.CoreV1Api = Depends(get_core_v1_api),
+def download_diagnostics(
+    services: List[Literal["container-logs", "umf-rti"]] = Query(
+        default=["container-logs"],
+        description=(
+            "Repeat for each service: services=container-logs&services=umf-rti. "
+            "At least one service is required."
+        ),
+    ),
+    log_params: LogCollectionParams = Depends(),
+    umf_params: UmfRtiParams = Depends(),
+    core: client.CoreV1Api = Depends(get_core_v1_api),
+    batch: client.BatchV1Api = Depends(get_batch_v1_api),
 ):
+    """Collect container logs and/or a UMF RTI discovery capture into one zip."""
     if tracker.running:
         raise HTTPException(
             status_code=409,
-            detail="A log collection is already in progress.",
+            detail="A diagnostic collection is already in progress.",
+        )
+    if not services:
+        raise HTTPException(
+            status_code=422,
+            detail="Select at least one diagnostic service.",
         )
     try:
-        temp_zip = collect_all_cluster_logs(v1=v1, params=params)
+        temp_zip = collect_diagnostics(
+            core=core,
+            batch=batch,
+            services=list(services),
+            log_params=log_params,
+            umf_params=umf_params,
+        )
+    except CollectionInProgressError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ClusterUnreachableError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except UmfRtiPrerequisiteError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    filename = f"k8s_cluster_logs_{ts}.zip"
+    filename = f"iomt_diagnostics_{ts}.zip"
 
     # Can't use FileResponse cuz needs disk file path and SpooledTemporaryZip lives in memory/unlinked temp space
     # Also, this is streaming the zip's delivery to user. The zip creation itself is not streamed.

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from kubernetes import client
 
 from app.main import app
-from app.core.k8s_client import get_core_v1_api
+from app.core.k8s_client import get_batch_v1_api, get_core_v1_api
 from app.log_collection.progress import (
     CONTAINER_LOGS_SERVICE_ID,
     ServiceProgress,
@@ -26,7 +26,9 @@ def reset_tracker():
 @pytest.fixture
 def mock_k8s():
     v1 = MagicMock(spec=client.CoreV1Api)
+    batch = MagicMock(spec=client.BatchV1Api)
     app.dependency_overrides[get_core_v1_api] = lambda: v1
+    app.dependency_overrides[get_batch_v1_api] = lambda: batch
     yield v1
     app.dependency_overrides.clear()
 
@@ -56,18 +58,19 @@ def test_tracker_records_counters_and_finishes():
     tracker.begin([ServiceProgress(id=CONTAINER_LOGS_SERVICE_ID, label="Container Logs")])
     assert tracker.running is True
 
-    tracker.set_service_totals(CONTAINER_LOGS_SERVICE_ID, pods_total=1, containers_total=2)
-    tracker.record_container(CONTAINER_LOGS_SERVICE_ID, "ns/pod")
-    tracker.record_container(CONTAINER_LOGS_SERVICE_ID, "ns/pod", had_error=True)
-    tracker.record_pod_done(CONTAINER_LOGS_SERVICE_ID)
+    tracker.set_service_total(CONTAINER_LOGS_SERVICE_ID, 2, unit="containers")
+    tracker.increment_service(CONTAINER_LOGS_SERVICE_ID, current="ns/pod/c1")
+    tracker.increment_service(
+        CONTAINER_LOGS_SERVICE_ID, current="ns/pod/c2", had_error=True
+    )
 
     service = tracker.snapshot()["services"][0]
     assert service["status"] == "collecting"
-    assert service["pods_total"] == 1
-    assert service["pods_done"] == 1
-    assert service["containers_total"] == 2
-    assert service["containers_done"] == 2
+    assert service["total"] == 2
+    assert service["completed"] == 2
+    assert service["unit"] == "containers"
     assert service["errors"] == 1
+    assert service["current"] == "ns/pod/c2"
 
     tracker.finish()
     assert tracker.running is False
@@ -95,10 +98,9 @@ def test_progress_reports_done_with_counts_after_collection(mock_k8s):
     service = body["services"][0]
     assert service["id"] == CONTAINER_LOGS_SERVICE_ID
     assert service["status"] == "done"
-    assert service["pods_total"] == 2
-    assert service["pods_done"] == 2
-    assert service["containers_total"] == 3
-    assert service["containers_done"] == 3
+    assert service["total"] == 3
+    assert service["completed"] == 3
+    assert service["unit"] == "containers"
     assert service["errors"] == 0
 
 

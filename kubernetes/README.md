@@ -69,9 +69,9 @@ Each developer namespace has the following aggregate quotas:
 | Memory limits | 256Mi |
 | Pods | 2 |
 
-The integration namespace has larger quotas: 500m CPU requests, 1000m CPU limits, 512Mi memory requests, 768Mi memory limits, and 4 Pods.
+The integration namespace has larger quotas: 1 CPU request, 2 CPU limits, 1Gi memory requests, 2Gi memory limits, and 4 Pods. Container defaults are 100m/256Mi requests and 500m/1Gi limits.
 
-These initial limits are deliberately conservative because the lab machine also runs existing services.
+These initial limits are deliberately conservative because the lab machine also runs existing services. The UMF RTI Job requests 100m/256Mi and limits 1 CPU/1Gi, leaving room for the backend pod.
 
 ## Important Guidelines
 
@@ -82,10 +82,93 @@ These initial limits are deliberately conservative because the lab machine also 
 - Do not run network scans or traffic captures against existing Portrait Mobile services without authorization.
 - Do not commit credentials, internal infrastructure details, or sensitive diagnostic data.
 
+## UMF RTI Capture
+
+The UMF RTI service runs a short-lived Kubernetes **Job** in `iomt-integration`.
+It does **not** build, push, or deploy a new image. It reuses the platform's
+RTI runtime image:
+
+```text
+192.168.0.3:30003/spectro-images/us-artifactory.apps.ge-healthcare.net/docker-axone-all/axone-umfcompatibilitycheck:uw-badger-latest
+```
+
+That image is public-read in Harbor and already cached on the lab node. The
+Job mounts the collector JAR, the RTI license, the platform QoS ConfigMap, and
+the SDDS identity as read-only volumes. It uses `hostNetwork: false`, no
+ServiceAccount token, a non-root UID (2017), and no added capabilities. The Job
+is deleted immediately after the run, with `ttlSecondsAfterFinished` as a
+safety net.
+
+### Prerequisites
+
+Run the setup helper once (or after changing the collector):
+
+```bash
+./kubernetes/umf-rti-setup.sh
+```
+
+It creates/updates:
+
+| Kind | Name | Purpose |
+|---|---|---|
+| ConfigMap | `umf-rti-qos` | Copy of the platform `CommissioningQoS.xml` |
+| Secret | `umf-rti-sdds` | SDDS certificates/private key for the capture identity |
+| Secret | `umf-rti-collector` | The collector JAR (`collector/build/umf-rti-collector.jar`) |
+| Secret | `umf-rti-license` | `rti_license.dat` |
+
+For the lab fallback identity, run:
+
+```bash
+COPY_SDDS=true ./kubernetes/umf-rti-setup.sh
+```
+
+This copies the diagnostics UI SDDS material (including `MDHEndPoint.key.pem`)
+from `pm`. It is convenient for the lab but should not be used as a production
+identity. Prefer a dedicated UMF RTI identity with the same domain/topic
+permissions.
+
+If the backend runs in-cluster, apply the RBAC manifest:
+
+```bash
+kubectl apply -f kubernetes/umf-rti-rbac.yaml
+```
+
+It grants the existing `iomt-network-backend` ServiceAccount read-only pod/log
+access cluster-wide, plus Job/configmap/secret access in `iomt-integration` and
+read-only Service access in `pm`.
+
+### Domains and discovery
+
+- **Domain 32** is the live UMF domain in this lab and is the UI default.
+- **Domain 12** is selectable, but the commissioning identity in this lab only
+  permits domains 2 and 32. RTI security will reject a domain-12 participant
+  with an actionable error unless a dedicated identity is provisioned.
+- The discovery peer is
+  `udpv4://axone-router-1.pm.svc.cluster.local` **without a port suffix**. RTI
+  derives the port from the domain. In this RTI build a suffix such as
+  `:15410` is treated as part of the hostname and fails DNS resolution. The
+  backend still validates that the router Service exposes `domain-<id>-*`
+  ports and records the expected port in the summary.
+- The capture is discovery/QoS only. It does not read or write sample values.
+  Probe readers use an always-false content filter (`1 = 0`), so user data is
+  not delivered to the collector.
+
+### Verification
+
+After a capture, the Job/Pod should be gone:
+
+```bash
+kubectl get jobs,pods -n iomt-integration -l iomt-analysis-tool/service=umf-rti
+```
+
 ## Configuration Files
 
 `dev-resources.yaml` defines developer namespace resource quotas and container defaults.
 
-`integration-resources.yaml` defines resource quotas and container defaults for shared integration testing.
+`iomt-integration-resources.yaml` defines resource quotas and container defaults for shared integration testing.
+
+`umf-rti-setup.sh` creates the UMF RTI ConfigMap/Secrets from the platform resources.
+
+`umf-rti-rbac.yaml` contains the optional in-cluster RBAC for the backend.
 
 Updates to resource configurations should be coordinated with the team.

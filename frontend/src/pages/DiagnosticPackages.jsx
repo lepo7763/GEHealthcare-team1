@@ -136,7 +136,7 @@ const DiagnosticPackages = () => {
       const link = document.createElement('a');
       link.href = url;
       const filename = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
-        || 'k8s_cluster_logs.zip';
+        || 'iomt_diagnostics.zip';
       link.download = filename;
       document.body.appendChild(link);
       link.click();
