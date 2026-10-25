@@ -6,10 +6,13 @@ const ServiceProgressCard = ({ service }) => {
   const completed = Number(service.completed) || 0;
   const unit = service.unit || 'items';
   const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
-  const displayPercent = status === 'done' ? 100 : percent;
-  const isDeterminate = total > 0;
-  const isRunning = status === 'collecting';
-  const progressClass = isDeterminate ? '' : isRunning ? 'progress-indeterminate' : '';
+  const isPending = status === 'pending';
+  const isDone = status === 'done';
+  // A pending service hasn't started yet: render an empty (light purple) track
+  // so it reads as 0% instead of inheriting the fill's full width.
+  const displayPercent = isDone ? 100 : isPending ? 0 : percent;
+  const isIndeterminate = status === 'collecting' && total === 0;
+  const showPercent = isPending || isDone || total > 0;
 
   return (
     <div className={`service-progress-card service-progress-${status}`}>
@@ -21,22 +24,22 @@ const ServiceProgressCard = ({ service }) => {
             {total > 0 ? ` · ${completed} of ${total} ${unit}` : ''}
           </div>
         </div>
-        {total > 0 && (
+        {showPercent && (
           <span className="service-progress-percent">{displayPercent}%</span>
         )}
       </div>
 
       <div
-        className={`progress ${progressClass}`}
+        className={isIndeterminate ? 'progress progress-indeterminate' : 'progress'}
         role="progressbar"
         aria-label={`${service.label} progress`}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={isDeterminate ? displayPercent : undefined}
+        aria-valuenow={isIndeterminate ? undefined : displayPercent}
       >
         <div
           className="progress-fill"
-          style={isDeterminate ? { width: `${displayPercent}%` } : undefined}
+          style={isIndeterminate ? undefined : { width: `${displayPercent}%` }}
         />
       </div>
 
