@@ -47,7 +47,10 @@ const Diagnostics = () => {
     fetch('/api/logs/progress')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data) setCollect(data);
+        if (!data) return;
+        setCollect((previous) =>
+          previous && JSON.stringify(previous) === JSON.stringify(data) ? previous : data,
+        );
       })
       .catch(() => {
         /* keep polling */
@@ -56,7 +59,7 @@ const Diagnostics = () => {
 
   const startPolling = () => {
     stopPolling();
-    pollRef.current = setInterval(pollProgress, 400);
+    pollRef.current = setInterval(pollProgress, 600);
   };
 
   const startCollection = async () => {
@@ -209,6 +212,7 @@ const Diagnostics = () => {
         ))}
       </ol>
 
+      <div className="step-panel" key={step}>
       {step === 1 && (
         <Step1Connect
           host={host}
@@ -258,6 +262,7 @@ const Diagnostics = () => {
           onBack={() => setStep(3)}
         />
       )}
+      </div>
     </div>
   );
 };

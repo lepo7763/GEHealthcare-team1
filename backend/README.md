@@ -82,8 +82,7 @@ also has `ttlSecondsAfterFinished` as a safety net.
 manifest.json
 logs/<namespace>/<pod>/<container>.log          # if container-logs selected
 umf-rti/umf-rti-discovery.ndjson                # JSON records
-umf-rti/umf-rti-summary.json                    # counts, peer, status, warnings
-umf-rti/umf-rti-collector.log                   # raw pod log (RTI stderr)
+umf-rti/umf-rti-summary.json                    # counts, peer, status
 umf-rti/README.txt
 ```
 
@@ -95,7 +94,7 @@ umf-rti/README.txt
 - `writer` / `reader` — topic, type, GUID, participant GUID/name, liveness, and
   a structured QoS object (reliability, durability, deadline, liveliness,
   history/ownership/presentation/partition where available).
-- `summary` — domain, duration, counts, warnings.
+- `summary` — domain, duration, and counts.
 
 No sample values are read or written. Probe readers use an always-false content
 filter (`1 = 0`), so user data is not delivered to the collector.

@@ -73,7 +73,7 @@ class UmfRtiConfig:
 
     job_ttl_seconds: int = 600
     wait_timeout_seconds: int = 360
-    poll_interval_seconds: float = 2.0
+    poll_interval_seconds: float = 1.0
     job_active_deadline_grace_seconds: int = 300
     pod_creation_timeout_seconds: int = 60
 
@@ -105,7 +105,7 @@ class UmfRtiConfig:
 def get_umf_rti_config() -> UmfRtiConfig:
     """Build the config from environment variables (fresh for each request)."""
     overrides = _env_list("IOMT_UMF_RTI_IMAGE_PULL_SECRETS", ["192-168-0-3-30003-pull-secret"])
-    poll_interval = float(_env("IOMT_UMF_RTI_POLL_INTERVAL_SECONDS", "2"))
+    poll_interval = float(_env("IOMT_UMF_RTI_POLL_INTERVAL_SECONDS", "1"))
     if poll_interval <= 0:
         raise ValueError("IOMT_UMF_RTI_POLL_INTERVAL_SECONDS must be positive")
     return UmfRtiConfig(

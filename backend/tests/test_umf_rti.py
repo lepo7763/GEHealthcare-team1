@@ -186,7 +186,6 @@ NDJSON = _ndjson(
             "readers": 1,
             "discovered_topic_handles": 13,
         },
-        "warnings": [],
     },
 )
 
@@ -337,9 +336,12 @@ def test_umf_rti_only_success_writes_artifacts_and_deletes_job(clients):
     assert "umf-rti/umf-rti-discovery.ndjson" in files
     assert "umf-rti/umf-rti-summary.json" in files
     assert "umf-rti/README.txt" in files
+    assert "umf-rti/umf-rti-collector.log" not in files
     summary = json.loads(files["umf-rti/umf-rti-summary.json"])
     assert summary["domain"] == 32
     assert summary["status"] == "succeeded"
+    assert "warnings" not in summary
+    assert "error" not in summary
     assert summary["router_peer"] == "udpv4://axone-router-1.pm.svc.cluster.local"
     assert summary["router_port"] == 15410
     assert summary["counts"]["participants"] == 1
@@ -410,6 +412,12 @@ def test_umf_rti_failure_preserves_container_logs(clients):
     summary = json.loads(files["umf-rti/umf-rti-summary.json"])
     assert summary["status"] == "failed"
     assert "ImagePullBackOff" in (summary.get("error") or "")
+    assert "warnings" not in summary
+    assert "error" in summary
+    readme = files["umf-rti/README.txt"]
+    assert "UMF RTI discovery capture" in readme
+    assert "Limitations" not in readme
+    assert "Warnings" not in readme
     service_ids = {service["id"]: service for service in manifest["services"]}
     assert service_ids["container-logs"]["status"] == "done"
     assert service_ids["umf-rti"]["status"] == "error"
@@ -552,7 +560,7 @@ def test_user_facing_names_do_not_mention_rtiddsspy(clients):
     assert "umf-rti" in labels
 
 
-def test_write_artifacts_counts_and_preserves_raw_log(tmp_path):
+def test_write_artifacts_keeps_output_package_positive(tmp_path):
     manifest = LogCollectionManifest(timestamp_utc="now", total_logs_collected=0)
     raw_log = "RTI security warning line\n" + NDJSON
     result = MagicMock()
@@ -573,7 +581,7 @@ def test_write_artifacts_counts_and_preserves_raw_log(tmp_path):
     result.log_bytes = len(raw_log)
     result.truncated = False
     result.error = None
-    result.warnings = []
+    result.warnings = ["internal limitation note"]
     result.counts = {
         "participants": 1,
         "topics": 1,
@@ -589,15 +597,43 @@ def test_write_artifacts_counts_and_preserves_raw_log(tmp_path):
     with zipfile.ZipFile(zip_path, "w") as zf:
         write_artifacts(zf, manifest, result, UmfRtiParams(), make_config())
 
+    expected_files = [
+        "umf-rti/umf-rti-discovery.ndjson",
+        "umf-rti/umf-rti-summary.json",
+        "umf-rti/README.txt",
+    ]
     with zipfile.ZipFile(zip_path) as zf:
         names = set(zf.namelist())
-        assert "umf-rti/umf-rti-discovery.ndjson" in names
-        assert "umf-rti/umf-rti-collector.log" in names
+        assert names == set(expected_files)
+        assert "umf-rti/umf-rti-collector.log" not in names
+
         ndjson = zf.read("umf-rti/umf-rti-discovery.ndjson").decode()
         assert "RTI security warning line" not in ndjson
-        assert "RTI security warning line" in zf.read("umf-rti/umf-rti-collector.log").decode()
+        assert "warnings" not in ndjson
+
         summary = json.loads(zf.read("umf-rti/umf-rti-summary.json"))
         assert summary["counts"]["participants"] == 1
-        assert any("stderr" in warning for warning in summary["warnings"])
+        assert "warnings" not in summary
+        assert "error" not in summary
+
+        readme = zf.read("umf-rti/README.txt").decode()
+        for forbidden in (
+            "Warnings",
+            "Limitations",
+            "What is NOT captured",
+            "TopicBuiltinTopicData",
+            "Domain 12",
+            "dedicated identity",
+            "probe endpoints",
+            "port suffix",
+            "RTI security warning line",
+            "internal limitation note",
+        ):
+            assert forbidden not in readme
+        assert "What is captured" in readme
+        assert "Privacy" in readme
+
+    assert manifest.collected_files == expected_files
     assert manifest.services[0].id == "umf-rti"
     assert manifest.services[0].status == "done"
+    assert manifest.services[0].files == expected_files

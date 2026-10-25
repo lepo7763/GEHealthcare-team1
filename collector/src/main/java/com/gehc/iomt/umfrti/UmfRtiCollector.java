@@ -277,6 +277,11 @@ public final class UmfRtiCollector {
     }
 
     private void emitSummary(Instant startedAt, long startedNanos, int probeCount) {
+        // Keep internal diagnostics in the backend pod log only.  The output
+        // package is intentionally limited to discovery/QoS records.
+        for (String warning : snapshot.warnings()) {
+            System.err.println("UMF RTI internal note: " + warning);
+        }
         long elapsedNanos = System.nanoTime() - startedNanos;
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("type", "summary");
@@ -292,7 +297,6 @@ public final class UmfRtiCollector {
         summary.put("finished_at_utc", Instant.now().toString());
         summary.put("probe_count", probeCount);
         summary.put("counts", snapshot.counts());
-        summary.put("warnings", snapshot.warnings());
         summary.put("content_filtered_readers", true);
         summary.put("sample_values_captured", false);
         summary.put("records_emitted", emittedRecords);

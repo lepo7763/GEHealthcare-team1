@@ -223,6 +223,7 @@ const DiagnosticPackages = () => {
             disabled={isExporting}
             aria-busy={isExporting}
           >
+            {isExporting && <span className="btn-spinner" aria-hidden="true" />}
             {isExporting ? 'Exporting...' : 'Export logs ZIP'}
           </button>
           {isExporting && (
@@ -308,6 +309,7 @@ const DiagnosticPackages = () => {
               disabled={isPackageDownloading}
               aria-busy={isPackageDownloading}
             >
+              {isPackageDownloading && <span className="btn-spinner" aria-hidden="true" />}
               {isPackageDownloading ? 'Preparing package...' : 'Download Complete Package'}
             </button>
           </div>

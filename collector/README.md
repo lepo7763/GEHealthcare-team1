@@ -54,11 +54,11 @@ One JSON object per line on stdout:
 - `participant` — discovered participants.
 - `topic` — observed/configured UMF topics.
 - `writer` / `reader` — matched remote endpoints, GUIDs, liveness, QoS.
-- `summary` — counts and warnings.
+- `summary` — counts and capture metadata.
 - `error` — fatal error record (non-zero exit).
 
-RTI stderr (including security diagnostics) is preserved by the backend in
-`umf-rti/umf-rti-collector.log`.
+RTI stderr and internal collector warnings stay in the backend pod log for
+diagnostics. They are not copied into the output package.
 
 ## Endpoint probes
 

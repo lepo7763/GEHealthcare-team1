@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 import zipfile
@@ -19,10 +20,11 @@ from app.log_collection.schemas import CollectedService, LogCollectionManifest, 
 from .config import UmfRtiConfig
 from .schemas import UmfRtiCaptureResult, UmfRtiParams
 
+logger = logging.getLogger(__name__)
+
 UMF_RTI_FILES = (
     "umf-rti/umf-rti-discovery.ndjson",
     "umf-rti/umf-rti-summary.json",
-    "umf-rti/umf-rti-collector.log",
     "umf-rti/README.txt",
 )
 
@@ -618,7 +620,7 @@ def _parse_ndjson(log_text: str) -> ParsedUmfRtiLog:
     if parsed.raw_lines:
         preview = "; ".join(line[:300] for line in parsed.raw_lines[:5])
         parsed.warnings.append(
-            f"Collector stderr/non-JSON output was preserved in umf-rti-collector.log: {preview}"
+            f"Collector stderr/non-JSON output was captured in the backend pod log: {preview}"
         )
     if parsed.summary is None and parsed.json_lines:
         parsed.warnings.append("Collector log did not contain a final summary record (possibly truncated).")
@@ -877,7 +879,6 @@ def capture_umf_rti(
 
 
 def _readme(result: UmfRtiCaptureResult) -> str:
-    warnings = "\n".join(f"  - {w}" for w in result.warnings) or "  (none)"
     return f"""UMF RTI discovery capture
 =========================
 
@@ -907,45 +908,24 @@ umf-rti/umf-rti-discovery.ndjson
   topic name, type name, GUID, participant GUID/name, liveness, and QoS.
 
 umf-rti/umf-rti-summary.json
-  Machine-readable capture summary (domain, duration, peer, counts, warnings).
+  Machine-readable capture summary (domain, duration, peer, counts).
 
-umf-rti/umf-rti-collector.log
-  Raw pod log, including any RTI stderr/security diagnostics.
+umf-rti/README.txt
+  This overview.
 
 What is captured
 ----------------
 - Live DDS participants discovered on the selected domain.
-- UMF topics observed through matched writers/readers plus the configured
-  platform topic probes (umf_cfg, umfcmd_req, umfcmd_resp, umf_cfg_state).
+- UMF topics observed from matched writers/readers, including umf_cfg,
+  umfcmd_req, umfcmd_resp, and umf_cfg_state.
 - Remote writers/readers, their topic/type names, GUIDs, participant names,
   liveness at capture time, and QoS (reliability, durability, deadline,
   liveliness, history/ownership/presentation/partition where available).
 
-What is NOT captured
---------------------
-- No sample values are read or written.
-- Probe readers use an always-false content filter ("1 = 0"), so user data is
-  not delivered to the collector.
-- No PHI/patient data is included by design.
-
-Warnings
---------
-{warnings}
-
-Limitations
------------
-- The commissioning identity used in this lab permits domains 2 and 32.  Domain
-  12 is selectable in the UI but will be rejected by RTI security unless a
-  dedicated UMF RTI identity is provisioned.
-- RTI's TopicBuiltinTopicData is not readable for secure discovered topics in
-  this runtime.  Topic names are therefore derived from matched UMF endpoints
-  and the configured platform topic probes.
-- Endpoint discovery uses short-lived local probe endpoints because DDS only
-  exposes publication/subscription built-in data for endpoints with a local
-  match.  They are deleted when the Job exits.
-- The peer URI intentionally has no port suffix; RTI derives the discovery port
-  from the domain.  A suffix such as :15410 is treated as part of the hostname
-  by this RTI build and fails DNS resolution.
+Privacy
+-------
+The package contains discovery and QoS metadata only. No sample values or
+patient data are included.
 """
 
 
@@ -956,13 +936,21 @@ def write_artifacts(
     params: UmfRtiParams,
     config: UmfRtiConfig,
 ) -> None:
-    """Write UMF RTI files into the diagnostic zip and update the manifest."""
+    """Write UMF RTI files into the diagnostic zip and update the manifest.
+
+    Internal warnings and raw collector stderr stay in the backend pod log.
+    The package is deliberately limited to the discovery records, a clean
+    summary, and the overview README.
+    """
     parsed = _parse_ndjson(result.log_text)
     counts = dict(result.counts or parsed.counts)
-    warnings = list(result.warnings)
+
+    internal_warnings = list(result.warnings)
     for warning in parsed.warnings:
-        if warning not in warnings:
-            warnings.append(warning)
+        if warning not in internal_warnings:
+            internal_warnings.append(warning)
+    for warning in internal_warnings:
+        logger.info("UMF RTI internal note: %s", warning)
 
     ndjson_text = "\n".join(parsed.json_lines)
     if ndjson_text:
@@ -978,7 +966,6 @@ def write_artifacts(
         "pod": result.pod_name,
         "node": result.node_name,
         "status": result.status,
-        "error": result.error,
         "exit_code": result.exit_code,
         "started_at_utc": result.started_at_utc,
         "finished_at_utc": result.finished_at_utc,
@@ -987,21 +974,16 @@ def write_artifacts(
         "counts": counts,
         "collector_version": result.collector_version or parsed.collector_version,
         "rti_version": result.rti_version or parsed.rti_version,
-        "warnings": warnings,
         "job_deleted": result.job_deleted,
         "sample_values_captured": False,
     }
+    if result.error:
+        summary["error"] = result.error
 
-    files = [
-        "umf-rti/umf-rti-discovery.ndjson",
-        "umf-rti/umf-rti-summary.json",
-        "umf-rti/umf-rti-collector.log",
-        "umf-rti/README.txt",
-    ]
+    files = list(UMF_RTI_FILES)
     zf.writestr(files[0], ndjson_text)
     zf.writestr(files[1], json.dumps(summary, indent=2, sort_keys=False))
-    zf.writestr(files[2], result.log_text or "")
-    zf.writestr(files[3], _readme(result))
+    zf.writestr(files[2], _readme(result))
     manifest.collected_files.extend(files)
 
     service_status = "done" if result.status == "succeeded" and not result.error else "error"

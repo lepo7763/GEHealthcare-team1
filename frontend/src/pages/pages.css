@@ -183,13 +183,51 @@ code {
   font-weight: var(--eds-font-weight-semibold);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s ease;
+  gap: var(--eds-spacing-xs);
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.16s ease;
   /* Also used on <a> elements (e.g. the download link). */
   display: inline-flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
   box-sizing: border-box;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--eds-shadow-sm);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Small inline spinner used by the environment-check button. */
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: eds-spin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes eds-spin {
+  to { transform: rotate(360deg); }
 }
 
 .btn-primary {
@@ -219,9 +257,9 @@ code {
   cursor: pointer;
 }
 
-/* Readiness progress */
+/* Readiness / collection progress */
 .progress {
-  height: 8px;
+  height: 6px;
   border-radius: var(--eds-radius-full);
   background: var(--eds-color-purple-subtle);
   margin: var(--eds-spacing-md) 0 var(--eds-spacing-xs);
@@ -229,19 +267,34 @@ code {
 }
 .progress-fill {
   height: 100%;
-  background: var(--eds-color-success);
+  border-radius: inherit;
+  background: var(--eds-color-purple);
+  transition: width 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: width;
 }
 
 /* Indeterminate variant: used while we don't know how long a check will take. */
 .progress-indeterminate .progress-fill {
   width: 40%;
   background: var(--eds-color-purple);
-  animation: eds-progress-indeterminate 1.1s ease-in-out infinite;
+  transition: none;
+  animation: eds-progress-indeterminate 1.55s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: transform;
 }
 
 @keyframes eds-progress-indeterminate {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(250%); }
+  0% { transform: translateX(-130%); }
+  100% { transform: translateX(330%); }
+}
+
+/* Step content enters softly instead of snapping into place. */
+.step-panel {
+  animation: eds-fade-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes eds-fade-slide-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Lists */
@@ -326,6 +379,10 @@ code {
   margin-top: var(--eds-spacing-lg);
 }
 
+.collect-panel > .action-row {
+  animation: eds-fade-slide-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .service-option {
   position: relative;
   display: flex;
@@ -341,7 +398,11 @@ code {
   padding: var(--eds-spacing-md);
   font-family: var(--eds-font-family);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 .service-option > div {
@@ -357,6 +418,7 @@ code {
   border-color: var(--eds-color-purple);
   background: var(--eds-color-purple-faint);
   box-shadow: var(--eds-shadow-sm);
+  transform: translateY(-1px);
 }
 
 .service-option.selected {
@@ -392,6 +454,7 @@ code {
   border: 1px solid var(--eds-color-purple-subtle);
   border-radius: var(--eds-radius-md);
   background: var(--eds-color-purple-faint);
+  animation: eds-fade-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .service-options-title {
@@ -422,6 +485,15 @@ code {
   border-radius: var(--eds-radius-md);
   padding: var(--eds-spacing-md);
   background: var(--eds-color-white);
+  animation: eds-fade-slide-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition:
+    border-color 0.25s ease,
+    background-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.service-progress-card:hover {
+  box-shadow: var(--eds-shadow-sm);
 }
 
 .service-progress-card .progress {
@@ -440,6 +512,7 @@ code {
   font-weight: var(--eds-font-weight-semibold);
   color: var(--eds-color-gray-700);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .service-progress-error {
@@ -491,6 +564,7 @@ code {
   border-radius: var(--eds-radius-md);
   font-size: var(--eds-font-size-sm);
   margin: var(--eds-spacing-md) 0;
+  animation: eds-fade-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .alert-warning { background: var(--eds-color-warning-bg); }
 .alert-warning strong { color: var(--eds-color-warning); }
@@ -579,6 +653,19 @@ code {
   font-family: var(--eds-font-family);
   font-size: var(--eds-font-size-md);
   width: 100%;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.field input:hover:not(:disabled) {
+  border-color: var(--eds-color-gray-200);
+  background: var(--eds-color-gray-50);
+}
+
+.field input:focus {
+  border-color: var(--eds-color-purple);
 }
 
 .input-with-action { position: relative; }

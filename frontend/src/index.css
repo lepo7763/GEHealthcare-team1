@@ -30,9 +30,11 @@
   --eds-color-gray-700: #3F3F46;
   --eds-color-gray-900: #18181B;     /* High-contrast clinical typography */
 
-  /* Clinical Status Feedback */
-  --eds-color-success: #059669;
-  --eds-color-success-bg: rgba(5, 150, 105, 0.1);
+  /* Clinical Status Feedback
+     Progress/completed states use the brand purple rather than a separate
+     accent. Warning amber and error red remain distinct. */
+  --eds-color-success: #6022A6;
+  --eds-color-success-bg: rgba(96, 34, 166, 0.08);
   --eds-color-warning: #D97706;
   --eds-color-warning-bg: rgba(217, 119, 6, 0.1);
   --eds-color-error: #DC2626;
@@ -98,4 +100,16 @@ input:focus-visible,
 a:focus-visible {
   outline: none;
   box-shadow: var(--eds-focus-ring);
+}
+
+/* Respect users who prefer less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

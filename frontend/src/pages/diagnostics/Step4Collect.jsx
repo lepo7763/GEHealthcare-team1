@@ -73,16 +73,22 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
           and units.
         </p>
 
-        <div className="collect-panel">
+        <div
+          className="collect-panel"
+          aria-busy={collectStatus === 'collecting' || collectStatus === 'packaging'}
+        >
           {collectFailed && (
-            <div className="alert alert-error">
+            <div className="alert alert-error" role="alert">
               <strong>Collection failed</strong>
               <span>{collectFailed}</span>
             </div>
           )}
 
           {!collectFailed && allDone && (
-            <div className={`alert ${serviceErrors ? 'alert-warning' : 'alert-success'}`}>
+            <div
+              className={`alert ${serviceErrors ? 'alert-warning' : 'alert-success'}`}
+              role="status"
+            >
               <strong>
                 {serviceErrors ? 'Collection completed with errors' : 'Collection complete'}
               </strong>
