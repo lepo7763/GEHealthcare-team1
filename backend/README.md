@@ -179,6 +179,10 @@ The output is `collector/build/umf-rti-collector.jar` (tens of KB). The
 runtime image already contains `nddsjava.jar` and the platform UMF type
 classes, so only the small collector JAR is mounted into the Job.
 
+`kubernetes/umf-rti-setup.sh` performs both steps automatically when the
+collector JAR is missing, so a fresh checkout only needs
+`./kubernetes/umf-rti-setup.sh`.
+
 ## Directory Structure
 
 This repository groups all parts of a certain feature under folders titled with

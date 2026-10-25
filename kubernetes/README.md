@@ -99,13 +99,29 @@ ServiceAccount token, a non-root UID (2017), and no added capabilities. The Job
 is deleted immediately after the run, with `ttlSecondsAfterFinished` as a
 safety net.
 
-### Prerequisites
+### First-time setup
 
-Run the setup helper once (or after changing the collector):
+From the repository root:
+
+1. Install `kubectl`, Python 3, and JDK 17+.
+2. Run the setup helper:
 
 ```bash
 ./kubernetes/umf-rti-setup.sh
 ```
+
+If the collector JAR is not present, the helper extracts the build-time
+`collector/lib/nddsjava.jar` from the platform image and builds
+`collector/build/umf-rti-collector.jar` automatically. If you prefer to do it
+manually:
+
+```bash
+python3 scripts/extract-nddsjava.py --output collector/lib/nddsjava.jar
+./collector/build.sh
+./kubernetes/umf-rti-setup.sh
+```
+
+Run the setup helper again after changing the collector source.
 
 It creates/updates:
 

@@ -4,27 +4,30 @@ Small Java 17 program that runs inside the platform's RTI runtime image. It
 joins a UMF domain with the platform secure QoS profile and emits discovery/QoS
 data as newline-delimited JSON. It does not read or write sample values.
 
-## Build
+## First-time setup
+
+From `collector/`:
 
 ```bash
+# 1. Extract the build-time RTI Java API from the platform image
+python3 ../scripts/extract-nddsjava.py --output lib/nddsjava.jar
+
+# 2. Build the collector JAR
 ./build.sh
 ```
 
 Requirements:
 
 - JDK 17+ (`java`, `javac`, `jar`)
-- `lib/nddsjava.jar` — build-time only. Extract it from the platform image:
-
-```bash
-python3 ../scripts/extract-nddsjava.py --output lib/nddsjava.jar
-```
-
-The runtime image already has `nddsjava.jar`, the native RTI libraries, and the
-platform UMF generated type classes, so the Job mounts only
-`build/umf-rti-collector.jar`.
+- `lib/nddsjava.jar` — build-time only. The runtime image already has it, plus
+  the native RTI libraries and platform UMF generated type classes; only
+  `build/umf-rti-collector.jar` is mounted into the Job.
 
 The build also runs the dependency-free self-tests in
 `src/test/java/com/gehc/iomt/umfrti/CollectorSelfTest.java`.
+
+> Running `../kubernetes/umf-rti-setup.sh` from the repository root does the
+> extraction and build automatically if the collector JAR is missing.
 
 ## Run
 

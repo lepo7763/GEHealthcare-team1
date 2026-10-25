@@ -10,7 +10,17 @@ instructions.
 
 The UMF RTI capture is a headless, short-lived Kubernetes Job that reuses the
 platform's RTI runtime image. It captures discovery/QoS metadata only (no sample
-values). See:
+values).
+
+First-time setup, from the repository root:
+
+```bash
+./kubernetes/umf-rti-setup.sh
+```
+
+If the collector JAR is missing, the script extracts the build-time
+`collector/lib/nddsjava.jar` from the platform image and builds the collector
+automatically. See:
 
 - [collector/README.md](collector/README.md) — Java collector build/runtime
 - [kubernetes/README.md](kubernetes/README.md) — prerequisites, RBAC, domains

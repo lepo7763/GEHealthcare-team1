@@ -4,6 +4,13 @@
 # This script does NOT build or push an image. It reuses the platform runtime
 # image that already contains the RTI 6.1.2 libraries and Java API.
 #
+# First-time setup (from the repository root):
+#   1. Install kubectl, Python 3, and JDK 17+.
+#   2. Run: ./kubernetes/umf-rti-setup.sh
+#      If collector/build/umf-rti-collector.jar is missing, the script extracts
+#      the build-time nddsjava.jar from the platform image and builds the
+#      collector automatically.
+#
 # Optional environment variables:
 #   NAMESPACE            default iomt-integration
 #   PLATFORM_NAMESPACE   default pm
@@ -26,6 +33,7 @@ SDDS_SECRET="${SDDS_SECRET:-umf-rti-sdds}"
 COLLECTOR_SECRET="${COLLECTOR_SECRET:-umf-rti-collector}"
 LICENSE_SECRET="${LICENSE_SECRET:-umf-rti-license}"
 COLLECTOR_JAR="${COLLECTOR_JAR:-$ROOT_DIR/collector/build/umf-rti-collector.jar}"
+NDDSJAVA_JAR="$ROOT_DIR/collector/lib/nddsjava.jar"
 RTI_LICENSE_FILE="${RTI_LICENSE_FILE:-$ROOT_DIR/axone-umf-rtitools/docker/rti_license.dat}"
 COPY_SDDS="${COPY_SDDS:-false}"
 APPLY_RESOURCES="${APPLY_RESOURCES:-true}"
@@ -52,6 +60,16 @@ fi
 # Collector JAR
 # ---------------------------------------------------------------------------
 if [[ ! -f "$COLLECTOR_JAR" ]]; then
+  if [[ ! -f "$NDDSJAVA_JAR" ]]; then
+    log "Build-time nddsjava.jar not found; extracting it from the platform image"
+    command -v python3 >/dev/null 2>&1 ||
+      fail "python3 is required to extract collector/lib/nddsjava.jar"
+    [[ -f "$ROOT_DIR/scripts/extract-nddsjava.py" ]] ||
+      fail "scripts/extract-nddsjava.py is missing"
+    python3 "$ROOT_DIR/scripts/extract-nddsjava.py" \
+      --image "$IMAGE" \
+      --output "$NDDSJAVA_JAR"
+  fi
   log "Collector JAR not found; building it"
   [[ -x "$ROOT_DIR/collector/build.sh" ]] || fail "collector/build.sh is missing"
   "$ROOT_DIR/collector/build.sh"
