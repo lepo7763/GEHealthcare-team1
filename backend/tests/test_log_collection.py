@@ -13,6 +13,34 @@ from app.core.k8s_client import get_core_v1_api
 test_client = TestClient(app)
 
 
+def test_demo_logs_endpoint_returns_downloadable_zip():
+    response = test_client.get("/api/logs/demo.zip")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert "attachment; filename=\"demo_diagnostic_logs_" in response.headers.get(
+        "content-disposition", ""
+    )
+
+    archive = io.BytesIO(response.content)
+    assert zipfile.is_zipfile(archive)
+    with zipfile.ZipFile(archive) as zip_file:
+        names = set(zip_file.namelist())
+        assert names == {
+            "session-summary.txt",
+            "logs/system.log",
+            "logs/application.log",
+            "network-diagnostics.txt",
+            "configuration-snapshot.txt",
+            "health-metrics.txt",
+        }
+        assert zip_file.testzip() is None
+        assert "SIMULATED DIAGNOSTIC SESSION" in zip_file.read(
+            "session-summary.txt"
+        ).decode("utf-8")
+        assert all(not name.endswith(".json") for name in names)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures & Helpers to Build Realistic (and Broken) K8s Objects
 # ---------------------------------------------------------------------------

@@ -2,8 +2,7 @@ import { useState } from 'react';
 import './Dashboard.css';
 
 import Overview from './pages/Overview';
-import Environments from './pages/Environments';
-import Sessions from './pages/Sessions';
+import Diagnostics from './pages/Diagnostics';
 import DiagnosticPackages from './pages/DiagnosticPackages';
 import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
@@ -23,25 +22,13 @@ const NAV_ITEMS = [
     ),
   },
   {
-    id: 'environments',
-    label: 'Environments',
+    id: 'diagnostics',
+    label: 'Diagnostics',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
         <polyline points="2 17 12 22 22 17"></polyline>
         <polyline points="2 12 12 17 22 12"></polyline>
-      </svg>
-    ),
-  },
-  {
-    id: 'sessions',
-    label: 'Sessions',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-        <circle cx="9" cy="7" r="4"></circle>
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
       </svg>
     ),
   },
@@ -70,27 +57,35 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
-  {
-    id: 'settings',
-    label: 'Settings',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-      </svg>
-    ),
-  },
+];
+
+const CORNER_ITEMS = [
   {
     id: 'help',
     label: 'Help',
     icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="10"></circle>
         <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
         <line x1="12" y1="17" x2="12.01" y2="17"></line>
       </svg>
     ),
   },
+  {
+    id: 'settings',
+    label: 'Settings',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    ),
+  },
+];
+
+const ALL_PAGES = [
+  ...NAV_ITEMS,
+  ...CORNER_ITEMS,
 ];
 
 const Dashboard = ({ user, onSignOut }) => {
@@ -101,10 +96,8 @@ const Dashboard = ({ user, onSignOut }) => {
     switch (activeTab) {
       case 'overview':
         return <Overview onNavigate={setActiveTab} />;
-      case 'environments':
-        return <Environments />;
-      case 'sessions':
-        return <Sessions />;
+      case 'diagnostics':
+        return <Diagnostics onNavigate={setActiveTab} />;
       case 'diagnostic_packages':
         return <DiagnosticPackages />;
       case 'audit_log':
@@ -118,7 +111,7 @@ const Dashboard = ({ user, onSignOut }) => {
     }
   };
 
-  const currentItem = NAV_ITEMS.find((item) => item.id === activeTab) || NAV_ITEMS[0];
+  const currentItem = ALL_PAGES.find((item) => item.id === activeTab) || NAV_ITEMS[0];
 
   return (
     <div className="eds-workstation-layout">
@@ -208,6 +201,23 @@ const Dashboard = ({ user, onSignOut }) => {
             <div className="eds-status-pill">
               <span className="eds-status-indicator-dot" aria-hidden="true"></span>
               <span>Cluster: <strong>HOSP-US-EAST-01</strong> • TLS 1.3 Active</span>
+            </div>
+            <div className="eds-topbar-corner-actions" aria-label="Utility navigation">
+              {CORNER_ITEMS.map((item) => {
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    className={`eds-corner-icon-btn ${isActive ? 'active' : ''}`}
+                    onClick={() => setActiveTab(item.id)}
+                    title={item.label}
+                    aria-label={item.label}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    {item.icon}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </header>

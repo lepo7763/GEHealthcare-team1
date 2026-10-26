@@ -19,6 +19,7 @@
   --eds-color-purple-hover: #4F1B8A;
   --eds-color-purple-active: #431778;
   --eds-color-purple-subtle: rgba(96, 34, 166, 0.08);
+  --eds-color-purple-faint: rgba(96, 34, 166, 0.04);
   --eds-color-purple-glow: rgba(96, 34, 166, 0.25);
 
   --eds-color-white: #FFFFFF;

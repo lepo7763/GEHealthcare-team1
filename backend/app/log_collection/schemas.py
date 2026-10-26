@@ -36,3 +36,23 @@ class LogCollectionManifest(BaseModel):
     total_logs_collected: int
     collected_files: List[str] = []
     errors: List[LogErrorEntry] = []
+
+
+class ServiceProgressResponse(BaseModel):
+    id: str
+    label: str
+    status: str
+    pods_total: int = 0
+    pods_done: int = 0
+    containers_total: int = 0
+    containers_done: int = 0
+    current: Optional[str] = None
+    errors: int = 0
+
+
+class CollectionProgressResponse(BaseModel):
+    status: str
+    services: List[ServiceProgressResponse] = []
+    message: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None

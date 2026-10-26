@@ -295,6 +295,51 @@
   box-shadow: 0 0 6px var(--eds-color-purple-glow);
 }
 
+.eds-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eds-topbar-corner-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 1px solid var(--eds-color-gray-200);
+  padding-left: 12px;
+}
+
+.eds-corner-icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--eds-radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--eds-color-gray-700);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.eds-corner-icon-btn:hover {
+  background: var(--eds-color-purple-subtle);
+  color: var(--eds-color-purple);
+  border-color: rgba(96, 34, 166, 0.15);
+}
+
+.eds-corner-icon-btn.active {
+  background: var(--eds-color-purple);
+  color: var(--eds-color-white);
+  border-color: var(--eds-color-purple);
+  box-shadow: 0 1px 3px rgba(96, 34, 166, 0.3);
+}
+
+.eds-corner-icon-btn.active svg {
+  stroke: var(--eds-color-white);
+}
+
 /* EDS CANVAS BODY & PAGE CARDS */
 .eds-canvas-body {
   flex: 1;
