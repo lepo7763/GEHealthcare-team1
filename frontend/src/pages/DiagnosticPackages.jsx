@@ -136,7 +136,7 @@ const DiagnosticPackages = () => {
       const link = document.createElement('a');
       link.href = url;
       const filename = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
-        || 'k8s_cluster_logs.zip';
+        || 'iomt_diagnostics.zip';
       link.download = filename;
       document.body.appendChild(link);
       link.click();
@@ -223,6 +223,7 @@ const DiagnosticPackages = () => {
             disabled={isExporting}
             aria-busy={isExporting}
           >
+            {isExporting && <span className="btn-spinner" aria-hidden="true" />}
             {isExporting ? 'Exporting...' : 'Export logs ZIP'}
           </button>
           {isExporting && (
@@ -308,6 +309,7 @@ const DiagnosticPackages = () => {
               disabled={isPackageDownloading}
               aria-busy={isPackageDownloading}
             >
+              {isPackageDownloading && <span className="btn-spinner" aria-hidden="true" />}
               {isPackageDownloading ? 'Preparing package...' : 'Download Complete Package'}
             </button>
           </div>

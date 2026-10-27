@@ -1,12 +1,20 @@
 # IoMT Analysis Tool — Backend
 
-FastAPI service for health checks, Kubernetes container log ZIP downloads, and
-Axone system log exports in CSV or JSON.
+FastAPI service for the IoMT Analysis Tool. It currently exposes:
+
+- `GET /api/health` — liveness/readiness.
+- `GET /api/environments/check` — Kubernetes reachability/authentication check.
+- `GET /api/logs/progress` — per-service progress for the running collection.
+- `GET /api/logs/zip` — container logs and/or a UMF RTI discovery capture.
+- `GET /api/logs/demo.zip` — simulated package for UI development.
+- `GET /api/logs/export` — Axone system log export in CSV or JSON.
 
 ## Requirements
 
 - **Python 3.14** (any recent Python3 version should work, but 3.14 is ideal so everyone has the same version)
 - **venv + pip**
+- `kubectl` access to the cluster for live collection
+- **JDK 17+** if the setup helper needs to build the UMF RTI collector JAR
 
 ## Setup
 
@@ -34,15 +42,44 @@ Run from inside `backend/`:
 pytest
 ```
 
-## Example request
+The tests mock both the CoreV1 and BatchV1 clients and do not require a live
+cluster.
+
+## Container log collection
+
+`GET /api/logs/zip` historically collected every container log in the cluster
+and returned a zip with `manifest.json` and `logs/<namespace>/<pod>/<container>.log`.
+That behavior is preserved. `include_previous=true` also fetches the previous
+instance log for containers whose restart count is greater than zero.
+
+## UMF RTI
+
+Run the setup helper once, from the repository root:
 
 ```bash
-curl http://127.0.0.1:8000/api/health
+./kubernetes/umf-rti-setup.sh
 ```
+
+It creates the UMF RTI resources in `iomt-integration` and builds the collector
+JAR if it is missing. Re-run it after changing the collector source.
+
+Then request a capture:
+
+```bash
+curl -o diagnostics.zip \
+  'http://127.0.0.1:8000/api/logs/zip?services=umf-rti&umf_domain_id=32&umf_duration_seconds=120'
+```
+
+See [`../kubernetes/README.md`](../kubernetes/README.md) for setup details and
+[`../collector/README.md`](../collector/README.md) for the collector.
 
 ## Directory Structure
 
-This repository groups all parts of a certain feature under folders titled with that feature name. For example, the routing, schemas and service components of the container log collection feature are all in the `log_collection` directory, and the router is attached to the app in `main.py`.
+This repository groups all parts of a certain feature under folders titled with
+that feature name. The container log routing/schemas/service live in
+`log_collection`; the UMF RTI Job/QoS logic lives in `umf_rti`; the
+cross-service zip/manifest orchestration lives in `diagnostics`. Routers are
+attached to the app in `main.py`.
 
 ## Axone log export
 
@@ -94,4 +131,9 @@ timeout. Downloads are not cached.
 
 ## Kubernetes Cluster Authentication
 
-The Kubernetes container ZIP export requires Kubernetes API authentication. For local access, ssh into the MiniEdge in Morgridge Hall and copy the contents of the `/etc/rancher/k3s/k3s.yaml` file to your local machine's `~/.kube/config` file. **Do not push this file to the GitHub repo as it contains unencrypted credentials.** The Axone export proxy uses the internal HTTP service described above.
+Any feature that connects to the Kubernetes cluster requires Kubernetes API
+authentication. For local access, SSH into the MiniEdge in Morgridge Hall and
+copy `/etc/rancher/k3s/k3s.yaml` to your local machine's `~/.kube/config` file.
+**Do not push this file to the GitHub repository because it contains unencrypted
+credentials.** The Axone export proxy uses the internal HTTP service described
+above.
