@@ -29,30 +29,42 @@ class LogErrorEntry(BaseModel):
     container: str
     reason: str
     status: Optional[int] = None
+    service: Optional[str] = None
+
+
+class CollectedService(BaseModel):
+    """Per-service result recorded in manifest.json."""
+
+    id: str
+    label: str
+    status: str  # done | error
+    files: List[str] = Field(default_factory=list)
+    error: Optional[str] = None
 
 
 class LogCollectionManifest(BaseModel):
     timestamp_utc: str
     total_logs_collected: int
-    collected_files: List[str] = []
-    errors: List[LogErrorEntry] = []
+    collected_files: List[str] = Field(default_factory=list)
+    errors: List[LogErrorEntry] = Field(default_factory=list)
+    services: List[CollectedService] = Field(default_factory=list)
 
 
 class ServiceProgressResponse(BaseModel):
     id: str
     label: str
     status: str
-    pods_total: int = 0
-    pods_done: int = 0
-    containers_total: int = 0
-    containers_done: int = 0
+    completed: int = 0
+    total: int = 0
+    unit: str = "items"
     current: Optional[str] = None
     errors: int = 0
+    error: Optional[str] = None
 
 
 class CollectionProgressResponse(BaseModel):
     status: str
-    services: List[ServiceProgressResponse] = []
+    services: List[ServiceProgressResponse] = Field(default_factory=list)
     message: Optional[str] = None
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
