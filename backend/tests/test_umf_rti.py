@@ -528,6 +528,59 @@ def test_job_without_pod_fails_fast_with_event_message(clients):
 
 
 # ---------------------------------------------------------------------------
+# Permission errors
+# ---------------------------------------------------------------------------
+
+
+def test_create_job_forbidden_reports_kubeconfig_identity(clients):
+    core, batch = clients
+    configure_prerequisites(core)
+    batch.create_namespaced_job.side_effect = ApiException(
+        status=403, reason="Forbidden"
+    )
+
+    response = test_client.get(
+        "/api/logs/zip?services=umf-rti&umf_domain_id=32&umf_duration_seconds=30"
+    )
+    manifest, files = unzip_response(response)
+
+    summary = json.loads(files["umf-rti/umf-rti-summary.json"])
+    assert summary["status"] == "failed"
+    assert "not allowed to create jobs" in summary["error"]
+    assert "kubectl auth can-i create jobs -n iomt-integration" in summary["error"]
+    assert manifest["services"][0]["status"] == "error"
+    batch.delete_namespaced_job.assert_not_called()
+
+
+def test_pod_list_forbidden_fails_fast_without_timeout(clients):
+    core, batch = clients
+    configure_prerequisites(core)
+    batch.create_namespaced_job.return_value = client.V1Job(
+        metadata=client.V1ObjectMeta(name="umf-rti-job")
+    )
+    batch.read_namespaced_job_status.return_value = client.V1Job(
+        metadata=client.V1ObjectMeta(name="umf-rti-job"),
+        status=client.V1JobStatus(active=1),
+    )
+    core.list_namespaced_pod.side_effect = ApiException(
+        status=403, reason="Forbidden"
+    )
+
+    response = test_client.get(
+        "/api/logs/zip?services=umf-rti&umf_domain_id=32&umf_duration_seconds=30"
+    )
+    manifest, files = unzip_response(response)
+
+    summary = json.loads(files["umf-rti/umf-rti-summary.json"])
+    assert summary["status"] == "failed"
+    assert "not allowed to list pods" in summary["error"]
+    assert "kubectl auth can-i list pods -n iomt-integration" in summary["error"]
+    # Fails on the permission error instead of waiting for the Pod timeout.
+    core.list_namespaced_event.assert_not_called()
+    assert manifest["services"][0]["status"] == "error"
+
+
+# ---------------------------------------------------------------------------
 # Query validation and naming
 # ---------------------------------------------------------------------------
 

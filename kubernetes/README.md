@@ -132,26 +132,8 @@ It creates/updates:
 | Secret | `umf-rti-collector` | The collector JAR (`collector/build/umf-rti-collector.jar`) |
 | Secret | `umf-rti-license` | `rti_license.dat` |
 
-For the lab fallback identity, run:
-
-```bash
-COPY_SDDS=true ./kubernetes/umf-rti-setup.sh
-```
-
-This copies the diagnostics UI SDDS material (including `MDHEndPoint.key.pem`)
-from `pm`. It is convenient for the lab but should not be used as a production
-identity. Prefer a dedicated UMF RTI identity with the same domain/topic
-permissions.
-
-If the backend runs in-cluster, apply the RBAC manifest:
-
-```bash
-kubectl apply -f kubernetes/umf-rti-rbac.yaml
-```
-
-It grants the existing `iomt-network-backend` ServiceAccount read-only pod/log
-access cluster-wide, plus Job/configmap/secret access in `iomt-integration` and
-read-only Service access in `pm`.
+The helper fills the `umf-rti-sdds` Secret with the diagnostics UI SDDS material
+(including `MDHEndPoint.key.pem`) from `pm`.
 
 ### Domains and discovery
 
@@ -184,7 +166,5 @@ kubectl get jobs,pods -n iomt-integration -l iomt-analysis-tool/service=umf-rti
 `iomt-integration-resources.yaml` defines resource quotas and container defaults for shared integration testing.
 
 `umf-rti-setup.sh` creates the UMF RTI ConfigMap/Secrets from the platform resources.
-
-`umf-rti-rbac.yaml` contains the optional in-cluster RBAC for the backend.
 
 Updates to resource configurations should be coordinated with the team.

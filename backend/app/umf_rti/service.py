@@ -87,6 +87,20 @@ def _reason(exception: ApiException) -> str:
     return exception.reason or f"HTTP {exception.status}"
 
 
+def _access_error(action: str, namespace: str, exception: ApiException) -> str:
+    """Actionable message when the cluster rejects the kubeconfig identity."""
+    if exception.status == 401:
+        return (
+            "The Kubernetes credentials in ~/.kube/config were rejected "
+            "(401 Unauthorized)."
+        )
+    return (
+        f"The Kubernetes identity in ~/.kube/config is not allowed to {action} "
+        f"in {namespace}. Check it with: "
+        f"kubectl auth can-i {action} -n {namespace}"
+    )
+
+
 def _read_config_map(core: client.CoreV1Api, name: str, namespace: str) -> client.V1ConfigMap:
     try:
         return core.read_namespaced_config_map(name=name, namespace=namespace)
@@ -498,7 +512,11 @@ def _find_pod(
             label_selector=f"job-name={job_name}",
             _request_timeout=10,
         ).items
-    except ApiException:
+    except ApiException as e:
+        # "No Pods" is normal while the Job starts, but a rejected credential
+        # would look identical and surface later as a misleading timeout.
+        if e.status in (401, 403):
+            raise
         return None
     return pods[0] if pods else None
 
@@ -656,10 +674,9 @@ def capture_umf_rti(
             raise UmfRtiPrerequisiteError(
                 f"Namespace {config.namespace} was not found."
             ) from e
-        if e.status == 403:
+        if e.status in (401, 403):
             raise UmfRtiCaptureError(
-                "The backend is not allowed to create Jobs in "
-                f"{config.namespace}. Apply kubernetes/umf-rti-rbac.yaml."
+                _access_error("create jobs", config.namespace, e)
             ) from e
         raise UmfRtiCaptureError(
             f"Could not create UMF RTI Job {job_name}: {_reason(e)}"
@@ -699,7 +716,12 @@ def capture_umf_rti(
                     break
                 warnings.append(f"Could not read Job status: {_reason(e)}")
 
-            pod = _find_pod(core, config.namespace, job_name)
+            try:
+                pod = _find_pod(core, config.namespace, job_name)
+            except ApiException as e:
+                error = _access_error("list pods", config.namespace, e)
+                status = "failed"
+                break
             waiting_reason = None
             if pod is not None:
                 pod_name = pod.metadata.name if pod.metadata else pod_name

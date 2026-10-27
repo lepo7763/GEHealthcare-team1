@@ -3,20 +3,14 @@ from fastapi import HTTPException
 
 
 def _load_config() -> None:
-    """
-    Loads K8s configuration, preferring local kubeconfig (for laptop dev) and
-    falling back to in-cluster credentials.
-    """
+    """Loads the Kubernetes configuration from the local kubeconfig."""
     try:
         config.load_kube_config()
-    except config.ConfigException:
-        try:
-            config.load_incluster_config()
-        except config.ConfigException as e:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Could not connect to Kubernetes cluster: {str(e)}",
-            )
+    except config.ConfigException as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not connect to Kubernetes cluster: {str(e)}",
+        ) from e
 
 
 def get_core_v1_api() -> client.CoreV1Api:

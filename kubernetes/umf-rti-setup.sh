@@ -15,10 +15,10 @@
 #   NAMESPACE            default iomt-integration
 #   PLATFORM_NAMESPACE   default pm
 #   IMAGE                platform runtime image
-#   COPY_SDDS            true to copy the diagnostics UI SDDS identity from pm
-#                        (contains MDHEndPoint.key.pem; lab use only)
+#   COPY_SDDS            default true; false keeps a dedicated SDDS identity
+#                        instead of copying the diagnostics UI material
+#                        (which includes MDHEndPoint.key.pem)
 #   APPLY_RESOURCES      true to apply kubernetes/iomt-integration-resources.yaml
-#   APPLY_RBAC           true to apply kubernetes/umf-rti-rbac.yaml
 #   RTI_LICENSE_FILE     default axone-umf-rtitools/docker/rti_license.dat
 set -euo pipefail
 
@@ -35,9 +35,8 @@ LICENSE_SECRET="${LICENSE_SECRET:-umf-rti-license}"
 COLLECTOR_JAR="${COLLECTOR_JAR:-$ROOT_DIR/collector/build/umf-rti-collector.jar}"
 NDDSJAVA_JAR="$ROOT_DIR/collector/lib/nddsjava.jar"
 RTI_LICENSE_FILE="${RTI_LICENSE_FILE:-$ROOT_DIR/axone-umf-rtitools/docker/rti_license.dat}"
-COPY_SDDS="${COPY_SDDS:-false}"
+COPY_SDDS="${COPY_SDDS:-true}"
 APPLY_RESOURCES="${APPLY_RESOURCES:-true}"
-APPLY_RBAC="${APPLY_RBAC:-false}"
 
 log() { printf '==> %s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
@@ -105,8 +104,8 @@ kubectl create configmap "$QOS_CONFIGMAP" -n "$NAMESPACE" \
 # ---------------------------------------------------------------------------
 if [[ "$COPY_SDDS" == "true" ]]; then
   warn "Copying the diagnostics UI SDDS identity, including its private key,"
-  warn "into $NAMESPACE/$SDDS_SECRET. This is a lab convenience only; use a"
-  warn "dedicated UMF RTI identity for production or shared environments."
+  warn "into $NAMESPACE/$SDDS_SECRET. Use a dedicated UMF RTI identity for"
+  warn "shared or production environments."
   SDDS_DIR="$(mktemp -d)"
   kubectl get configmap axone-adminui-diagnosticsui-sdds-comm-configmap \
     -n "$PLATFORM_NAMESPACE" -o json |
@@ -135,9 +134,9 @@ else
   if kubectl get secret "$SDDS_SECRET" -n "$NAMESPACE" >/dev/null 2>&1; then
     log "Secret $NAMESPACE/$SDDS_SECRET already exists; leaving it unchanged"
   else
-    fail "Secret $NAMESPACE/$SDDS_SECRET is missing. Re-run with COPY_SDDS=true
-for the lab fallback identity, or provision a dedicated UMF RTI identity and
-create the secret yourself."
+    fail "Secret $NAMESPACE/$SDDS_SECRET is missing. Create it for your
+dedicated UMF RTI identity, or run again without COPY_SDDS=false to copy the
+platform identity."
   fi
 fi
 
@@ -159,13 +158,6 @@ if kubectl get nodes -o json | grep -qF "$IMAGE"; then
 else
   warn "Image was not found in the node image cache. The Job uses"
   warn "imagePullPolicy=IfNotPresent and will pull it from the registry."
-fi
-
-if [[ "$APPLY_RBAC" == "true" ]]; then
-  log "Applying UMF RTI RBAC"
-  kubectl apply -f "$ROOT_DIR/kubernetes/umf-rti-rbac.yaml"
-else
-  log "Skipping RBAC (set APPLY_RBAC=true if the backend runs in-cluster)"
 fi
 
 cat <<EOF
