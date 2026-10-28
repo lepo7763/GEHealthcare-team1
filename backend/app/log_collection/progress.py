@@ -6,9 +6,11 @@ from typing import List, Optional
 # Service identifiers shared by the collector, orchestrator and UI.
 CONTAINER_LOGS_SERVICE_ID = "container-logs"
 UMF_RTI_SERVICE_ID = "umf-rti"
+TSHARK_SERVICE_ID = "wireshark-tshark"
 
 CONTAINER_LOGS_LABEL = "Container Log Collection"
 UMF_RTI_LABEL = "UMF RTI"
+TSHARK_LABEL = "Wireshark / tshark"
 
 # Statuses that mean a collection is actively running.
 RUNNING_STATUSES = frozenset({"listing", "collecting", "packaging"})

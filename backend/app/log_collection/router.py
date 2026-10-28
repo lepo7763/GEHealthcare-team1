@@ -34,10 +34,10 @@ def get_collection_progress() -> dict:
 
 @router.get("/zip")
 def download_diagnostics(
-    services: List[Literal["container-logs", "umf-rti"]] = Query(
+    services: List[Literal["container-logs", "umf-rti", "wireshark-tshark"]] = Query(
         default=["container-logs"],
         description=(
-            "Repeat for each service: services=container-logs&services=umf-rti. "
+            "Repeat for each service: services=container-logs&services=umf-rti&services=wireshark-tshark. "
             "At least one service is required."
         ),
     ),

@@ -12,6 +12,8 @@ from kubernetes import client
 from app.log_collection.progress import (
     CONTAINER_LOGS_LABEL,
     CONTAINER_LOGS_SERVICE_ID,
+    TSHARK_LABEL,
+    TSHARK_SERVICE_ID,
     UMF_RTI_LABEL,
     UMF_RTI_SERVICE_ID,
     ServiceProgress,
@@ -27,6 +29,8 @@ from app.log_collection.service import (
     ClusterUnreachableError,
     collect_container_logs_into,
 )
+from app.tshark.config import TSHARK_DURATION as TSHARK_DEFAULT_DURATION
+from app.tshark.service import capture_network
 from app.umf_rti.config import UmfRtiConfig, get_umf_rti_config
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import (
@@ -38,7 +42,7 @@ from app.umf_rti.service import (
     write_failure_artifacts,
 )
 
-SUPPORTED_SERVICES = (CONTAINER_LOGS_SERVICE_ID, UMF_RTI_SERVICE_ID)
+SUPPORTED_SERVICES = (CONTAINER_LOGS_SERVICE_ID, UMF_RTI_SERVICE_ID, TSHARK_SERVICE_ID)
 
 
 class CollectionInProgressError(Exception):
@@ -68,7 +72,7 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="containers",
                 )
             )
-        else:
+        elif service_id == UMF_RTI_SERVICE_ID:
             progress_services.append(
                 ServiceProgress(
                     id=UMF_RTI_SERVICE_ID,
@@ -76,7 +80,59 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="seconds",
                 )
             )
+        elif service_id == TSHARK_SERVICE_ID:
+            progress_services.append(
+                ServiceProgress(
+                    id=TSHARK_SERVICE_ID,
+                    label=TSHARK_LABEL,
+                    unit="seconds",
+                )
+            )
     return tracker.try_begin(progress_services)
+
+
+def _collect_tshark(
+    zf: zipfile.ZipFile,
+    manifest: LogCollectionManifest,
+    core: client.CoreV1Api,
+) -> None:
+    import json
+    tracker.set_service_total(TSHARK_SERVICE_ID, TSHARK_DEFAULT_DURATION, unit="seconds")
+    tracker.set_service_completed(TSHARK_SERVICE_ID, 0, current="Running Wireshark / tshark capture...")
+    try:
+        result = capture_network(core)
+        filename = "network/wireshark-tshark-analysis.json"
+        zf.writestr(filename, json.dumps(result, indent=2))
+        manifest.collected_files.append(filename)
+        tracker.set_service_completed(TSHARK_SERVICE_ID, TSHARK_DEFAULT_DURATION)
+        manifest.services.append(
+            CollectedService(
+                id=TSHARK_SERVICE_ID,
+                label=TSHARK_LABEL,
+                status="done",
+                files=[filename],
+            )
+        )
+    except Exception as e:
+        message = f"Wireshark / tshark capture failed: {e}"
+        tracker.fail_service(TSHARK_SERVICE_ID, message)
+        manifest.errors.append(
+            LogErrorEntry(
+                namespace="iomt-dev-2",
+                pod="tshark-test",
+                container="tshark-test",
+                reason=message,
+                service=TSHARK_SERVICE_ID,
+            )
+        )
+        manifest.services.append(
+            CollectedService(
+                id=TSHARK_SERVICE_ID,
+                label=TSHARK_LABEL,
+                status="error",
+                error=message,
+            )
+        )
 
 
 def collect_diagnostics(
@@ -113,6 +169,8 @@ def collect_diagnostics(
                     _collect_umf_rti(
                         zf, manifest, core, batch, umf_params, config, selected
                     )
+                elif service_id == TSHARK_SERVICE_ID:
+                    _collect_tshark(zf, manifest, core)
 
             tracker.set_status("packaging")
             manifest.total_logs_collected = len(manifest.collected_files)

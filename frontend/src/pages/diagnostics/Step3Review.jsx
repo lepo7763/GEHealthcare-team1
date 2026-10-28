@@ -19,6 +19,7 @@ const Step3Review = ({
           .join(', ')
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
+  const tsharkSelected = selectedServices.some((service) => service.id === 'wireshark-tshark');
   const domainIsTwelve = umfSelected && Number(umfDomain) === 12;
 
   return (
@@ -59,6 +60,17 @@ const Step3Review = ({
                 <div className="check-detail">
                   Discovery and QoS only; no sample values are read. The capture runs
                   in a short-lived Kubernetes Job and is deleted afterwards.
+                </div>
+              </div>
+            </li>
+          )}
+          {tsharkSelected && (
+            <li>
+              <div>
+                <div className="check-title">Wireshark / tshark live capture</div>
+                <div className="check-detail">
+                  Network traffic capture via tshark-test container on eth0 to inspect TCP resets,
+                  retransmissions, and DNS failures.
                 </div>
               </div>
             </li>
