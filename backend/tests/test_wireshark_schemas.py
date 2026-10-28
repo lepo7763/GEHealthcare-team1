@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.wireshark.schemas import WiresharkCaptureParams
+from app.Tshark.schemas import WiresharkCaptureParams
 
 
 def test_defaults_are_valid():
