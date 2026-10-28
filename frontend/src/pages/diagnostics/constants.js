@@ -14,6 +14,12 @@ export const SERVICES = [
     description:
       'Captures UMF RTI discovery and QoS data from the live platform. No sample values are read.',
   },
+  {
+    id: 'wireshark-tshark',
+    name: 'Wireshark / tshark',
+    description:
+      'Captures live network packets and analyzes TCP resets, retransmissions, and DNS failures.',
+  },
 ];
 
 export const STEP_INFO = {

@@ -23,6 +23,7 @@ const Step2Configure = ({
   onContinue,
 }) => {
   const umfSelected = selected.includes('umf-rti');
+  const tsharkSelected = selected.includes('wireshark-tshark');
   const domainValid = validateDomain(umfDomain);
   const durationValid = validateDuration(umfDuration);
   const umfOptionsValid = !umfSelected || (domainValid && durationValid);
@@ -102,6 +103,16 @@ const Step2Configure = ({
             <p className="future-note">
               UMF RTI captures discovery and QoS metadata only. No sample values or
               patient data are read.
+            </p>
+          </div>
+        )}
+
+        {tsharkSelected && (
+          <div className="service-options" aria-label="Wireshark / tshark options">
+            <h4 className="service-options-title">Wireshark / tshark capture options</h4>
+            <p className="future-note" style={{ marginTop: 0 }}>
+              Captures live network traffic and analyzes packet metrics (TCP resets,
+              retransmissions, and DNS failures) during the Collect step.
             </p>
           </div>
         )}
