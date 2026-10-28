@@ -22,6 +22,8 @@ const Diagnostics = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(['container-logs']);
+  const [umfDomain, setUmfDomain] = useState('32');
+  const [umfDuration, setUmfDuration] = useState('120');
 
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
@@ -45,7 +47,10 @@ const Diagnostics = () => {
     fetch('/api/logs/progress')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data) setCollect(data);
+        if (!data) return;
+        setCollect((previous) =>
+          previous && JSON.stringify(previous) === JSON.stringify(data) ? previous : data,
+        );
       })
       .catch(() => {
         /* keep polling */
@@ -54,11 +59,12 @@ const Diagnostics = () => {
 
   const startPolling = () => {
     stopPolling();
-    pollRef.current = setInterval(pollProgress, 400);
+    pollRef.current = setInterval(pollProgress, 600);
   };
 
   const startCollection = async () => {
     setCollectError('');
+    setCollect(null);
     setDownload(null);
     if (downloadUrlRef.current) {
       URL.revokeObjectURL(downloadUrlRef.current);
@@ -82,7 +88,14 @@ const Diagnostics = () => {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    fetch('/api/logs/zip', { signal: controller.signal })
+    const params = new URLSearchParams();
+    selected.forEach((serviceId) => params.append('services', serviceId));
+    if (selected.includes('umf-rti')) {
+      params.set('umf_domain_id', String(umfDomain).trim());
+      params.set('umf_duration_seconds', String(umfDuration).trim());
+    }
+
+    fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) {
           let detail = `Collection failed (${res.status}).`;
@@ -95,7 +108,7 @@ const Diagnostics = () => {
           throw new Error(detail);
         }
         const filename =
-          parseFilename(res.headers.get('Content-Disposition')) || 'k8s_cluster_logs.zip';
+          parseFilename(res.headers.get('Content-Disposition')) || 'iomt_diagnostics.zip';
         const blob = await res.blob();
         return { blob, filename };
       })
@@ -199,6 +212,7 @@ const Diagnostics = () => {
         ))}
       </ol>
 
+      <div className="step-panel" key={step}>
       {step === 1 && (
         <Step1Connect
           host={host}
@@ -215,6 +229,10 @@ const Diagnostics = () => {
         <Step2Configure
           selected={selected}
           onToggleService={toggleService}
+          umfDomain={umfDomain}
+          setUmfDomain={setUmfDomain}
+          umfDuration={umfDuration}
+          setUmfDuration={setUmfDuration}
           onBack={handleBackToConnect}
           onContinue={() => setStep(3)}
         />
@@ -224,6 +242,8 @@ const Diagnostics = () => {
         <Step3Review
           result={result}
           selectedServices={selectedServices}
+          umfDomain={umfDomain}
+          umfDuration={umfDuration}
           onEditConnection={() => setStep(1)}
           onEditServices={() => setStep(2)}
           onBack={() => setStep(2)}
@@ -242,6 +262,7 @@ const Diagnostics = () => {
           onBack={() => setStep(3)}
         />
       )}
+      </div>
     </div>
   );
 };
