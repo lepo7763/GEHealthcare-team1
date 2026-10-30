@@ -27,16 +27,6 @@ from app.log_collection.service import (
     ClusterUnreachableError,
     collect_container_logs_into,
 )
-from app.umf_rti.config import UmfRtiConfig, get_umf_rti_config
-from app.umf_rti.schemas import UmfRtiParams
-from app.umf_rti.service import (
-    UmfRtiCaptureError,
-    UmfRtiPrerequisiteError,
-    capture_umf_rti,
-    check_prerequisites,
-    write_artifacts,
-    write_failure_artifacts,
-)
 
 SUPPORTED_SERVICES = (CONTAINER_LOGS_SERVICE_ID, UMF_RTI_SERVICE_ID)
 

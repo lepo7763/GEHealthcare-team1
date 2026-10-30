@@ -12,8 +12,6 @@ from app.diagnostics.service import CollectionInProgressError, collect_diagnosti
 from app.log_collection.progress import tracker
 from app.log_collection.schemas import CollectionProgressResponse, LogCollectionParams
 from app.log_collection.service import ClusterUnreachableError
-from app.umf_rti.schemas import UmfRtiParams
-from app.umf_rti.service import UmfRtiPrerequisiteError
 
 router = APIRouter(prefix="/api/logs", tags=["Diagnostics"])
 
