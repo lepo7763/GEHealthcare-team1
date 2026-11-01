@@ -7,11 +7,14 @@ class UmfRtiConfig:
     namespace: str = "iomt-integration"
     image: str = "docker.io/library/axone-umf-rtitools:temp"
     router_namespace: str = "pm"
-    sdds_secret_name: str = "umf-router-sdds" # secret with the certs and private keys
-    job_prefix: str = "umf-rti-capture" # just for kubernetes job naming; prefix to uuid
+    sdds_secret_name: str = "umf-router-sdds"  # secret with the certs and private keys
+    job_prefix: str = (
+        "umf-rti-capture"  # just for kubernetes job naming; prefix to uuid
+    )
     default_peer: str = "100.64.64.200"  # router
     poll_interval_seconds: float = 1.0
     startup_timeout_seconds: int = 30
+
 
 # using getter to avoid allowing overriding any other fields
 def get_umf_rti_config() -> UmfRtiConfig:
