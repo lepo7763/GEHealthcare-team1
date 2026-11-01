@@ -1,7 +1,8 @@
-from typing import List, Dict, Any
-from pydantic import BaseModel, Field
-from fastapi import Query
 from dataclasses import dataclass
+from typing import Any, Dict, List
+
+from fastapi import Query
+from pydantic import BaseModel, Field
 
 
 class UmfRtiParams(BaseModel):
