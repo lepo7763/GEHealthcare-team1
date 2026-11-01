@@ -3,10 +3,6 @@ import zipfile
 from datetime import datetime, timezone
 from typing import List, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response, StreamingResponse
-from kubernetes import client
-
 from app.core.k8s_client import get_batch_v1_api, get_core_v1_api
 from app.diagnostics.service import CollectionInProgressError, collect_diagnostics
 from app.log_collection.progress import tracker
@@ -14,6 +10,11 @@ from app.log_collection.schemas import CollectionProgressResponse, LogCollection
 from app.log_collection.service import ClusterUnreachableError
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import UmfRtiPrerequisiteError
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response, StreamingResponse
+
+from kubernetes import client
+
 router = APIRouter(prefix="/api/logs", tags=["Diagnostics"])
 
 
@@ -117,7 +118,9 @@ def download_demo_logs():
     }
 
     archive = io.BytesIO()
-    with zipfile.ZipFile(archive, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+    with zipfile.ZipFile(
+        archive, mode="w", compression=zipfile.ZIP_DEFLATED
+    ) as zip_file:
         for path, content in files.items():
             zip_file.writestr(path, content)
 

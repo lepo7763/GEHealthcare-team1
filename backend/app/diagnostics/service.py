@@ -6,18 +6,6 @@ import tempfile
 import zipfile
 from datetime import datetime, timezone
 from typing import List, Optional
-from app.umf_rti.config import UmfRtiConfig, get_umf_rti_config
-from app.umf_rti.schemas import UmfRtiParams
-from app.umf_rti.service import (
-    UmfRtiCaptureError,
-    UmfRtiPrerequisiteError,
-    capture_umf_rti,
-    check_prerequisites,
-    write_artifacts,
-    write_failure_artifacts,
-)
-
-from kubernetes import client
 
 from app.log_collection.progress import (
     CONTAINER_LOGS_LABEL,
@@ -37,6 +25,18 @@ from app.log_collection.service import (
     ClusterUnreachableError,
     collect_container_logs_into,
 )
+from app.umf_rti.config import UmfRtiConfig, get_umf_rti_config
+from app.umf_rti.schemas import UmfRtiParams
+from app.umf_rti.service import (
+    UmfRtiCaptureError,
+    UmfRtiPrerequisiteError,
+    capture_umf_rti,
+    check_prerequisites,
+    write_artifacts,
+    write_failure_artifacts,
+)
+
+from kubernetes import client
 
 SUPPORTED_SERVICES = (CONTAINER_LOGS_SERVICE_ID, UMF_RTI_SERVICE_ID)
 
@@ -96,7 +96,9 @@ def collect_diagnostics(
     selected = _dedupe_services(services)
     config = config or get_umf_rti_config()
     if not _begin_progress(selected):
-        raise CollectionInProgressError("A diagnostic collection is already in progress.")
+        raise CollectionInProgressError(
+            "A diagnostic collection is already in progress."
+        )
 
     temp_zip = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024, mode="w+b")
     manifest = LogCollectionManifest(
@@ -105,7 +107,9 @@ def collect_diagnostics(
     )
 
     try:
-        with zipfile.ZipFile(temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(
+            temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED
+        ) as zf:
             for service_id in selected:
                 if service_id == CONTAINER_LOGS_SERVICE_ID:
                     _collect_container_logs(zf, manifest, core, log_params)
