@@ -1,5 +1,7 @@
+from typing import List, Dict, Any
 from pydantic import BaseModel, Field
 from fastapi import Query
+from dataclasses import dataclass
 
 
 class UmfRtiParams(BaseModel):
@@ -16,3 +18,17 @@ class UmfRtiParams(BaseModel):
             description="Duration in seconds for the UMF RTI capture",
         )
     )
+
+
+@dataclass
+class UmfRtiCaptureResult:
+    domain_id: int
+    duration_seconds: int
+    peer_id: int
+    raw_log: str
+    discovered_topics: List[Dict[str, Any]] = Field(default_factory=list)
+    discovered_hosts: List[Dict[str, Any]] = Field(default_factory=list)
+    qos_diagnostics: List[Dict[str, Any]] = Field(default_factory=list)
+    writers_discovered: int = 0
+    readers_discovered: int = 0
+    samples_observed: int = 0
