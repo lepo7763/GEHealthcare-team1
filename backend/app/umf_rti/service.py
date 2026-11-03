@@ -3,6 +3,7 @@ import zipfile
 from app.log_collection.schemas import LogCollectionManifest
 
 from kubernetes import client
+from kubernetes.client.exceptions import ApiException
 
 from .config import UmfRtiConfig
 from .schemas import UmfRtiCaptureResult, UmfRtiParams
@@ -17,7 +18,10 @@ class UmfRtiCaptureError(Exception):
 
 
 def check_prerequisites(core: client.CoreV1Api, config: UmfRtiConfig) -> None:
-    pass  # TODO
+    try:
+        core.read_namespaced_secret(name=config.sdds_secret_name, namespace=config.namespace)
+    except ApiException as e:
+        raise UmfRtiPrerequisiteError
 
 
 def capture_umf_rti(

@@ -16,7 +16,7 @@ class UmfRtiConfig:
     startup_timeout_seconds: int = 30
 
 
-# using getter to avoid allowing overriding any other fields
+# directly get stuff from environment
 def get_umf_rti_config() -> UmfRtiConfig:
     return UmfRtiConfig(
         namespace=os.environ.get("UMF_RTI_NAMESPACE", "iomt-integration"),
