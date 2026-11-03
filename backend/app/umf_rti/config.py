@@ -12,6 +12,7 @@ class UmfRtiConfig:
         "umf-rti-capture"  # just for kubernetes job naming; prefix to uuid
     )
     default_peer: str = "100.64.64.200"  # router
+    max_message_size: int = 1400  # default to router's setting
     poll_interval_seconds: float = 1.0
     startup_timeout_seconds: int = 30
 
@@ -26,4 +27,5 @@ def get_umf_rti_config() -> UmfRtiConfig:
         router_namespace=os.environ.get("UMF_RTI_ROUTER_NAMESPACE", "pm"),
         sdds_secret_name=os.environ.get("UMF_RTI_SDDS_SECRET", "umf-router-sdds"),
         default_peer=os.environ.get("UMF_RTI_PEER", "100.64.64.200"),
+        max_message_size=int(os.environ.get("MAX_MESSAGE_SIZE", "1400")),
     )
