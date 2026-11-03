@@ -1,0 +1,2436 @@
+<?xml version="1.0"?>
+<dds xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://community.rti.com/schema/6.1.2/rti_dds_profiles.xsd" version="6.1.2">
+  <!-- Axone QoS version: 4.11.0-config001 -->
+  <qos_library name="AxoneNetQoSLibrary">
+    <!-- ======================= -->
+    <!-- QOS Profile: Special Base profile needed for RTI Admin Console -->
+    <!-- ======================= -->
+    <qos_profile name="RTIBaseProfile" base_name="BuiltinQosLibExp::Generic.KeepLastReliable.TransientLocal">
+      <datareader_qos name="BaseDataReader">
+        <type_consistency>
+          <kind>ALLOW_TYPE_COERCION</kind>
+        </type_consistency>
+        <resource_limits>
+          <initial_instances>1</initial_instances>
+          <initial_samples>1</initial_samples>
+        </resource_limits>
+      </datareader_qos>
+      <datawriter_qos name="BaseDataWriter">
+        <resource_limits>
+          <initial_instances>1</initial_instances>
+          <initial_samples>1</initial_samples>
+        </resource_limits>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: Special Default profile needed for RTI Admin Console -->
+    <!-- ======================= -->
+    <qos_profile name="RTIDefault" base_name="RTIBaseProfile">
+      <publisher_qos>
+        <partition>
+          <name>
+            <element/>
+            <element>*</element>
+          </name>
+        </partition>
+      </publisher_qos>
+      <subscriber_qos>
+        <partition>
+          <name>
+            <element/>
+            <element>*</element>
+          </name>
+        </partition>
+      </subscriber_qos>
+      <domain_participant_qos>
+        <!--transport_builtin>
+            <mask>UDPv4</mask>
+        </transport_builtin-->
+        <participant_name>
+          <name>RTI Administration Console</name>
+          <role_name>Administration</role_name>
+        </participant_name>
+        <discovery_config>
+          <ignore_default_domain_announcements>false</ignore_default_domain_announcements>
+          <!-- participant_liveliness_assert_period>
+                <sec>1</sec>
+                <nanosec>0</nanosec>
+            </participant_liveliness_assert_period>
+            <participant_liveliness_lease_duration>
+                <sec>10</sec>
+                <nanosec>0</nanosec>
+            </participant_liveliness_lease_duration -->
+          <!-- quickly detect the loss of liveness of remote participants -->
+          <max_liveliness_loss_detection_period>
+            <sec>5</sec>
+            <nanosec>0</nanosec>
+          </max_liveliness_loss_detection_period>
+          <asynchronous_publisher>
+            <disable_asynchronous_write>false</disable_asynchronous_write>
+          </asynchronous_publisher>
+          <publication_writer_publish_mode>
+            <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+          </publication_writer_publish_mode>
+          <subscription_writer_publish_mode>
+            <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+          </subscription_writer_publish_mode>
+          <endpoint_type_object_lb_serialization_threshold>-1</endpoint_type_object_lb_serialization_threshold>
+        </discovery_config>
+        <!-- Allow for quicker shutdown times for each participant. -->
+        <database>
+          <cleanup_period>
+            <sec>0</sec>
+            <nanosec>10000000</nanosec>
+          </cleanup_period>
+        </database>
+        <resource_limits>
+          <deserialized_type_object_dynamic_allocation_threshold>1024</deserialized_type_object_dynamic_allocation_threshold>
+          <type_object_max_deserialized_length>LENGTH_UNLIMITED</type_object_max_deserialized_length>
+          <type_object_max_serialized_length>65535</type_object_max_serialized_length>
+          <type_code_max_serialized_length>8192</type_code_max_serialized_length>
+          <participant_property_list_max_length>1024</participant_property_list_max_length>
+          <participant_property_string_max_length>32768</participant_property_string_max_length>
+          <contentfilter_property_max_length>2048</contentfilter_property_max_length>
+          <writer_data_tag_list_max_length>256</writer_data_tag_list_max_length>
+          <writer_data_tag_string_max_length>4096</writer_data_tag_string_max_length>
+          <reader_data_tag_list_max_length>256</reader_data_tag_list_max_length>
+          <reader_data_tag_string_max_length>4096</reader_data_tag_string_max_length>
+        </resource_limits>
+        <property>
+          <value>
+            <!-- Increase the receive socket buffer size to improve
+                     performance. -->
+            <element>
+              <name>dds.transport.UDPv4.builtin.recv_socket_buffer_size</name>
+              <value>2097152</value>
+            </element>
+            <element>
+              <name>dds.transport.UDPv4_WAN.builtin.recv_socket_buffer_size</name>
+              <value>2097152</value>
+            </element>
+            <!-- Increase the shared memory receive buffer size to
+                     improve performance. -->
+            <element>
+              <name>dds.transport.shmem.builtin.receive_buffer_size</name>
+              <value>2097152</value>
+            </element>
+            <!-- Increase the shared memory message count maximum
+                     size to improve performance. -->
+            <element>
+              <name>dds.transport.shmem.builtin.received_message_count_max</name>
+              <value>65536</value>
+            </element>
+          </value>
+        </property>
+      </domain_participant_qos>
+      <!-- Distributed Logger -->
+      <datareader_qos topic_filter="rti/distlog">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>8192</depth>
+        </history>
+        <protocol>
+          <rtps_reliable_reader>
+            <heartbeat_suppression_duration>
+              <sec>0</sec>
+              <nanosec>0</nanosec>
+            </heartbeat_suppression_duration>
+            <max_heartbeat_response_delay>
+              <sec>0</sec>
+              <nanosec>0</nanosec>
+            </max_heartbeat_response_delay>
+            <min_heartbeat_response_delay>
+              <sec>0</sec>
+              <nanosec>0</nanosec>
+            </min_heartbeat_response_delay>
+          </rtps_reliable_reader>
+        </protocol>
+        <resource_limits>
+          <max_samples_per_instance>8192</max_samples_per_instance>
+          <max_samples>8192</max_samples>
+        </resource_limits>
+      </datareader_qos>
+      <datareader_qos topic_filter="rti/distlog/administration/state">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>1</depth>
+        </history>
+      </datareader_qos>
+      <datawriter_qos topic_filter="rti/distlog/administration/command_request">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>10</depth>
+        </history>
+      </datawriter_qos>
+      <datareader_qos topic_filter="rti/distlog/administration/command_response">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>1</depth>
+        </history>
+      </datareader_qos>
+      <!-- Security Logger -->
+      <datareader_qos topic_filter="DDS:Security:LogTopic">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_ALL_HISTORY_QOS</kind>
+        </history>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <resource_limits>
+          <initial_instances>1</initial_instances>
+          <max_instances>1</max_instances>
+          <max_samples>8192</max_samples>
+          <max_samples_per_instance>8192</max_samples_per_instance>
+        </resource_limits>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_reader.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>4096</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.min_size</name>
+              <value>4096</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datareader_qos>
+      <!-- Persistence Service -->
+      <datareader_qos topic_filter="rti/persistence_service/administration/command_response">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+      </datareader_qos>
+      <datawriter_qos topic_filter="rti/persistence_service/administration/command_request">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+      </datawriter_qos>
+      <datareader_qos topic_filter="com_rti_tools_recorder_status">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+      </datareader_qos>
+      <datawriter_qos topic_filter="com_rti_tools_remotectx">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+      </datawriter_qos>
+      <!-- Replay Service -->
+      <datareader_qos topic_filter="rti/replay/administration/command_response">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+      </datareader_qos>
+      <datawriter_qos topic_filter="rti/replay/administration/command_request">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+      </datawriter_qos>
+      <!-- Routing Service -->
+      <datareader_qos topic_filter="rti/routing_service/monitoring/*_data">
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_reader.state.filter_redundant_samples</name>
+              <value>0</value>
+            </element>
+          </value>
+        </property>
+      </datareader_qos>
+      <datareader_qos topic_filter="rti/routing_service/administration/command_response">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+      </datareader_qos>
+      <datawriter_qos topic_filter="rti/routing_service/administration/command_request">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+      </datawriter_qos>
+      <!-- Service Admin (Recorder Gen4 and Routing Gen3) -->
+      <datareader_qos topic_filter="rti/service/admin/command_reply">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <representation>
+          <value>
+            <element>XCDR2_DATA_REPRESENTATION</element>
+          </value>
+        </representation>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+        <reader_resource_limits>
+          <dynamically_allocate_fragmented_samples>true</dynamically_allocate_fragmented_samples>
+        </reader_resource_limits>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_reader.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.min_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datareader_qos>
+      <datawriter_qos topic_filter="rti/service/admin/command_request">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+        <representation>
+          <value>
+            <element>XCDR2_DATA_REPRESENTATION</element>
+          </value>
+        </representation>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_writer.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_writer.history.memory_manager.java_stream.min_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_writer.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datawriter_qos>
+      <datareader_qos topic_filter="rti/recording_service/monitoring/*">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <resource_limits>
+          <max_samples>1024</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+        <reader_resource_limits>
+          <dynamically_allocate_fragmented_samples>true</dynamically_allocate_fragmented_samples>
+        </reader_resource_limits>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_reader.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.min_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datareader_qos>
+      <datareader_qos name="ServiceAdminMonitoring" topic_filter="rti/service/monitoring*">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <representation>
+          <value>
+            <element>XCDR2_DATA_REPRESENTATION</element>
+          </value>
+        </representation>
+        <resource_limits>
+          <max_samples>1024</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+        <reader_resource_limits>
+          <dynamically_allocate_fragmented_samples>true</dynamically_allocate_fragmented_samples>
+        </reader_resource_limits>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_reader.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.min_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datareader_qos>
+      <datareader_qos name="DataVisualization" base_name="BuiltinQosLibExp::Generic.AutoTuning">
+        <subscription_name>
+          <name>RTI Administration Console</name>
+          <role_name>Data Visualization</role_name>
+        </subscription_name>
+        <reliability>
+          <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>4096</depth>
+        </history>
+        <resource_limits>
+          <!-- Keep resource consumption as low as possible, good for
+                 use cases with large sample sizes. -->
+          <initial_instances>1</initial_instances>
+          <initial_samples>1</initial_samples>
+          <!-- Using a large max samples here prevents loss of data
+                 when receiving very small sample sizes through batching
+            -->
+          <max_samples>4096</max_samples>
+        </resource_limits>
+        <!--  Use both XCDR and XCDR2 for data representation to ensure that data
+        is correctly displayed when subscribing -->
+        <representation>
+          <value>
+            <element>XCDR_DATA_REPRESENTATION</element>
+            <element>XCDR2_DATA_REPRESENTATION</element>
+          </value>
+        </representation>
+        <reader_resource_limits>
+          <!-- Ensure that this QoS is as large as max_samples-->
+          <max_samples_per_read>4096</max_samples_per_read>
+        </reader_resource_limits>
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Unsecure QOS Base Profile; special for RTI Admin Console -->
+    <qos_profile name="umfunsecure_ge_qos" base_name="RTIDefault">
+      <!-- Secure DDS communication is not enabled when this profile is used. -->
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Secure QOS Base Profile; special for RTI Admin Console -->
+    <qos_profile name="umfsecure_ge_qos" base_name="RTIDefault">
+      <!-- Secure DDS communication is enabled when this profile is used. -->
+      <participant_qos>
+        <property>
+          <value>
+            <element>
+              <name>com.rti.serv.load_plugin</name>
+              <value>com.rti.serv.secure</value>
+            </element>
+            <element>
+              <name>com.rti.serv.secure.library</name>
+              <value>nddssecurity</value>
+            </element>
+            <element>
+              <name>com.rti.serv.secure.create_function</name>
+              <value>RTI_Security_PluginSuite_create</value>
+            </element>
+            <element>
+              <name>com.rti.serv.secure.logging.verbosity</name>
+              <value>WARNING</value>
+            </element>
+          </value>
+        </property>
+      </participant_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Unsecure QOS Base Profile for RTI services -->
+    <qos_profile name="umfunsecure_rti_qos">
+      <!-- Secure DDS communication is not enabled when this profile is used. This profile has no base profile, so it
+         can be referenced by a RTI component's profile (e.g. administration profile) to disable secure DDS.
+         NOTE: For GE services, use the umfunsecure_ge_qos profile. -->
+      <participant_qos>
+        <property>
+          <value>
+            <element>
+              <name>dds.sys_info.hostname</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.creation_timestamp</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.execution_timestamp</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.username</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.executable_filepath</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.target</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+          </value>
+        </property>
+      </participant_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Secure QOS Base Profile for RTI services -->
+    <qos_profile name="umfsecure_rti_qos">
+      <!-- Secure DDS communication is enabled when this profile is used. This profile has no base profile, so it
+         can be referenced by a RTI component's profile (e.g. administration profile) to enable secure DDS.
+         NOTE: For GE services, use the umfsecure_ge_qos profile. -->
+      <participant_qos>
+        <property>
+          <value>
+            <element>
+              <name>com.rti.serv.load_plugin</name>
+              <value>com.rti.serv.secure</value>
+            </element>
+            <element>
+              <name>com.rti.serv.secure.library</name>
+              <value>nddssecurity</value>
+            </element>
+            <element>
+              <name>com.rti.serv.secure.create_function</name>
+              <value>RTI_Security_PluginSuite_create</value>
+            </element>
+            <element>
+              <name>com.rti.serv.secure.logging.verbosity</name>
+              <value>WARNING</value>
+            </element>
+            <element>
+              <name>dds.sys_info.hostname</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.creation_timestamp</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.execution_timestamp</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.username</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.executable_filepath</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.target</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+          </value>
+        </property>
+      </participant_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF General Transient QOS (Base QoS) -->
+    <qos_profile name="umfbase_qos" base_name="AxoneNetQoSLibrary::umf$(DDS_SECURE)_ge_qos">
+      <!-- This profile inherits from either umfsecure_ge_qos or umfunsecure_ge_qos depending on the environmental variable setting.  Both of these base profiles inherit from the RTI KeepLastReliable.TransientLocal profile.
+         This "UMF General Transient QOS" is a base QoS for many of the other QoS used in Axone.  Most other qos_profile elements should call out "umfgeneral_qos" which uses "umfbase_qos".  For the purpose of many Axone QoS, the qualities of the RTI built in QoS KeepLastReliable.TransientLocal are used.
+     KeepLastReliable - This Reliability QOS Profile is used for the streaming topics as it is important to reliably deliver this information, yet, at some point, it is more important to drop the data than to block acquisition because data cannot be delivered within the memory constraints of the local sending system.  In other words, The Publisher cannot accept any more data from the Acquisition because it has not delivered the data that it currently has and it has no more buffer space to accept new data. This is the reasoning behind using "keep last" instead of "strict" reliabiliy for these topics.
+     TransientLocal - This Durability QOS profile results in data being available for late joiners on the network in the depth of the set history setting. -->
+      <participant_qos>
+        <transport_builtin>
+          <!-- RTI ships with a number of built-in transports.  These include UDP, TCP, and Shared Memory.  For the bulk of Axone, the UDP transport will be used for established communications.  By explicitly calling out UDP below, this excludes the use of other transports for non-discovery traffic -->
+          <mask>UDPv4</mask>
+          <!-- This setting is the maximum size of a message in bytes that can be sent or received by the transport plugin.
+         Reducing this setting and enabling asynchronous transmission allows RTI to fragment data at the application layer and reducing the overall size of the UDP packets.  A smaller setting (and hence smaller UDP frames) increases the probability of traffic making it through the frame reassembly process in network hardware during bursty discovery traffic. -->
+          <udpv4>
+            <message_size_max>1400</message_size_max>
+          </udpv4>
+        </transport_builtin>
+        <resource_limits>
+          <!-- There are two mechanisms for discovery type information to be transferred accross the wire. -->
+          <!-- 1) TypeCodes - the older form of communications used in Pre-V5 RTI.  This formed lacked support for optional and mutible types.  It is also larger in the wire.  We set this size to zero to prevent it from being used in communications -->
+          <type_code_max_serialized_length>0</type_code_max_serialized_length>
+          <!-- 2) TypeObjects - Introduced in RTI V5.  This mechanism for discovery type information is used for optional and mutible types and is therefore needed for UMF.  It is also a more compact representation of the type.  However several if the Axone types are greater than the default size.  Therefore we set a larger size in QoS.  -->
+          <type_object_max_serialized_length>330000</type_object_max_serialized_length>
+          <!-- Content filters by default are 256 bytes.  This is increased for Axone since the filters aggregate and can be longer.  the content filter length = "length content filter name" + "length related topic name" + "length filter expression" + "length filter parameters" + "terminating null" -->
+          <contentfilter_property_max_length>65535</contentfilter_property_max_length>
+          <!-- Increased the number of supported participants and the cumulative length (name,value) -->
+          <participant_property_list_max_length>64</participant_property_list_max_length>
+          <participant_property_string_max_length>16384</participant_property_string_max_length>
+        </resource_limits>
+        <database>
+          <!-- The default cleanup period is 1 second.  Setting this to zero will speed up the shutdown speed of applications.  Recommended by Tom S, RTI to set to 0 -->
+          <!-- DE2252 found there was a race condition potential when this was set to 0 seconds. Changed to 100ms -->
+          <shutdown_cleanup_period>
+            <sec>0</sec>
+            <nanosec>100000000</nanosec>
+          </shutdown_cleanup_period>
+        </database>
+        <discovery>
+          <!-- IMPORTANT: No Initial Peers included.  Put initial peers in NDDS_DISCOVERY_PEERS file in programs execution directory, or set NDDS_DISCOVERY_PEERS environment variable -->
+          <!-- Accept discovery from unknown peers. (peers listed in NDDS initial peers) -->
+          <accept_unknown_peers>true</accept_unknown_peers>
+          <!-- The following element sets the multi-cast receive addresses to a null list.  The user of this profile will not receive any multi-cast discovery traffic. -->
+          <multicast_receive_addresses/>
+        </discovery>
+        <discovery_config>
+          <dns_tracker_polling_period>
+            <sec>10</sec>
+            <nanosec>DURATION_ZERO_NSEC</nanosec>
+          </dns_tracker_polling_period>
+          <service_request_writer_data_lifecycle>
+            <!-- Auto-purge unregistered and disposed discovery instances to prevent memory leaks. -->
+            <autopurge_unregistered_instances_delay>
+              <sec>1</sec>
+              <nanosec>0</nanosec>
+            </autopurge_unregistered_instances_delay>
+            <!-- Wait 10 minutes to purge disposed discovery instances in case dispose needs to be resent to reader side due to network disruption. -->
+            <autopurge_disposed_instances_delay>
+              <sec>600</sec>
+              <nanosec>0</nanosec>
+            </autopurge_disposed_instances_delay>
+          </service_request_writer_data_lifecycle>
+          <!-- Per the RTI documentation: "When a participant is first enabled, or after discovering a new remote participant, Connext DDS sends initial_paricipant_annoucements number of discovery messages. These messages are sent with a sleep period between them that is a random duration between min_initial_participant_announcement_period and max_initial_participant_announcement_period."-->
+          <!-- my setting min/max to differing value (as opposed to the 1/1 in the defauts) this announcements will be randomized.  This is being done specifically so that during discovery with a large amount of participants, the network will not be swmped with discovery messages.  We have observed switch buffer overflows resulting in lost discovery packets when this happens.  Randomizing the announcements spreads out these messages allowing them to be successful. -->
+          <initial_participant_announcements>5</initial_participant_announcements>
+          <min_initial_participant_announcement_period>
+            <!-- min and max announcement period set to 1/2 and 1 1/2 seconds to allow for a variable hold off period if announcements fail.  In a situation where the network is under high volume traffic due to the full system restart these settings can help the retries to not line up and therefore ease the network burden through the scenario. -->
+            <sec>0</sec>
+            <nanosec>100000000</nanosec>
+          </min_initial_participant_announcement_period>
+          <max_initial_participant_announcement_period>
+            <sec>1</sec>
+            <nanosec>500000000</nanosec>
+          </max_initial_participant_announcement_period>
+          <participant_liveliness_assert_period>
+            <!-- By default, after the initial participant announcement period, the participant will only send an announcement every 30 seconds. In the Axone network, this can impact how long it takes late joiners to discover a participant. The value is set to 10 seconds to reduce the late joiner discovery delay. -->
+            <sec>10</sec>
+            <nanosec>0</nanosec>
+          </participant_liveliness_assert_period>
+          <!-- Async publishers required for DDS application fragmentation -->
+          <publication_writer_publish_mode>
+            <!-- Async publication for discovery allows fragmentation of discovery messages at the DDS level.  There are situations where during a bursty discovery process the router's UDP buffers can overflow resulting in discovery being hampered.  -->
+            <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+          </publication_writer_publish_mode>
+          <subscription_writer_publish_mode>
+            <!-- Async subsciption for discovery.  Needed for same reasons as publication -->
+            <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+          </subscription_writer_publish_mode>
+          <secure_volatile_writer_publish_mode>
+            <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+          </secure_volatile_writer_publish_mode>
+          <service_request_writer_publish_mode>
+            <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+          </service_request_writer_publish_mode>
+          <!-- The following heartbeat settings were proposed by Mike Partington from RTI.
+             We were having issues with mismatched NIC speeds resulting is UDP data loss and delayed discovery.
+             Discovery that should have occurs in milliseconds was taking many seconds due to network repairs
+             required when switch buffers overflowed.
+             -->
+          <publication_writer>
+            <fast_heartbeat_period>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>100000000</nanosec>
+            </fast_heartbeat_period>
+            <late_joiner_heartbeat_period>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>100000000</nanosec>
+            </late_joiner_heartbeat_period>
+            <!-- if there is a nack for a packet, and the packet contains more than one rtps sub-messages, this setting will result in the
+         retry breaking the sub-messages smaller messages.  The middleware will send at least one sub-message,
+         then add additional submessages to the udp frame up to the size indicated by this setting. This helps
+         to reduce the udp fragmentation that occurs during periods of high volume retry messaging.  Note that if the
+         sub-message exceeds this size, it will still be sent, so for large rtps sub-messages (e.g. 40K) this
+         setting does not help make them smaller on a retry.  This setting is also used in the subscription_writer
+         and the service_request_writer -->
+            <max_bytes_per_nack_response>1400</max_bytes_per_nack_response>
+            <!-- If there is a nack due to data loss, the min/max response delay will provide jitter to the response packets to help prevent
+         network overload with all endpoints retrying at the same time. -->
+            <min_nack_response_delay>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>DURATION_ZERO_NSEC</nanosec>
+            </min_nack_response_delay>
+            <max_nack_response_delay>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>20000000</nanosec>
+            </max_nack_response_delay>
+            <!-- Nack supression delay set to the default value.  Left in for future reference if we want to adjust this setting -->
+            <nack_suppression_duration>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>DURATION_ZERO_NSEC</nanosec>
+            </nack_suppression_duration>
+          </publication_writer>
+          <subscription_writer>
+            <fast_heartbeat_period>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>100000000</nanosec>
+            </fast_heartbeat_period>
+            <late_joiner_heartbeat_period>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>100000000</nanosec>
+            </late_joiner_heartbeat_period>
+            <max_bytes_per_nack_response>1400</max_bytes_per_nack_response>
+            <min_nack_response_delay>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>DURATION_ZERO_NSEC</nanosec>
+            </min_nack_response_delay>
+            <max_nack_response_delay>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>20000000</nanosec>
+            </max_nack_response_delay>
+            <nack_suppression_duration>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>DURATION_ZERO_NSEC</nanosec>
+            </nack_suppression_duration>
+          </subscription_writer>
+          <service_request_writer>
+            <max_bytes_per_nack_response>1400</max_bytes_per_nack_response>
+            <heartbeat_period>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>250000000</nanosec>
+            </heartbeat_period>
+            <fast_heartbeat_period>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>250000000</nanosec>
+            </fast_heartbeat_period>
+            <late_joiner_heartbeat_period>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>250000000</nanosec>
+            </late_joiner_heartbeat_period>
+            <min_nack_response_delay>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>DURATION_ZERO_NSEC</nanosec>
+            </min_nack_response_delay>
+            <max_nack_response_delay>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>20000000</nanosec>
+            </max_nack_response_delay>
+            <nack_suppression_duration>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>DURATION_ZERO_NSEC</nanosec>
+            </nack_suppression_duration>
+          </service_request_writer>
+          <default_domain_announcement_period>
+            <!-- Based on the set default_domain_announcement_period intervals, the participant will send out a participant announcement
+               to the default multicast address and port for domain 0 (239.255.0.1:7400). This is a non-standard message with a UDP data
+               payload that starts with a magic string of "RTPX" instead of "RTPS", but the payload is otherwise the same as participant
+               built-in topic data. These announcements can be disabled by setting an infinite period. The default period is 30 seconds. -->
+            <sec>DURATION_INFINITE_SEC</sec>
+            <nanosec>DURATION_INFINITE_NSEC</nanosec>
+          </default_domain_announcement_period>
+        </discovery_config>
+        <property>
+          <value>
+            <element>
+              <name>axone.qos.version</name>
+              <value>4.11.0-config001</value>
+            </element>
+            <element>
+              <!-- In order for NTP to work properly, the internal clock for RTI needs to be set to a monotonic clock.  A monotonic clock is not supported on all OS platforms.  This can be due to either the OS platform itself not supporting a monotonic clock, or because the RTI implementation for a specific platform does not support it.  Becasue of this, by default, RTI sets the internal clock to use the system's real-time clock.  We are changing this setting to by default use the monotonic clock.  However, for platforms that do not support the a monotonic clock, we allow the setting to default back to the real-time clock. NOTE: As of RTI 5.2.5, the monotonic clock is not supported on the OSX platform. -->
+              <name>dds.clock.internal_clock</name>
+              <!-- try to use the monotonic clock, fall back to the real-time clock -->
+              <value>monotonic,realtime</value>
+            </element>
+            <element>
+              <!-- Increasing the builtin.recv_socket_buffer_size helps to prevent data loss on high volume traffic (e.g. waveforms).  When setting on linux, the kernel socket settings need to be changed as well.  For instructions, see; https://community.rti.com/howto/improve-rti-connext-dds-network-performance-linux, section:Size of kernel receive and send socket buffers -->
+              <name>dds.transport.UDPv4.builtin.recv_socket_buffer_size</name>
+              <value>2097152</value>
+            </element>
+            <element>
+              <name>dds.transport.UDPv4.builtin.send_socket_buffer_size</name>
+              <value>1048576</value>
+            </element>
+            <element>
+              <!-- Increasing the builtin.recv_socket_buffer_size helps to prevent data loss on high volume traffic (e.g. waveforms).  When setting on linux, the kernel socket settings need to be changed as well.  For instructions, see; https://community.rti.com/howto/improve-rti-connext-dds-network-performance-linux, section:Size of kernel receive and send socket buffers -->
+              <name>dds.transport.UDPv4_WAN.builtin.recv_socket_buffer_size</name>
+              <value>2097152</value>
+            </element>
+            <element>
+              <name>dds.transport.UDPv4_WAN.builtin.send_socket_buffer_size</name>
+              <value>1048576</value>
+            </element>
+            <element>
+              <!--  Disable multi-cast transport -->
+              <name>dds.transport.UDPv4.builtin.multicast_enabled</name>
+              <value>0</value>
+            </element>
+            <element>
+              <!-- This property is used to configure the minimum size (in bytes) that will trigger the compression of a TypeObject (type description)
+      sent by an endpoint (DataWriter or DataReader) as part of the endpoint discovery information.
+      For example, setting this property to 1000 will trigger the compression for TypeObjects whose serialized size is greater than 1000 Bytes.
+      Setting a value of 0 will always triggered the compression and it will provide the maximum bandwidth savings. -->
+              <name>dds.participant.discovery_config.endpoint_type_object_lb_serialization_threshold</name>
+              <value>0</value>
+            </element>
+            <element>
+              <!-- Only allow DDS locators for interfaces defined in the environmental variable (comma separated) -->
+              <name>dds.transport.UDPv4.builtin.parent.allow_interfaces_list</name>
+              <value>$(DDS_INTERFACES)</value>
+            </element>
+            <element>
+              <!-- Do not allow any interfaces to use multicast locators -->
+              <name>dds.transport.UDPv4.builtin.parent.deny_multicast_interfaces_list</name>
+              <value>*</value>
+            </element>
+            <element>
+              <!-- Only allow DDS locators for interfaces defined in the environmental variable (comma separated) -->
+              <name>dds.transport.UDPv4_WAN.builtin.parent.allow_interfaces_list</name>
+              <value>$(DDS_INTERFACES)</value>
+            </element>
+            <element>
+              <name>dds.participant.trust_plugins.authentication_request_delay.sec</name>
+              <value>60</value>
+            </element>
+            <element>
+              <name>dds.participant.trust_plugins.authentication_request_timeout.sec</name>
+              <value>60</value>
+            </element>
+            <element>
+              <name>dds.participant.trust_plugins.authentication_timeout.sec</name>
+              <value>240</value>
+            </element>
+            <element>
+              <name>dds.sys_info.hostname</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.creation_timestamp</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.execution_timestamp</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.username</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.executable_filepath</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.target</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+          </value>
+        </property>
+        <wire_protocol>
+          <!-- Because endpoints can be restarted unexpectedly, the GUID needs to have a unique auto id. If the GUID is not unique, then reader could discard
+               packets when the packets have sequence numbers that have already been received.
+               The restarted device might start in the same IP or PID; therefore, the UUID auto id strategy is used to always generate a unique GUID. -->
+          <rtps_auto_id_kind>RTPS_AUTO_ID_FROM_UUID</rtps_auto_id_kind>
+        </wire_protocol>
+      </participant_qos>
+      <!-- Background: Instance lifecycle, what dispose and unregister mean to the network:
+     -Dispose - I am declaring this instance dead.
+     -Unregister - I have no further information about this instance.
+     -Purge - all internal information regarding the instance, including historical samples are removed
+
+     There are three patterns for cleaning up instances at the writer application level
+     *Dispose (Axone Approach Chosen)
+     -Dispose then Unregister
+     -Unregister
+     The following approach should NOT be used at the writer:
+     -Unregister then Dispose (DO NOT USE)
+
+     Each of the above three approaches has applicability based on the needs of the system.  Depending on the approach used, different QoS settings are needed to ensure that memory and instances are cleaned up appropriate.  For the purposes of Axone we will maintain consistency by having the writer explicitly "Dispose".  The remainder of the QoS is set up with this assumption that this approach is being used by the applications. -->
+      <datawriter_qos>
+        <publish_mode>
+          <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+        </publish_mode>
+        <writer_resource_limits>
+          <!-- If instances have been replaced due to resource constraints, writing an instance that has been replaced will result in an error.  Auto registering instances prevents this error from occurring -->
+          <autoregister_instances>true</autoregister_instances>
+          <!-- replace empty instances to allow memory to be reused befor max samples is hit -->
+          <replace_empty_instances>true</replace_empty_instances>
+          <!--Only disposed instance memory will be replaced with new instances. This setting is being used so when endpoints exceed resource limits, the
+            alive instances are not replaced. This setting makes the resource limit failure more understandable because alive data is not changed;
+            instead there will be a write error. -->
+          <instance_replacement>DISPOSED_INSTANCE_REPLACEMENT</instance_replacement>
+        </writer_resource_limits>
+        <writer_data_lifecycle>
+          <!-- In the Axone system, the writer MUST explicitly dispose the instance. Autodispose in the RTI libraries has correctness concerns (CORE-7485) with large instance count, therefore, it should be set to false. -->
+          <autodispose_unregistered_instances>false</autodispose_unregistered_instances>
+          <!-- In the Axone system we do not want to always purge disposed instances since in the event of a disconnection,
+         we would like the "disposed" samples to still be reliably delivered to the reader when re-connection occurs.
+         However, endpoints are not able to filter "disposed" samples, so when re-connection occurs the late joiner
+         endpoint is sent all of the disposed samples. We want to limit the holding of disposed instances to 4 hours
+         (AMS V1 HUB requirement). Clean up may occur earlier if max_instances resource limit is reached, and the
+         Instance replacement policy occurs. Based upon this, all topics must still have the max_instances set to an
+         appropriate count. -->
+          <autopurge_disposed_instances_delay>
+            <sec>14400</sec>
+            <nanosec>0</nanosec>
+          </autopurge_disposed_instances_delay>
+          <!-- Because all Axone datawriters have autodispose_unregistered_instances set to FALSE, the purge of unregistered
+         instances should use the same period as disposed instances. -->
+          <autopurge_unregistered_instances_delay>
+            <sec>14400</sec>
+            <nanosec>0</nanosec>
+          </autopurge_unregistered_instances_delay>
+        </writer_data_lifecycle>
+        <destination_order>
+          <kind>BY_RECEPTION_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+        </destination_order>
+        <reliability>
+          <!-- The maximum time a writer may block on a write() call. A DataWriter will block on the write call for several reasons.
+  For example, when the send window is full of unacknowledged samples.
+  Also, when the maximum number of instances is exceeded and none of the existing instances can be replaced because they are not fully acknowledged.
+  To minimize the possibility of losing some samples, this value should be greater than the DataReader inactivation time
+  determined by writer_qos.protocol.rtps_reliable_writer.max_heartbeat_retries and writer_qos.protocol.rtps_reliable_writer.(fast_)heartbeat_period.
+  Axone Network current has these values set to 1 second (50 * 20ms).  Setting to 1.5s for tolerance and to give a common value to all applications.
+  The time that it takes for a DataWriter to mark a DataReader as inactive (when it does not responds to ACK messages)
+  when inheriting from the QoS profile BuiltinQosLibExp::Generic.KeepLastReliable.TransientLocal is 10 seconds. -->
+          <max_blocking_time>
+            <sec>1</sec>
+            <nanosec>500000000</nanosec>
+          </max_blocking_time>
+        </reliability>
+        <protocol>
+          <rtps_reliable_writer>
+            <!-- Allows the DataWriter to treat DataReaders that send successive non-progressing NACK packets as inactive. -->
+            <inactivate_nonprogressing_readers>true</inactivate_nonprogressing_readers>
+            <heartbeat_period>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>250000000</nanosec>
+            </heartbeat_period>
+            <fast_heartbeat_period>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>75000000</nanosec>
+            </fast_heartbeat_period>
+            <late_joiner_heartbeat_period>
+              <sec>DURATION_ZERO_SEC</sec>
+              <nanosec>250000000</nanosec>
+            </late_joiner_heartbeat_period>
+            <!-- Axone network is designed to timeout a DataReader in 3 seconds during fast heartbeats and < 10 seconds
+         during period heartbeats.  Therefore the retry count it set to 40.  After 40 heartbeat retries, without
+         the reliable DataReader responding or progressing, then that DataReader will be demoted to best effort.
+         These limits need to be re-evaluated as outlined in 'DE6824 Re-evaluate Heartbeat settings'-->
+            <max_heartbeat_retries>40</max_heartbeat_retries>
+            <!-- if there is a nack for a packet, and the packet contains more than one rtps sub-messages, this setting will result in the
+         retry breaking the sub-messages smaller messages.  The middleware will send at least one sub-message,
+         then add additional submessages to the udp frame up to the size indicated by this setting. This helps
+         to reduce the udp fragmentation that occurs during periods of high volume retry messaging.  Note that if the
+         sub-message exceeds this size, it will still be sent, so for large rtps sub-messages (e.g. 40K) this
+         setting does not help make them smaller on a retry. -->
+            <max_bytes_per_nack_response>1400</max_bytes_per_nack_response>
+          </rtps_reliable_writer>
+        </protocol>
+        <representation>
+          <compression_settings>
+            <!-- Compression LZ4, max compression level, and compress all samples was determined to be the best settings to balance AMS endpoints' bandwidth and performance. -->
+            <compression_ids>LZ4</compression_ids>
+            <writer_compression_level>10</writer_compression_level>
+            <writer_compression_threshold>1</writer_compression_threshold>
+          </compression_settings>
+        </representation>
+        <property>
+          <value>
+            <element>
+              <!-- Java only setting to enable UTF-8 characters, ignored in other languages -->
+              <name>dds.data_writer.type_support.cdr_string_encoding_kind</name>
+              <value>UTF-8</value>
+            </element>
+            <element>
+              <!-- By default, full sequences and strings is allocated by default to their maximum size, this setting allows you to pre-allocate an amount of buffers, and then to dynamically allocate the memory when needed.  This allows memory conservation for topics that are sparsely populated where the actual sample size is less than the max_sample_size.  This can be overridden at the topic level to optimize per topic.  The following setting is a generalization RTI provided based on our overall topics.     This is only is available on the datawriter.  There is not an equivilent solution on the reader side.  The only option with readers is to use the unbounded sequence option which can result in heap thrash. -->
+              <name>dds.data_writer.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>33792</value>
+            </element>
+            <element>
+              <!-- Disposed instance autopurge should be based on source timestamp. This way if Axone Router is reset, old instances' purge time is not reset. -->
+              <name>dds.data_writer.history.source_timestamp_based_autopurge_instances_delay</name>
+              <value>1</value>
+            </element>
+            <element>
+              <!-- Setting the property to true disables the DataWriter enforcement of ordering in the original
+             sequence number. Sequence number order is still preserved within an instance, but not
+             among other instances. Setting to true will avoid out of order write errors when 
+             endpoints (e.g. hubs) goes offline and return. -->
+              <name>dds.data_writer.history.allow_out_of_order_write</name>
+              <value>true</value>
+            </element>
+          </value>
+        </property>
+      </datawriter_qos>
+      <datareader_qos>
+        <reader_resource_limits>
+          <instance_replacement>
+            <!-- When max_instances is reached, only replace not alive instances with all samples taken by application. -->
+            <alive_instance_removal>NO_INSTANCE_REMOVAL</alive_instance_removal>
+            <disposed_instance_removal>EMPTY_INSTANCE_REMOVAL</disposed_instance_removal>
+            <no_writers_instance_removal>EMPTY_INSTANCE_REMOVAL</no_writers_instance_removal>
+          </instance_replacement>
+          <max_query_condition_filters>32</max_query_condition_filters>
+        </reader_resource_limits>
+        <reader_data_lifecycle>
+          <!-- Because we are using an explicit dispose model in the Axone system, when a dispose is received by the reader, it is safe to assume that the instance is dead and the memory can be reclaimed immediately.  Not that this is different than the writer side where we maintain disposed instances in the writer cache so that they cna be reliably delivered -->
+          <autopurge_disposed_instances_delay>
+            <sec>0</sec>
+            <nanosec>0</nanosec>
+          </autopurge_disposed_instances_delay>
+        </reader_data_lifecycle>
+        <destination_order>
+          <kind>BY_RECEPTION_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+        </destination_order>
+        <property>
+          <value>
+            <element>
+              <!-- Java only setting to enable UTF-8 characters, ignored in other languages -->
+              <name>dds.data_reader.type_support.cdr_string_encoding_kind</name>
+              <value>UTF-8</value>
+            </element>
+            <element>
+              <name>dds.sample_assignability.accept_unknown_enum_value</name>
+              <value>1</value>
+            </element>
+            <element>
+              <name>dds.sample_assignability.accept_unknown_union_discriminator</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+        <protocol>
+          <propagate_dispose_of_unregistered_instances>true</propagate_dispose_of_unregistered_instances>
+        </protocol>
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: Generic General Test Product QoS -->
+    <qos_profile name="umfgeneral_qos" base_name="AxoneNetQoSLibrary::umfbase_qos">
+      <participant_qos>
+        <transport_builtin>
+          <!-- The Real-Time WAN Transport is a smart transport that enables secure, scalable, and high-performance communication over WANs. RT WAN can better anticipate and adapt to the challenges of diverse network conditions, device mobility, and the dynamic nature of WAN system architectures. The mask uses OR to give applications flexibility on where application can be run without making QoS updates. This OR clause does produces extra logging for the transport, which is not being used, however those logs can be safely ignored. -->
+          <mask>UDPv4|UDPv4_WAN</mask>
+          <!-- This setting is the maximum size of a message in bytes that can be sent or received by the transport plugin.
+              Reducing this setting and enabling asynchronous transmission allows RTI to fragment data at the application layer and reducing the overall size of the UDP packets.  A smaller setting (and hence smaller UDP frames) increases the probability of traffic making it through the frame reassembly process in network hardware during bursty discovery traffic.
+              Each Real-Time WAN enabled Domain Participant sends BINDING_PING messages at the defined binding ping period. The total number of BINDING_PING messages sent in each period is calculated using the formula:
+                 (number_of_local_interfaces) * (number_of_rtps_receive_ports) * (number_of_destination_locators [1 if rtwan public address set]) -->
+          <udpv4>
+            <message_size_max>1400</message_size_max>
+          </udpv4>
+          <udpv4_wan>
+            <message_size_max>1400</message_size_max>
+            <binding_ping_period>15000</binding_ping_period>
+          </udpv4_wan>
+        </transport_builtin>
+        <discovery>
+          <!-- Deny discovery of unknown peers. Only accept discovery for peers in NDDS initial peers. -->
+          <accept_unknown_peers>false</accept_unknown_peers>
+        </discovery>
+        <property>
+          <value>
+            <element>
+              <name>dds.sec.auth.identity_ca</name>
+              <value>file:$(SDDS_HOME)/AxoneRouter_certsigner.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.access.permissions_ca</name>
+              <value>file:$(SDDS_HOME)/AxoneRouter_certsigner.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.auth.identity_certificate</name>
+              <value>file:$(SDDS_HOME)/MDHEndPoint.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.auth.private_key</name>
+              <value>file:$(SDDS_HOME)/MDHEndPoint.key.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.access.governance</name>
+              <value>file:$(SDDS_HOME)/AxoneRouterGovernance.p7s</value>
+            </element>
+            <element>
+              <name>dds.sec.access.permissions</name>
+              <value>file:$(SDDS_HOME)/AxoneRouterPermissions.p7s</value>
+            </element>
+          </value>
+        </property>
+      </participant_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Configurations -->
+    <qos_profile name="umfcfgbase_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <reader_resource_limits>
+          <instance_replacement>
+            <!-- When max_instances is reached, replace any instance (the least-recently-updated) with all samples taken by application. -->
+            <alive_instance_removal>EMPTY_INSTANCE_REMOVAL</alive_instance_removal>
+            <disposed_instance_removal>EMPTY_INSTANCE_REMOVAL</disposed_instance_removal>
+            <no_writers_instance_removal>EMPTY_INSTANCE_REMOVAL</no_writers_instance_removal>
+          </instance_replacement>
+        </reader_resource_limits>
+      </datareader_qos>
+      <datawriter_qos>
+        <writer_resource_limits>
+          <!-- allows operation without disposes being present -->
+          <instance_replacement>DISPOSED_THEN_ALIVE_INSTANCE_REPLACEMENT</instance_replacement>
+        </writer_resource_limits>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Configurations -->
+    <qos_profile name="umfcfg_qos" base_name="AxoneNetQoSLibrary::umfcfgbase_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfcfg Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Events -->
+    <qos_profile name="umfevtSbase_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <reader_resource_limits>
+          <instance_replacement>
+            <!-- When max_instances is reached, replace any instance (the least-recently-updated) with all samples taken by application. -->
+            <alive_instance_removal>EMPTY_INSTANCE_REMOVAL</alive_instance_removal>
+            <disposed_instance_removal>EMPTY_INSTANCE_REMOVAL</disposed_instance_removal>
+            <no_writers_instance_removal>EMPTY_INSTANCE_REMOVAL</no_writers_instance_removal>
+          </instance_replacement>
+        </reader_resource_limits>
+      </datareader_qos>
+      <datawriter_qos>
+        <writer_resource_limits>
+          <!-- allows operation without disposes being present -->
+          <instance_replacement>DISPOSED_THEN_ALIVE_INSTANCE_REPLACEMENT</instance_replacement>
+        </writer_resource_limits>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Events -->
+    <qos_profile name="umfevtS_qos" base_name="AxoneNetQoSLibrary::umfevtSbase_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfevtS Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Events -->
+    <qos_profile name="umfevtScollbase_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <reader_resource_limits>
+          <instance_replacement>
+            <!-- When max_instances is reached, replace any instance (the least-recently-updated) with all samples taken by application. -->
+            <alive_instance_removal>EMPTY_INSTANCE_REMOVAL</alive_instance_removal>
+            <disposed_instance_removal>EMPTY_INSTANCE_REMOVAL</disposed_instance_removal>
+            <no_writers_instance_removal>EMPTY_INSTANCE_REMOVAL</no_writers_instance_removal>
+          </instance_replacement>
+        </reader_resource_limits>
+      </datareader_qos>
+      <datawriter_qos>
+        <writer_resource_limits>
+          <!-- allows operation without disposes being present -->
+          <instance_replacement>DISPOSED_THEN_ALIVE_INSTANCE_REPLACEMENT</instance_replacement>
+        </writer_resource_limits>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Events -->
+    <qos_profile name="umfevtScoll_qos" base_name="AxoneNetQoSLibrary::umfevtScollbase_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfevtScoll Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Annotations -->
+    <qos_profile name="umfannbase_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <reader_resource_limits>
+          <instance_replacement>
+            <!-- When max_instances is reached, replace any instance (the least-recently-updated) with all samples taken by application. -->
+            <alive_instance_removal>EMPTY_INSTANCE_REMOVAL</alive_instance_removal>
+            <disposed_instance_removal>EMPTY_INSTANCE_REMOVAL</disposed_instance_removal>
+            <no_writers_instance_removal>EMPTY_INSTANCE_REMOVAL</no_writers_instance_removal>
+          </instance_replacement>
+        </reader_resource_limits>
+      </datareader_qos>
+      <datawriter_qos>
+        <writer_resource_limits>
+          <!-- allows operation without disposes being present on the annotation topic -->
+          <instance_replacement>DISPOSED_THEN_ALIVE_INSTANCE_REPLACEMENT</instance_replacement>
+        </writer_resource_limits>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Annotations -->
+    <qos_profile name="umfann_qos" base_name="AxoneNetQoSLibrary::umfannbase_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfann Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Annotations -->
+    <qos_profile name="umfanncollbase_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <reader_resource_limits>
+          <instance_replacement>
+            <!-- When max_instances is reached, replace any instance (the least-recently-updated) with all samples taken by application. -->
+            <alive_instance_removal>EMPTY_INSTANCE_REMOVAL</alive_instance_removal>
+            <disposed_instance_removal>EMPTY_INSTANCE_REMOVAL</disposed_instance_removal>
+            <no_writers_instance_removal>EMPTY_INSTANCE_REMOVAL</no_writers_instance_removal>
+          </instance_replacement>
+        </reader_resource_limits>
+      </datareader_qos>
+      <datawriter_qos>
+        <writer_resource_limits>
+          <!-- allows operation without disposes being present on the annotation topic -->
+          <instance_replacement>DISPOSED_THEN_ALIVE_INSTANCE_REPLACEMENT</instance_replacement>
+        </writer_resource_limits>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Annotations -->
+    <qos_profile name="umfanncoll_qos" base_name="AxoneNetQoSLibrary::umfanncollbase_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfanncoll Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Meta Data Topics -->
+    <qos_profile name="umfmetabase_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <reader_resource_limits>
+          <instance_replacement>
+            <!-- When max_instances is reached, replace any instance (the least-recently-updated) with all samples taken by application. -->
+            <alive_instance_removal>EMPTY_INSTANCE_REMOVAL</alive_instance_removal>
+            <disposed_instance_removal>EMPTY_INSTANCE_REMOVAL</disposed_instance_removal>
+            <no_writers_instance_removal>EMPTY_INSTANCE_REMOVAL</no_writers_instance_removal>
+          </instance_replacement>
+        </reader_resource_limits>
+      </datareader_qos>
+      <datawriter_qos>
+        <writer_resource_limits>
+          <!-- allows operation without disposes being present -->
+          <instance_replacement>DISPOSED_THEN_ALIVE_INSTANCE_REPLACEMENT</instance_replacement>
+        </writer_resource_limits>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Meta Data Topics -->
+    <qos_profile name="umfmeta_qos" base_name="AxoneNetQoSLibrary::umfmetabase_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfmeta Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Numerics -->
+    <qos_profile name="umfnumbase_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <reader_resource_limits>
+          <instance_replacement>
+            <!-- When max_instances is reached, replace any instance (the least-recently-updated) with all samples taken by application. -->
+            <alive_instance_removal>EMPTY_INSTANCE_REMOVAL</alive_instance_removal>
+            <disposed_instance_removal>EMPTY_INSTANCE_REMOVAL</disposed_instance_removal>
+            <no_writers_instance_removal>EMPTY_INSTANCE_REMOVAL</no_writers_instance_removal>
+          </instance_replacement>
+        </reader_resource_limits>
+      </datareader_qos>
+      <datawriter_qos>
+        <writer_resource_limits>
+          <!-- allows operation without disposes being present -->
+          <instance_replacement>DISPOSED_THEN_ALIVE_INSTANCE_REPLACEMENT</instance_replacement>
+        </writer_resource_limits>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Numerics -->
+    <qos_profile name="umfnum_qos" base_name="AxoneNetQoSLibrary::umfnumbase_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfnum Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Numerics -->
+    <qos_profile name="umfnumcollbase_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <reader_resource_limits>
+          <instance_replacement>
+            <!-- When max_instances is reached, replace any instance (the least-recently-updated) with all samples taken by application. -->
+            <alive_instance_removal>EMPTY_INSTANCE_REMOVAL</alive_instance_removal>
+            <disposed_instance_removal>EMPTY_INSTANCE_REMOVAL</disposed_instance_removal>
+            <no_writers_instance_removal>EMPTY_INSTANCE_REMOVAL</no_writers_instance_removal>
+          </instance_replacement>
+        </reader_resource_limits>
+      </datareader_qos>
+      <datawriter_qos>
+        <writer_resource_limits>
+          <!-- allows operation without disposes being present -->
+          <instance_replacement>DISPOSED_THEN_ALIVE_INSTANCE_REPLACEMENT</instance_replacement>
+        </writer_resource_limits>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: Retrospective UMF Numerics -->
+    <qos_profile name="umfnumcoll_qos" base_name="AxoneNetQoSLibrary::umfnumcollbase_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfnumcoll Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Waveforms -->
+    <qos_profile name="umfwavbase_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <reader_resource_limits>
+          <instance_replacement>
+            <!-- When max_instances is reached, replace any instance (the least-recently-updated) with all samples taken by application. -->
+            <alive_instance_removal>EMPTY_INSTANCE_REMOVAL</alive_instance_removal>
+            <disposed_instance_removal>EMPTY_INSTANCE_REMOVAL</disposed_instance_removal>
+            <no_writers_instance_removal>EMPTY_INSTANCE_REMOVAL</no_writers_instance_removal>
+          </instance_replacement>
+        </reader_resource_limits>
+      </datareader_qos>
+      <datawriter_qos>
+        <writer_resource_limits>
+          <!-- allows operation without disposes being present -->
+          <instance_replacement>DISPOSED_THEN_ALIVE_INSTANCE_REPLACEMENT</instance_replacement>
+        </writer_resource_limits>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Waveforms -->
+    <qos_profile name="umfwav_qos" base_name="AxoneNetQoSLibrary::umfwavbase_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfwav Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Registries -->
+    <qos_profile name="umfreg_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfreg Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+        <protocol>
+          <propagate_dispose_of_unregistered_instances>true</propagate_dispose_of_unregistered_instances>
+          <rtps_reliable_reader>
+            <heartbeat_suppression_duration>
+              <!-- The default value for heartbeat_suppression_duration is 62.5 ms.  This setting is designed to
+           ignore any heartbeats that come into the reader within a specified time period.  Ignoring the HB prevents
+           duplicate ack/naks and repairs from happening in the system.  When the system includes fast periodic,
+           piggy back and repair piggy back heartbeats this can result in a lot of redundant traffic.
+
+           In several of our topics (e.g. umfreg umf_cfg) we have standard piggy back heartbeats turned off and
+           are only heartbeating at a very slow rate (e.g. 250ms).  This is done to reduce the overall level of
+           traffic in the system.
+
+           However, when repairs do take place, the DDS stack automatically inserts a piggy back heartbeat at
+           the end of the repair. We were seeing an issue when a large multi-part repair is taking place, the
+           first part of the repair arrives and then a piggy back heartbeat to prime the next round of repair
+           arrives.  Due to the 62.5ms suppression period, this piggy back HB was ignored and then the system
+           needed to wait up to 250ms before the next periodic heartbeat arrives to get the repair moving again.
+           Suppressing these heartbeats slowed down the repair operation significantly.  Operations that should
+           occur in fractional seconds were taking minutes to complete.
+
+           Setting this to 0 is used specifically on topics where 1) standard piggy back heartbeats are not use and
+           2) the standard heartbeats are slow (e.g.1/4 second  -->
+              <sec>0</sec>
+              <nanosec>0</nanosec>
+            </heartbeat_suppression_duration>
+          </rtps_reliable_reader>
+        </protocol>
+        <destination_order>
+          <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+        </destination_order>
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Registries -->
+    <qos_profile name="umfregIndex_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfreg_index Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+        <protocol>
+          <propagate_dispose_of_unregistered_instances>true</propagate_dispose_of_unregistered_instances>
+          <rtps_reliable_reader>
+            <heartbeat_suppression_duration>
+              <!-- The default value for heartbeat_suppression_duration is 62.5 ms.  This setting is designed to
+           ignore any heartbeats that come into the reader within a specified time period.  Ignoring the HB prevents
+           duplicate ack/naks and repairs from happening in the system.  When the system includes fast periodic,
+           piggy back and repair piggy back heartbeats this can result in a lot of redundant traffic.
+
+           In several of our topics (e.g. umfreg umf_cfg) we have standard piggy back heartbeats turned off and
+           are only heartbeating at a very slow rate (e.g. 250ms).  This is done to reduce the overall level of
+           traffic in the system.
+
+           However, when repairs do take place, the DDS stack automatically inserts a piggy back heartbeat at
+           the end of the repair. We were seeing an issue when a large multi-part repair is taking place, the
+           first part of the repair arrives and then a piggy back heartbeat to prime the next round of repair
+           arrives.  Due to the 62.5ms suppression period, this piggy back HB was ignored and then the system
+           needed to wait up to 250ms before the next periodic heartbeat arrives to get the repair moving again.
+           Suppressing these heartbeats slowed down the repair operation significantly.  Operations that should
+           occur in fractional seconds were taking minutes to complete.
+
+           Setting this to 0 is used specifically on topics where 1) standard piggy back heartbeats are not use and
+           2) the standard heartbeats are slow (e.g.1/4 second  -->
+              <sec>0</sec>
+              <nanosec>0</nanosec>
+            </heartbeat_suppression_duration>
+          </rtps_reliable_reader>
+        </protocol>
+        <destination_order>
+          <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+        </destination_order>
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Commands -->
+    <qos_profile name="umfcmd_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfcmd Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>5</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+        <destination_order>
+          <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+        </destination_order>
+      </datareader_qos>
+    </qos_profile>
+    <qos_profile name="umfcfgnrt_base_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfcfgnrt Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>1</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+        <destination_order>
+          <kind>BY_RECEPTION_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+        </destination_order>
+      </datareader_qos>
+    </qos_profile>
+    <qos_profile name="umfcfgnrt_qos" base_name="AxoneNetQoSLibrary::umfcfgnrt_base_qos">
+      <datareader_qos>
+        <!-- TQ is available only for volatile DRs -->
+        <durability>
+          <kind>VOLATILE_DURABILITY_QOS</kind>
+        </durability>
+        <protocol>
+          <propagate_dispose_of_unregistered_instances>true</propagate_dispose_of_unregistered_instances>
+          <rtps_reliable_reader>
+            <heartbeat_suppression_duration>
+              <!-- The default value for heartbeat_suppression_duration is 62.5 ms.  This setting is designed to
+           ignore any heartbeats that come into the reader within a specified time period.  Ignoring the HB prevents
+           duplicate ack/naks and repairs from happening in the system.  When the system includes fast periodic,
+           piggy back and repair piggy back heartbeats this can result in a lot of redundant traffic.
+
+           In several of our topics (e.g. umfreg umf_cfg) we have standard piggy back heartbeats turned off and
+           are only heartbeating at a very slow rate (e.g. 250ms).  This is done to reduce the overall level of
+           traffic in the system.
+
+           However, when repairs do take place, the DDS stack automatically inserts a piggy back heartbeat at
+           the end of the repair. We were seeing an issue when a large multi-part repair is taking place, the
+           first part of the repair arrives and then a piggy back heartbeat to prime the next round of repair
+           arrives.  Due to the 62.5ms suppression period, this piggy back HB was ignored and then the system
+           needed to wait up to 250ms before the next periodic heartbeat arrives to get the repair moving again.
+           Suppressing these heartbeats slowed down the repair operation significantly.  Operations that should
+           occur in fractional seconds were taking minutes to complete.
+
+           Setting this to 0 is used specifically on topics where 1) standard piggy back heartbeats are not use and
+           2) the standard heartbeats are slow (e.g.1/4 second  -->
+              <sec>0</sec>
+              <nanosec>0</nanosec>
+            </heartbeat_suppression_duration>
+          </rtps_reliable_reader>
+        </protocol>
+        <destination_order>
+          <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+        </destination_order>
+      </datareader_qos>
+      <datawriter_qos>
+        <!-- TQ is available only for transient local DWs -->
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <destination_order>
+          <kind>BY_SOURCE_TIMESTAMP_DESTINATIONORDER_QOS</kind>
+          <!-- Set the tolerance to 1 second for datawriters. This allows a leap second shift not to cause a write to fail because the new sample is older than the previously written sample. -->
+          <source_timestamp_tolerance>
+            <sec>1</sec>
+            <nanosec>0</nanosec>
+          </source_timestamp_tolerance>
+        </destination_order>
+      </datawriter_qos>
+    </qos_profile>
+    <qos_profile name="umfcfgnrt_state_qos" base_name="AxoneNetQoSLibrary::umfcfgnrt_base_qos"/>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Log QoS -->
+    <qos_profile name="umflog_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umflog Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>100</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Heart Beat topic. -->
+    <qos_profile name="umfhbt_qos" base_name="AxoneNetQoSLibrary::umfgeneral_qos">
+      <datareader_qos>
+        <subscription_name>
+          <name>Admin Console umfhbt Subscription</name>
+        </subscription_name>
+        <history>
+          <depth>4</depth>
+        </history>
+        <!-- Admin Console does not have reader resource limits -->
+        <durability>
+          <!-- Heatbeat topics are volatile as heatbeats are only valid for endpoint online when they were sent -->
+          <kind>VOLATILE_DURABILITY_QOS</kind>
+        </durability>
+        <reliability>
+          <!-- Heatbeat topics are delivered best effort -->
+          <kind>BEST_EFFORT_RELIABILITY_QOS</kind>
+        </reliability>
+      </datareader_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Monitoring general topics QOS -->
+    <qos_profile name="axonemonitoring_general_qos" base_name="umf$(DDS_SECURE)_rti_qos">
+      <participant_qos>
+        <transport_builtin>
+          <!-- RTI ships with a number of built-in transports.  These include UDP, TCP, and Shared Memory.  For the bulk of Axone, the UDP transport will be used for established communications.  By explicitly calling out UDP below, this excludes the use of other transports for non-discovery traffic -->
+          <mask>UDPv4</mask>
+          <!-- This setting is the maximum size of a message in bytes that can be sent or received by the transport plugin.
+         Reducing this setting and enabling asynchronous transmission allows RTI to fragment data at the application layer and reducing the overall size of the UDP packets.  A smaller setting (and hence smaller UDP frames) increases the probability of traffic making it through the frame reassembly process in network hardware during bursty discovery traffic. -->
+          <udpv4>
+            <message_size_max>1400</message_size_max>
+          </udpv4>
+        </transport_builtin>
+        <discovery_config>
+          <!-- GE Modified: DNS polling required for IP mobility to work with DNS (including in K8s DNS) -->
+          <dns_tracker_polling_period>
+            <sec>10</sec>
+            <nanosec>DURATION_ZERO_NSEC</nanosec>
+          </dns_tracker_polling_period>
+        </discovery_config>
+        <property>
+          <value>
+            <element>
+              <name>dds.sec.auth.identity_ca</name>
+              <value>file:$(SDDS_HOME)/AxoneRouter_certsigner.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.access.permissions_ca</name>
+              <value>file:$(SDDS_HOME)/AxoneRouter_certsigner.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.auth.identity_certificate</name>
+              <value>file:$(SDDS_HOME)/MDHEndPoint.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.auth.private_key</name>
+              <value>file:$(SDDS_HOME)/MDHEndPoint.key.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.access.governance</name>
+              <value>file:$(SDDS_HOME)/AxoneRouterGovernance.p7s</value>
+            </element>
+            <element>
+              <name>dds.sec.access.permissions</name>
+              <value>file:$(SDDS_HOME)/AxoneRouterPermissions.p7s</value>
+            </element>
+          </value>
+        </property>
+      </participant_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: UMF Monitoring topics QOS -->
+    <qos_profile name="axonemonitoring_qos" base_name="axonemonitoring_general_qos">
+      <participant_qos>
+        <discovery>
+          <!-- IMPORTANT: No Initial Peers included.  Put initial peers in NDDS_DISCOVERY_PEERS file in programs execution directory, or set NDDS_DISCOVERY_PEERS environment variable -->
+          <!-- Accept discovery from unknown peers. (peers listed in NDDS initial peers) -->
+          <accept_unknown_peers>true</accept_unknown_peers>
+          <!-- The following element sets the multi-cast receive addresses to a null list.  The user of this profile will not receive any multi-cast discovery traffic. -->
+          <multicast_receive_addresses/>
+        </discovery>
+        <discovery_config>
+          <service_request_writer_data_lifecycle>
+            <!-- Auto-purge unregistered and disposed discovery instances to prevent memory leaks. -->
+            <autopurge_unregistered_instances_delay>
+              <sec>1</sec>
+              <nanosec>0</nanosec>
+            </autopurge_unregistered_instances_delay>
+            <!-- Wait 10 minutes to purge disposed discovery instances in case dispose needs to be resent to reader side due to network disruption. -->
+            <autopurge_disposed_instances_delay>
+              <sec>600</sec>
+              <nanosec>0</nanosec>
+            </autopurge_disposed_instances_delay>
+          </service_request_writer_data_lifecycle>
+          <!-- Per the RTI documentation: "When a participant is first enabled, or after discovering a new remote participant, Connext DDS sends initial_paricipant_annoucements number of discovery messages. These messages are sent with a sleep period between them that is a random duration between min_initial_participant_announcement_period and max_initial_participant_announcement_period."-->
+          <!-- my setting min/max to differing value (as opposed to the 1/1 in the defauts) this announcements will be randomized.  This is being done specifically so that during discovery with a large amount of participants, the network will not be swmped with discovery messages.  We have observed switch buffer overflows resulting in lost discovery packets when this happens.  Randomizing the announcements spreads out these messages allowing them to be successful. -->
+          <initial_participant_announcements>5</initial_participant_announcements>
+          <min_initial_participant_announcement_period>
+            <!-- min and max announcement period set to 1/2 and 1 1/2 seconds to allow for a variable hold off period if announcements fail.  In a situation where the network is under high volume traffic due to the full system restart these settings can help the retries to not line up and therefore ease the network burden through the scenario. -->
+            <sec>0</sec>
+            <nanosec>100000000</nanosec>
+          </min_initial_participant_announcement_period>
+          <max_initial_participant_announcement_period>
+            <sec>1</sec>
+            <nanosec>500000000</nanosec>
+          </max_initial_participant_announcement_period>
+          <participant_liveliness_assert_period>
+            <!-- By default, after the initial participant announcement period, the participant will only send an announcement every 30 seconds. In the Axone network, this can impact how long it takes late joiners to discover a participant. The value is set to 10 seconds to reduce the late joiner discovery delay. -->
+            <sec>10</sec>
+            <nanosec>0</nanosec>
+          </participant_liveliness_assert_period>
+          <default_domain_announcement_period>
+            <!-- Based on the set default_domain_announcement_period intervals, the participant will send out a participant announcement
+               to the default multicast address and port for domain 0 (239.255.0.1:7400). This is a non-standard message with a UDP data
+               payload that starts with a magic string of "RTPX" instead of "RTPS", but the payload is otherwise the same as participant
+               built-in topic data. These announcements can be disabled by setting an infinite period. The default period is 30 seconds. -->
+            <sec>DURATION_INFINITE_SEC</sec>
+            <nanosec>DURATION_INFINITE_NSEC</nanosec>
+          </default_domain_announcement_period>
+          <!-- Async publishers required for DDS application fragmentation -->
+          <publication_writer_publish_mode>
+            <!-- Async publication for discovery allows fragmentation of discovery messages at the DDS level.  There are situations where during a bursty discovery process the router's UDP buffers can overflow resulting in discovery being hampered.  -->
+            <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+          </publication_writer_publish_mode>
+          <subscription_writer_publish_mode>
+            <!-- Async subsciption for discovery.  Needed for same reasons as publication -->
+            <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+          </subscription_writer_publish_mode>
+          <secure_volatile_writer_publish_mode>
+            <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+          </secure_volatile_writer_publish_mode>
+          <service_request_writer_publish_mode>
+            <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+          </service_request_writer_publish_mode>
+        </discovery_config>
+        <wire_protocol>
+          <!-- Because endpoints can be restarted unexpectedly, the GUID needs to have a unique auto id. If the GUID is not unique, then reader could discard
+               packets when the packets have sequence numbers that have already been received.
+               The restarted device might start in the same IP or PID; therefore, the UUID auto id strategy is used to always generate a unique GUID. -->
+          <rtps_auto_id_kind>RTPS_AUTO_ID_FROM_UUID</rtps_auto_id_kind>
+        </wire_protocol>
+        <transport_builtin>
+          <!-- RTI ships with a number of built-in transports.  These include UDP, TCP, and Shared Memory.  For the bulk of Axone, the UDP transport will be used for established communications.  By explicitly calling out UDP below, this excludes the use of other transports for non-discovery traffic -->
+          <mask>UDPv4</mask>
+          <!-- This setting is the maximum size of a message in bytes that can be sent or received by the transport plugin.
+         Reducing this setting and enabling asynchronous transmission allows RTI to fragment data at the application layer and reducing the overall size of the UDP packets.  A smaller setting (and hence smaller UDP frames) increases the probability of traffic making it through the frame reassembly process in network hardware during bursty discovery traffic. -->
+          <udpv4>
+            <message_size_max>1400</message_size_max>
+          </udpv4>
+        </transport_builtin>
+        <resource_limits>
+          <!-- Some of the RTI monitoring topics have large type objects -->
+          <type_code_max_serialized_length>0</type_code_max_serialized_length>
+          <type_object_max_serialized_length>35840</type_object_max_serialized_length>
+        </resource_limits>
+        <property>
+          <value>
+            <element>
+              <!-- In order for NTP to work properly, the internal clock for RTI needs to be set to a monotonic clock.  A monotonic clock is not supported on all OS platforms.  This can be due to either the OS platform itself not supporting a monotonic clock, or because the RTI implementation for a specific platform does not support it.  Becasue of this, by default, RTI sets the internal clock to use the system's real-time clock.  We are changing this setting to by default use the monotonic clock.  However, for platforms that do not support the a monotonic clock, we allow the setting to default back to the real-time clock. NOTE: As of RTI 5.2.5, the monotonic clock is not supported on the OSX platform. -->
+              <name>dds.clock.internal_clock</name>
+              <!-- try to use the monotonic clock, fall back to the real-time clock -->
+              <value>monotonic,realtime</value>
+            </element>
+            <element>
+              <!-- Increasing the builtin.recv_socket_buffer_size helps to prevent data loss on high volume traffic (e.g. waveforms).  When setting on linux, the kernel socket settings need to be changed as well.  For instructions, see; https://community.rti.com/howto/improve-rti-connext-dds-network-performance-linux, section:Size of kernel receive and send socket buffers -->
+              <name>dds.transport.UDPv4.builtin.recv_socket_buffer_size</name>
+              <value>2097152</value>
+            </element>
+            <element>
+              <name>dds.transport.UDPv4.builtin.send_socket_buffer_size</name>
+              <value>1048576</value>
+            </element>
+            <element>
+              <!-- Increasing the builtin.recv_socket_buffer_size helps to prevent data loss on high volume traffic (e.g. waveforms).  When setting on linux, the kernel socket settings need to be changed as well.  For instructions, see; https://community.rti.com/howto/improve-rti-connext-dds-network-performance-linux, section:Size of kernel receive and send socket buffers -->
+              <name>dds.transport.UDPv4_WAN.builtin.recv_socket_buffer_size</name>
+              <value>2097152</value>
+            </element>
+            <element>
+              <name>dds.transport.UDPv4_WAN.builtin.send_socket_buffer_size</name>
+              <value>1048576</value>
+            </element>
+            <element>
+              <!--  Disable multi-cast transport -->
+              <name>dds.transport.UDPv4.builtin.multicast_enabled</name>
+              <value>0</value>
+            </element>
+            <element>
+              <!-- Only allow DDS locators for interfaces defined in the environmental variable (comma separated) -->
+              <name>dds.transport.UDPv4.builtin.parent.allow_interfaces_list</name>
+              <value>$(DDS_INTERFACES_MONITORING)</value>
+            </element>
+            <element>
+              <!-- Do not allow any interfaces to use multicast locators -->
+              <name>dds.transport.UDPv4.builtin.parent.deny_multicast_interfaces_list</name>
+              <value>*</value>
+            </element>
+            <element>
+              <!-- Only allow DDS locators for interfaces defined in the environmental variable (comma separated) -->
+              <name>dds.transport.UDPv4_WAN.builtin.parent.allow_interfaces_list</name>
+              <value>$(DDS_INTERFACES_MONITORING)</value>
+            </element>
+            <element>
+              <name>dds.participant.trust_plugins.authentication_request_delay.sec</name>
+              <value>60</value>
+            </element>
+            <element>
+              <name>dds.participant.trust_plugins.authentication_request_timeout.sec</name>
+              <value>60</value>
+            </element>
+            <element>
+              <name>dds.participant.trust_plugins.authentication_timeout.sec</name>
+              <value>240</value>
+            </element>
+            <element>
+              <name>dds.sys_info.hostname</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.creation_timestamp</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.execution_timestamp</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.username</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.executable_filepath</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+            <element>
+              <name>dds.sys_info.target</name>
+              <value>TurnedOff</value>
+              <propagate>false</propagate>
+            </element>
+          </value>
+        </property>
+      </participant_qos>
+      <datawriter_qos>
+        <publish_mode>
+          <kind>ASYNCHRONOUS_PUBLISH_MODE_QOS</kind>
+        </publish_mode>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>1</depth>
+        </history>
+        <writer_data_lifecycle>
+          <!-- Set autopurge disposed instance to 0 (should be defect) to avoid leaking monitoring topics -->
+          <autopurge_disposed_instances_delay>
+            <sec>0</sec>
+            <nanosec>0</nanosec>
+          </autopurge_disposed_instances_delay>
+        </writer_data_lifecycle>
+        <representation>
+          <compression_settings>
+            <!-- Compression LZ4, max compression level, and compress all samples was determined to be the best settings to balance AMS endpoints' bandwidth and performance. -->
+            <compression_ids>LZ4</compression_ids>
+            <writer_compression_level>10</writer_compression_level>
+            <writer_compression_threshold>1</writer_compression_threshold>
+          </compression_settings>
+        </representation>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: Admin Console Administration Topics -->
+    <qos_profile name="zsecure_administration_qos" base_name="axonemonitoring_qos">
+      <!-- Admin console is a special case, so it has an extra participant QoS. -->
+      <participant_qos>
+        <resource_limits>
+          <!-- Some of the RTI administration topics have large type objects -->
+          <type_code_max_serialized_length>0</type_code_max_serialized_length>
+          <type_object_max_serialized_length>35840</type_object_max_serialized_length>
+        </resource_limits>
+        <property>
+          <value>
+            <element>
+              <name>dds.sec.auth.identity_ca</name>
+              <value>file:$(SDDS_HOME)/AxoneRouter_certsigner.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.access.permissions_ca</name>
+              <value>file:$(SDDS_HOME)/AxoneRouter_certsigner.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.auth.identity_certificate</name>
+              <value>file:$(SDDS_HOME)/MDHEndPoint.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.auth.private_key</name>
+              <value>file:$(SDDS_HOME)/MDHEndPoint.key.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.access.governance</name>
+              <value>file:$(SDDS_HOME)/AxoneRouterGovernance.p7s</value>
+            </element>
+            <element>
+              <name>dds.sec.access.permissions</name>
+              <value>file:$(SDDS_HOME)/AxoneRouterPermissions.p7s</value>
+            </element>
+          </value>
+        </property>
+      </participant_qos>
+      <!-- DataReader taken directly from the RTI Admin Console example QoS -->
+      <!-- Security Logger -->
+      <datareader_qos topic_filter="DDS:Security:LogTopic">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_ALL_HISTORY_QOS</kind>
+        </history>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <resource_limits>
+          <initial_instances>1</initial_instances>
+          <initial_samples>1</initial_samples>
+          <max_instances>1</max_instances>
+          <max_samples>8192</max_samples>
+          <max_samples_per_instance>8192</max_samples_per_instance>
+        </resource_limits>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_reader.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>4096</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.min_size</name>
+              <value>4096</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datareader_qos>
+      <!-- Distributed Logger -->
+      <datareader_qos topic_filter="rti/distlog">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>8192</depth>
+        </history>
+        <protocol>
+          <rtps_reliable_reader>
+            <heartbeat_suppression_duration>
+              <sec>0</sec>
+              <nanosec>0</nanosec>
+            </heartbeat_suppression_duration>
+            <max_heartbeat_response_delay>
+              <sec>0</sec>
+              <nanosec>0</nanosec>
+            </max_heartbeat_response_delay>
+            <min_heartbeat_response_delay>
+              <sec>0</sec>
+              <nanosec>0</nanosec>
+            </min_heartbeat_response_delay>
+          </rtps_reliable_reader>
+        </protocol>
+        <resource_limits>
+          <max_samples_per_instance>8192</max_samples_per_instance>
+          <max_samples>8192</max_samples>
+        </resource_limits>
+      </datareader_qos>
+      <datareader_qos topic_filter="rti/distlog/administration/state">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>1</depth>
+        </history>
+      </datareader_qos>
+      <datawriter_qos topic_filter="rti/distlog/administration/command_request">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>10</depth>
+        </history>
+      </datawriter_qos>
+      <datareader_qos topic_filter="rti/distlog/administration/command_response">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>1</depth>
+        </history>
+      </datareader_qos>
+      <!-- Persistence Service -->
+      <datareader_qos topic_filter="rti/persistence_service/administration/command_response">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+      </datareader_qos>
+      <datawriter_qos topic_filter="rti/persistence_service/administration/command_request">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+      </datawriter_qos>
+      <datareader_qos topic_filter="com_rti_tools_recorder_status">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+      </datareader_qos>
+      <datawriter_qos topic_filter="com_rti_tools_remotectx">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+      </datawriter_qos>
+      <!-- Routing Service -->
+      <datareader_qos topic_filter="rti/routing_service/administration/command_response">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+      </datareader_qos>
+      <datawriter_qos topic_filter="rti/routing_service/administration/command_request">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+      </datawriter_qos>
+      <!-- Service Admin (Recorder Gen4 and Routing Gen3) -->
+      <datareader_qos topic_filter="rti/service/admin/command_reply">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <representation>
+          <value>
+            <element>XCDR2_DATA_REPRESENTATION</element>
+          </value>
+        </representation>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+        <reader_resource_limits>
+          <dynamically_allocate_fragmented_samples>true</dynamically_allocate_fragmented_samples>
+        </reader_resource_limits>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_reader.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.min_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datareader_qos>
+      <datawriter_qos topic_filter="rti/service/admin/command_request">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+        <representation>
+          <value>
+            <element>XCDR2_DATA_REPRESENTATION</element>
+          </value>
+        </representation>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_writer.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_writer.history.memory_manager.java_stream.min_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_writer.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datawriter_qos>
+    </qos_profile>
+    <!-- ======================= -->
+    <!-- QOS Profile: Admin Console Monitoring Topics -->
+    <qos_profile name="zsecure_monitoring_qos" base_name="axonemonitoring_qos">
+      <!-- Admin console is a special case, so it has an extra participant QoS. -->
+      <participant_qos>
+        <resource_limits>
+          <!-- Some of the RTI monitoring topics have large type objects -->
+          <type_code_max_serialized_length>0</type_code_max_serialized_length>
+          <type_object_max_serialized_length>35840</type_object_max_serialized_length>
+        </resource_limits>
+        <property>
+          <value>
+            <element>
+              <name>dds.sec.auth.identity_ca</name>
+              <value>file:$(SDDS_HOME)/AxoneRouter_certsigner.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.access.permissions_ca</name>
+              <value>file:$(SDDS_HOME)/AxoneRouter_certsigner.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.auth.identity_certificate</name>
+              <value>file:$(SDDS_HOME)/MDHEndPoint.cert.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.auth.private_key</name>
+              <value>file:$(SDDS_HOME)/MDHEndPoint.key.pem</value>
+            </element>
+            <element>
+              <name>dds.sec.access.governance</name>
+              <value>file:$(SDDS_HOME)/AxoneRouterGovernance.p7s</value>
+            </element>
+            <element>
+              <name>dds.sec.access.permissions</name>
+              <value>file:$(SDDS_HOME)/AxoneRouterPermissions.p7s</value>
+            </element>
+          </value>
+        </property>
+      </participant_qos>
+      <!-- DataReaders were taken directly from the RTI Admin Console example QoS -->
+      <!-- Queue Service Monitoring -->
+      <datareader_qos topic_filter="rti/queuing_service/monitoring/shared_reader_queue">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <resource_limits>
+          <initial_instances>1</initial_instances>
+          <initial_samples>1</initial_samples>
+        </resource_limits>
+      </datareader_qos>
+      <!-- Routing Service Monitoring-->
+      <datareader_qos topic_filter="rti/routing_service/monitoring/*_data">
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_reader.state.filter_redundant_samples</name>
+              <value>0</value>
+            </element>
+          </value>
+        </property>
+        <resource_limits>
+          <initial_instances>1</initial_instances>
+          <initial_samples>1</initial_samples>
+        </resource_limits>
+      </datareader_qos>
+      <datareader_qos name="ServiceAdminMonitoring" topic_filter="rti/service/monitoring*">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <durability>
+          <kind>TRANSIENT_LOCAL_DURABILITY_QOS</kind>
+        </durability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <representation>
+          <value>
+            <element>XCDR2_DATA_REPRESENTATION</element>
+          </value>
+        </representation>
+        <resource_limits>
+          <max_samples>1024</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+        <reader_resource_limits>
+          <dynamically_allocate_fragmented_samples>true</dynamically_allocate_fragmented_samples>
+        </reader_resource_limits>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_reader.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.min_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datareader_qos>
+      <!-- Service Admin (Recorder Gen4 and Routing Gen3) -->
+      <datareader_qos topic_filter="rti/service/admin/command_reply">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <history>
+          <kind>KEEP_LAST_HISTORY_QOS</kind>
+          <depth>64</depth>
+        </history>
+        <representation>
+          <value>
+            <element>XCDR2_DATA_REPRESENTATION</element>
+          </value>
+        </representation>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+        <reader_resource_limits>
+          <dynamically_allocate_fragmented_samples>true</dynamically_allocate_fragmented_samples>
+        </reader_resource_limits>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_reader.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.min_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_reader.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datareader_qos>
+      <datawriter_qos topic_filter="rti/service/admin/command_request">
+        <reliability>
+          <kind>RELIABLE_RELIABILITY_QOS</kind>
+        </reliability>
+        <resource_limits>
+          <max_samples>64</max_samples>
+          <max_samples_per_instance>64</max_samples_per_instance>
+          <initial_instances>1</initial_instances>
+          <initial_samples>64</initial_samples>
+        </resource_limits>
+        <representation>
+          <value>
+            <element>XCDR2_DATA_REPRESENTATION</element>
+          </value>
+        </representation>
+        <property>
+          <value>
+            <element>
+              <name>dds.data_writer.history.memory_manager.fast_pool.pool_buffer_max_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_writer.history.memory_manager.java_stream.min_size</name>
+              <value>8192</value>
+            </element>
+            <element>
+              <name>dds.data_writer.history.memory_manager.java_stream.trim_to_size</name>
+              <value>1</value>
+            </element>
+          </value>
+        </property>
+      </datawriter_qos>
+    </qos_profile>
+  </qos_library>
+  <!-- No monitoring library for Admin Console as it is ReadOnly now -->
+  <!-- No domains defined for Admin Console -->
+  <domain_participant_library name="AxoneNetParticipantLibrary">
+    <domain_participant name="GEAdminConsole" domain_ref="AxoneNetDomainLibrary::AxoneNetUmfDomain">
+      <!-- No subscribers or publishers created at start for Admin Console -->
+    </domain_participant>
+  </domain_participant_library>
+</dds>
