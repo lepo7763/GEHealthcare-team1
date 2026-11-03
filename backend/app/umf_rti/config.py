@@ -24,6 +24,6 @@ def get_umf_rti_config() -> UmfRtiConfig:
             "UMF_RTI_IMAGE", "docker.io/library/axone-umf-rtitools:temp"
         ),
         router_namespace=os.environ.get("UMF_RTI_ROUTER_NAMESPACE", "pm"),
-        sdds_secret_name=os.environ.get("UMF_RTI_SDDS_SECRET", "umf-rti-sdds"),
+        sdds_secret_name=os.environ.get("UMF_RTI_SDDS_SECRET", "umf-router-sdds"),
         default_peer=os.environ.get("UMF_RTI_PEER", "100.64.64.200"),
     )
