@@ -6,8 +6,11 @@ import Step1Connect from './diagnostics/Step1Connect';
 import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
+<<<<<<< HEAD
 import Step4Netshoot from './diagnostics/Step4Netshoot';
 import Step4RecordedNetshoot from './diagnostics/Step4RecordedNetshoot';
+=======
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -24,6 +27,11 @@ const Diagnostics = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(['container-logs']);
+<<<<<<< HEAD
+=======
+  const [umfDomain, setUmfDomain] = useState('32');
+  const [umfDuration, setUmfDuration] = useState('120');
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
@@ -32,7 +40,10 @@ const Diagnostics = () => {
   const pollRef = useRef(null);
   const abortRef = useRef(null);
   const downloadUrlRef = useRef(null);
+<<<<<<< HEAD
   const [captureMode, setCaptureMode] = useState('live');
+=======
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 
   const isChecking = phase === 'checking';
   const info = STEP_INFO[step] || STEP_INFO[1];
@@ -48,7 +59,14 @@ const Diagnostics = () => {
     fetch('/api/logs/progress')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
+<<<<<<< HEAD
         if (data) setCollect(data);
+=======
+        if (!data) return;
+        setCollect((previous) =>
+          previous && JSON.stringify(previous) === JSON.stringify(data) ? previous : data,
+        );
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
       })
       .catch(() => {
         /* keep polling */
@@ -57,11 +75,19 @@ const Diagnostics = () => {
 
   const startPolling = () => {
     stopPolling();
+<<<<<<< HEAD
     pollRef.current = setInterval(pollProgress, 400);
+=======
+    pollRef.current = setInterval(pollProgress, 600);
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
   };
 
   const startCollection = async () => {
     setCollectError('');
+<<<<<<< HEAD
+=======
+    setCollect(null);
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
     setDownload(null);
     if (downloadUrlRef.current) {
       URL.revokeObjectURL(downloadUrlRef.current);
@@ -85,7 +111,18 @@ const Diagnostics = () => {
     const controller = new AbortController();
     abortRef.current = controller;
 
+<<<<<<< HEAD
     fetch('/api/logs/zip', { signal: controller.signal })
+=======
+    const params = new URLSearchParams();
+    selected.forEach((serviceId) => params.append('services', serviceId));
+    if (selected.includes('umf-rti')) {
+      params.set('umf_domain_id', String(umfDomain).trim());
+      params.set('umf_duration_seconds', String(umfDuration).trim());
+    }
+
+    fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
       .then(async (res) => {
         if (!res.ok) {
           let detail = `Collection failed (${res.status}).`;
@@ -98,7 +135,11 @@ const Diagnostics = () => {
           throw new Error(detail);
         }
         const filename =
+<<<<<<< HEAD
           parseFilename(res.headers.get('Content-Disposition')) || 'k8s_cluster_logs.zip';
+=======
+          parseFilename(res.headers.get('Content-Disposition')) || 'iomt_diagnostics.zip';
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
         const blob = await res.blob();
         return { blob, filename };
       })
@@ -141,6 +182,7 @@ const Diagnostics = () => {
     setError('');
   };
 
+<<<<<<< HEAD
 
   const handleDemoConnect = async () => {
     setPhase('checking');
@@ -194,6 +236,8 @@ const Diagnostics = () => {
   };
 
 
+=======
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
   const handleCheck = async () => {
     setPhase('checking');
     setResult(null);
@@ -255,6 +299,7 @@ const Diagnostics = () => {
         ))}
       </ol>
 
+<<<<<<< HEAD
 
       {step === 1 && (
         <>
@@ -365,6 +410,60 @@ const Diagnostics = () => {
         )
       }
     </div >
+=======
+      <div className="step-panel" key={step}>
+      {step === 1 && (
+        <Step1Connect
+          host={host}
+          setHost={setHost}
+          phase={phase}
+          result={result}
+          error={error}
+          isChecking={isChecking}
+          onCheck={handleCheck}
+        />
+      )}
+
+      {step === 2 && (
+        <Step2Configure
+          selected={selected}
+          onToggleService={toggleService}
+          umfDomain={umfDomain}
+          setUmfDomain={setUmfDomain}
+          umfDuration={umfDuration}
+          setUmfDuration={setUmfDuration}
+          onBack={handleBackToConnect}
+          onContinue={() => setStep(3)}
+        />
+      )}
+
+      {step === 3 && (
+        <Step3Review
+          result={result}
+          selectedServices={selectedServices}
+          umfDomain={umfDomain}
+          umfDuration={umfDuration}
+          onEditConnection={() => setStep(1)}
+          onEditServices={() => setStep(2)}
+          onBack={() => setStep(2)}
+          onStart={() => {
+            setStep(4);
+            startCollection();
+          }}
+        />
+      )}
+
+      {step === 4 && (
+        <Step4Collect
+          collect={collect}
+          collectError={collectError}
+          download={download}
+          onBack={() => setStep(3)}
+        />
+      )}
+      </div>
+    </div>
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
   );
 };
 

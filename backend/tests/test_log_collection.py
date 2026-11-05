@@ -8,9 +8,37 @@ from kubernetes import client
 from kubernetes.client.exceptions import ApiException
 
 from app.main import app
-from app.core.k8s_client import get_core_v1_api
+from app.core.k8s_client import get_batch_v1_api, get_core_v1_api
 
 test_client = TestClient(app)
+
+
+def test_demo_logs_endpoint_returns_downloadable_zip():
+    response = test_client.get("/api/logs/demo.zip")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert "attachment; filename=\"demo_diagnostic_logs_" in response.headers.get(
+        "content-disposition", ""
+    )
+
+    archive = io.BytesIO(response.content)
+    assert zipfile.is_zipfile(archive)
+    with zipfile.ZipFile(archive) as zip_file:
+        names = set(zip_file.namelist())
+        assert names == {
+            "session-summary.txt",
+            "logs/system.log",
+            "logs/application.log",
+            "network-diagnostics.txt",
+            "configuration-snapshot.txt",
+            "health-metrics.txt",
+        }
+        assert zip_file.testzip() is None
+        assert "SIMULATED DIAGNOSTIC SESSION" in zip_file.read(
+            "session-summary.txt"
+        ).decode("utf-8")
+        assert all(not name.endswith(".json") for name in names)
 
 
 # ---------------------------------------------------------------------------
@@ -25,7 +53,9 @@ def mock_k8s_v1():
     Automatically cleans up after each test so tests never leak state.
     """
     mock_api = MagicMock(spec=client.CoreV1Api)
+    mock_batch = MagicMock(spec=client.BatchV1Api)
     app.dependency_overrides[get_core_v1_api] = lambda: mock_api
+    app.dependency_overrides[get_batch_v1_api] = lambda: mock_batch
     yield mock_api
     app.dependency_overrides.clear()
 

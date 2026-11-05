@@ -3,6 +3,7 @@ import './Dashboard.css';
 
 import Overview from './pages/Overview';
 import Diagnostics from './pages/Diagnostics';
+import AxoneLogs from './pages/AxoneLogs';
 import DiagnosticPackages from './pages/DiagnosticPackages';
 import AuditLog from './pages/AuditLog';
 import Settings from './pages/Settings';
@@ -29,6 +30,17 @@ const NAV_ITEMS = [
         <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
         <polyline points="2 17 12 22 22 17"></polyline>
         <polyline points="2 12 12 17 22 12"></polyline>
+      </svg>
+    ),
+  },
+  {
+    id: 'axone_logs',
+    label: 'Axone Logs',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <path d="M12 12v6m-3-3 3 3 3-3"></path>
       </svg>
     ),
   },
@@ -98,6 +110,8 @@ const Dashboard = ({ user, onSignOut }) => {
         return <Overview onNavigate={setActiveTab} />;
       case 'diagnostics':
         return <Diagnostics onNavigate={setActiveTab} />;
+      case 'axone_logs':
+        return <AxoneLogs />;
       case 'diagnostic_packages':
         return <DiagnosticPackages />;
       case 'audit_log':

@@ -136,7 +136,11 @@ const DiagnosticPackages = () => {
       const link = document.createElement('a');
       link.href = url;
       const filename = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
+<<<<<<< HEAD
         || 'k8s_cluster_logs.zip';
+=======
+        || 'iomt_diagnostics.zip';
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
       link.download = filename;
       document.body.appendChild(link);
       link.click();
@@ -223,6 +227,10 @@ const DiagnosticPackages = () => {
             disabled={isExporting}
             aria-busy={isExporting}
           >
+<<<<<<< HEAD
+=======
+            {isExporting && <span className="btn-spinner" aria-hidden="true" />}
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
             {isExporting ? 'Exporting...' : 'Export logs ZIP'}
           </button>
           {isExporting && (
@@ -308,6 +316,10 @@ const DiagnosticPackages = () => {
               disabled={isPackageDownloading}
               aria-busy={isPackageDownloading}
             >
+<<<<<<< HEAD
+=======
+              {isPackageDownloading && <span className="btn-spinner" aria-hidden="true" />}
+>>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
               {isPackageDownloading ? 'Preparing package...' : 'Download Complete Package'}
             </button>
           </div>

@@ -6,7 +6,18 @@ from typing import List, Tuple, Optional
 from kubernetes import client
 from kubernetes.client.exceptions import ApiException
 
-from .schemas import LogCollectionParams, LogCollectionManifest, LogErrorEntry
+from .schemas import (
+    CollectedService,
+    LogCollectionManifest,
+    LogCollectionParams,
+    LogErrorEntry,
+)
+from .progress import (
+    CONTAINER_LOGS_LABEL,
+    CONTAINER_LOGS_SERVICE_ID,
+    ServiceProgress,
+    tracker,
+)
 
 
 class ClusterUnreachableError(Exception):
@@ -82,6 +93,7 @@ def _fetch_single_log(
                 container=container_name,
                 reason=e.reason or "ApiException",
                 status=e.status,
+                service=CONTAINER_LOGS_SERVICE_ID,
             ),
         )
     except Exception as e:
@@ -92,6 +104,7 @@ def _fetch_single_log(
                 pod=pod_name,
                 container=container_name,
                 reason=str(e),
+                service=CONTAINER_LOGS_SERVICE_ID,
             ),
         )
 
@@ -111,6 +124,7 @@ def _process_pod(
     pod_name = pod.metadata.name
 
     for c_name, has_restarted in _get_pod_targets(pod):
+        current = f"{ns}/{pod_name}/{c_name}"
         # Fetch current logs for this container
         log_text, err = _fetch_single_log(
             v1, ns, pod_name, c_name, params, previous=False
@@ -123,6 +137,10 @@ def _process_pod(
             path = f"logs/{ns}/{pod_name}/{c_name}.log"
             zf.writestr(path, log_text)
             manifest.collected_files.append(path)
+
+        tracker.increment_service(
+            CONTAINER_LOGS_SERVICE_ID, current=current, had_error=bool(err)
+        )
 
         # If the container restarted earlier, also grab the log from right before it crashed
         if params.include_previous and has_restarted:
@@ -141,40 +159,68 @@ def _process_pod(
             time.sleep(params.throttle_delay_ms / 1000.0)
 
 
-# TODO: works, but is synchronous so will crash if UI locks. Also idk how to track progress
-def collect_all_cluster_logs(
-    v1: client.CoreV1Api, params: LogCollectionParams
-) -> tempfile.SpooledTemporaryFile:
-    """High-level entry point: queries pods, zips all logs, and writes manifest.
+def collect_container_logs_into(
+    zf: zipfile.ZipFile,
+    manifest: LogCollectionManifest,
+    v1: client.CoreV1Api,
+    params: LogCollectionParams,
+) -> List[str]:
+    """Collect container logs into an existing zip/manifest.
 
-    WHY `SpooledTemporaryFile` INSTEAD OF `io.BytesIO` OR A REGULAR FILE:
-    - `io.BytesIO` keeps everything in RAM. If a cluster has too many logs, backend crashes (OOM).
-    - A normal disk file is slower for small zips and leaves leftover files if you forget to delete it.
-    - `SpooledTemporaryFile` stays in fast RAM up to set limit, and automatically spills
-      over to an invisible temporary file on disk if the zip grows larger than limit
+    The caller (the diagnostics orchestrator) owns the zip, manifest and
+    progress lifecycle.  Returns the paths this service wrote.
     """
+    files_before = len(manifest.collected_files)
+
     try:
         pods = v1.list_pod_for_all_namespaces(watch=False, _request_timeout=10).items
     except Exception as e:
         raise ClusterUnreachableError(f"Failed to query Kubernetes cluster: {e}") from e
 
-    temp_zip = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024, mode="w+b")
-
-    # Initialize our tracking manifest with an ISO-8601 UTC timestamp
-    manifest = LogCollectionManifest(
-        timestamp_utc=datetime.now(timezone.utc).isoformat(), total_logs_collected=0
+    containers_total = sum(len(_get_pod_targets(pod)) for pod in pods)
+    tracker.set_service_total(
+        CONTAINER_LOGS_SERVICE_ID, containers_total, unit="containers"
     )
 
-    # Without `compression=zipfile.ZIP_DEFLATED`, Python's zipfile module just stores raw uncompressed files.
-    # Plain text log files are super repetitive and compress a lot using standard DEFLATE.
-    with zipfile.ZipFile(temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for pod in pods:
-            _process_pod(v1, pod, zf, manifest, params)
+    for pod in pods:
+        _process_pod(v1, pod, zf, manifest, params)
 
-        manifest.total_logs_collected = len(manifest.collected_files)
-        zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
+    return manifest.collected_files[files_before:]
 
-    # If we pass to FastAPI's StreamingResponse without seeking to start,
-    # FastAPI will read from the end and send a 0-byte empty file.
-    temp_zip.seek(0)
-    return temp_zip
+
+def collect_all_cluster_logs(
+    v1: client.CoreV1Api, params: LogCollectionParams
+) -> tempfile.SpooledTemporaryFile:
+    """Backward-compatible single-service entry point.
+
+    The diagnostics endpoint uses the orchestrator in app.diagnostics.service,
+    but keeping this wrapper makes the log-collection service usable on its own
+    and preserves the original tests/API contract.
+    """
+    tracker.begin(
+        [ServiceProgress(id=CONTAINER_LOGS_SERVICE_ID, label=CONTAINER_LOGS_LABEL)]
+    )
+    try:
+        temp_zip = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024, mode="w+b")
+        manifest = LogCollectionManifest(
+            timestamp_utc=datetime.now(timezone.utc).isoformat(),
+            total_logs_collected=0,
+        )
+        with zipfile.ZipFile(temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            files = collect_container_logs_into(zf, manifest, v1, params)
+            manifest.services.append(
+                CollectedService(
+                    id=CONTAINER_LOGS_SERVICE_ID,
+                    label=CONTAINER_LOGS_LABEL,
+                    status="done",
+                    files=files,
+                )
+            )
+            manifest.total_logs_collected = len(manifest.collected_files)
+            zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
+        temp_zip.seek(0)
+        tracker.finish()
+        return temp_zip
+    except Exception as e:
+        tracker.fail(str(e))
+        raise
