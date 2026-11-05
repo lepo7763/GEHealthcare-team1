@@ -1,35 +1,61 @@
-from dataclasses import dataclass
-from typing import Any, Dict, List
+"""Request params and result model for a UMF-RTI capture.
 
-from fastapi import Query
+The end user chooses only a domain and a duration (`UmfRtiParams`); everything
+else about how the capture runs lives in config.py. `UmfRtiCaptureResult`
+describes what a recording produced and is serialized into the zip as
+`summary.json`.
+"""
+
+from typing import Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 
 class UmfRtiParams(BaseModel):
-    # less than 232 cuz anything higher produces a port number higher than 65535.
-    # Assuming worst case in formula: Port = 7400 + (250 * domain_id) + offset + (2 * participant_id)
+    """What the end user picks: which domain to record and for how long."""
+
+    # le=232: DDS derives its UDP ports from the domain id, and above ~232 the
+    # computed port exceeds 65535. (WAN uses fixed ports, but discovery on the
+    # participant still needs valid ids)
     umf_domain_id: int = Field(
-        default=Query(default=32, ge=0, le=232, description="DDS Domain ID to inspect")
+        default=13,
+        ge=0,
+        le=232,
+        description="DDS domain ID to record (13 = viewpod / live vitals)",
     )
     umf_duration_seconds: int = Field(
-        default=Query(
-            default=120,  # router's delay and timeout are both 60, so 120 should give second shot
-            ge=30,  # handshake w/ router can fail. Lower can give false negatives
-            le=600,  # we don't have the mem to go higher
-            description="Duration in seconds for the UMF RTI capture",
-        )
+        default=60,
+        ge=10,
+        le=600,
+        description="How long to record, in seconds",
     )
 
 
-@dataclass
-class UmfRtiCaptureResult:
+class UmfRtiCaptureResult(BaseModel):
+    """Outcome of a capture run; serialized into the zip as summary.json."""
+
     domain_id: int
     duration_seconds: int
-    peer_id: int
-    raw_log: str
-    discovered_topics: List[Dict[str, Any]] = Field(default_factory=list)
-    discovered_hosts: List[Dict[str, Any]] = Field(default_factory=list)
-    qos_diagnostics: List[Dict[str, Any]] = Field(default_factory=list)
-    writers_discovered: int = 0
-    readers_discovered: int = 0
-    samples_observed: int = 0
+
+    # The recording is a set of SQLite files (user-data + discovery.db + metadata.db).
+    recording_files: List[str] = Field(
+        default_factory=list,
+        description="Recording files bundled into the zip",
+    )
+    user_data_file: Optional[str] = Field(
+        default=None,
+        description="The user-data SQLite file holding the recorded samples",
+    )
+    total_bytes: int = Field(default=0, description="Total size of the recording files")
+
+    # Parsed from the user-data DB: rows per topic table, and the sum.
+    topic_sample_counts: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Samples captured per topic",
+    )
+    total_samples: int = Field(
+        default=0, description="Total samples captured across all topics"
+    )
+
+    # Non-fatal notes, e.g. "no samples captured (source may be idle)".
+    warnings: List[str] = Field(default_factory=list)
