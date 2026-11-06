@@ -1,9 +1,9 @@
 import zipfile
 
 from app.log_collection.schemas import LogCollectionManifest
+from kubernetes.client.exceptions import ApiException
 
 from kubernetes import client
-from kubernetes.client.exceptions import ApiException
 
 from .config import UmfRtiConfig
 from .schemas import UmfRtiCaptureResult, UmfRtiParams
@@ -117,7 +117,9 @@ def build_recording_cfg_xml(domain_id: int, config: UmfRtiConfig) -> str:
 
 def check_prerequisites(core: client.CoreV1Api, config: UmfRtiConfig) -> None:
     try:
-        core.read_namespaced_secret(name=config.sdds_secret_name, namespace=config.namespace)
+        core.read_namespaced_secret(
+            name=config.sdds_secret_name, namespace=config.namespace
+        )
     except ApiException as e:
         raise UmfRtiPrerequisiteError
 

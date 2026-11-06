@@ -28,7 +28,9 @@ def test_override_lists_all_initial_peers():
 
 
 def test_override_accepts_unknown_peers():
-    assert "<accept_unknown_peers>true</accept_unknown_peers>" in build_override_xml(config)
+    assert "<accept_unknown_peers>true</accept_unknown_peers>" in build_override_xml(
+        config
+    )
 
 
 def test_override_raises_type_object_limit():
@@ -53,7 +55,9 @@ def test_recording_cfg_is_well_formed():
 
 
 def test_recording_cfg_uses_json_sqlite():
-    assert "<storage_format>JSON_SQLITE</storage_format>" in build_recording_cfg_xml(13, config)
+    assert "<storage_format>JSON_SQLITE</storage_format>" in build_recording_cfg_xml(
+        13, config
+    )
 
 
 def test_recording_cfg_substitutes_domain():

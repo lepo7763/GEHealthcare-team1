@@ -18,9 +18,7 @@ from typing import Dict
 # needing to know which transport/port a given domain uses.
 _DEFAULT_WAN_PORTS: Dict[int, int] = {7: 32007, 12: 32013, 13: 32015}
 
-_DEFAULT_IMAGE = (
-    "us-artifactory.apps.ge-healthcare.net/docker-axone-all/axone-umf-rtitools:router-certs"
-)
+_DEFAULT_IMAGE = "us-artifactory.apps.ge-healthcare.net/docker-axone-all/axone-umf-rtitools:router-certs"
 
 
 @dataclass(frozen=True)
@@ -28,13 +26,17 @@ class UmfRtiConfig:
     # --- Kubernetes placement ---
     namespace: str = "iomt-integration"  # where the capture Job runs
     router_namespace: str = "pm"  # where axone-router lives
-    image: str = _DEFAULT_IMAGE  # rtitools image, present on the node (pull policy Never)
+    image: str = (
+        _DEFAULT_IMAGE  # rtitools image, present on the node (pull policy Never)
+    )
     job_prefix: str = "umf-rti-capture"  # k8s Job name prefix (+ uuid)
 
     # --- DDS identity / transport ---
     # The image ships Test certs authorized for domains 7/12/13. no other secret needed.
     sdds_home: str = "/opt/axone-tools/sdds"
-    router_pod_peer: str = "udpv4://100.64.64.200"  # internal plain-UDP locator (router pod IP)
+    router_pod_peer: str = (
+        "udpv4://100.64.64.200"  # internal plain-UDP locator (router pod IP)
+    )
     wan_public: str = "192.168.0.3"  # router's DDS_RTWAN_SERVER_PUBLIC_ADDRESS
     wan_ports: Dict[int, int] = field(default_factory=lambda: dict(_DEFAULT_WAN_PORTS))
     max_message_size: int = 1400  # router's WAN message_size_max
@@ -50,7 +52,9 @@ class UmfRtiConfig:
 
     # --- capture lifecycle ---
     output_dir: str = "/out"  # recording dir inside the Job pod
-    collect_grace_seconds: int = 300  # pod holds after recording so the backend can pull files
+    collect_grace_seconds: int = (
+        300  # pod holds after recording so the backend can pull files
+    )
     poll_interval_seconds: float = 1.0
     startup_timeout_seconds: int = 30
 
