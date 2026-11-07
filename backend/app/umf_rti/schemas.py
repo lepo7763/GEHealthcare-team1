@@ -59,3 +59,7 @@ class UmfRtiCaptureResult(BaseModel):
 
     # Non-fatal notes, e.g. "no samples captured (source may be idle)".
     warnings: List[str] = Field(default_factory=list)
+
+    # Local temp dir holding the pulled recording files, for the zip step to read.
+    # Excluded from serialization (not part of summary.json); the caller deletes it.
+    recording_dir: Optional[str] = Field(default=None, exclude=True)
