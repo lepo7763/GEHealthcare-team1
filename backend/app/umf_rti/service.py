@@ -1,8 +1,10 @@
+import time
 import uuid
 import zipfile
 
 from app.log_collection.schemas import LogCollectionManifest
 from kubernetes.client.exceptions import ApiException
+from kubernetes.stream import stream
 
 from kubernetes import client
 
@@ -235,12 +237,130 @@ def build_job_manifest(params: UmfRtiParams, config: UmfRtiConfig) -> client.V1J
 
 
 def check_prerequisites(core: client.CoreV1Api, config: UmfRtiConfig) -> None:
+    """No prerequisites to verify for the current approach.
+
+    TODO: delete this,
+    """
+    return None
+
+
+# Echoed by the in-pod probe when the capture script has finished recording.
+_DONE_MARKER = "__UMF_DONE__"
+# Container waiting reasons we treat as fatal (fail fast with a clear message
+# instead of waiting out the startup timeout). ErrImageNeverPull is the
+# multi-node pull-policy case (see the TODO in build_job_manifest).
+_POD_FATAL_WAITING = {"ErrImageNeverPull", "ImagePullBackOff", "CrashLoopBackOff"}
+
+
+def _create_job(
+    batch: client.BatchV1Api, job: client.V1Job, config: UmfRtiConfig
+) -> str:
+    """Create the capture Job and return the server-assigned name."""
     try:
-        core.read_namespaced_secret(
-            name=config.sdds_secret_name, namespace=config.namespace
-        )
+        created = batch.create_namespaced_job(namespace=config.namespace, body=job)
     except ApiException as e:
-        raise UmfRtiPrerequisiteError
+        raise UmfRtiCaptureError(
+            f"Could not create capture Job in {config.namespace}: {e.reason or e}"
+        ) from e
+    name = created.metadata.name if created.metadata else None
+    if not name:
+        raise UmfRtiCaptureError("Created capture Job has no name.")
+    return name
+
+
+def _wait_for_pod_running(
+    core: client.CoreV1Api, job_name: str, config: UmfRtiConfig
+) -> str:
+    """Resolve the Job's pod and wait until it is Running (or already done).
+
+    Raises UmfRtiCaptureError on a failed/unschedulable pod or startup timeout.
+    """
+    selector = f"job-name={job_name}"
+    deadline = time.monotonic() + config.startup_timeout_seconds
+    last_pod: str | None = None
+    while time.monotonic() < deadline:
+        pods = core.list_namespaced_pod(
+            namespace=config.namespace, label_selector=selector
+        ).items
+        if pods:
+            pod = pods[0]
+            last_pod = pod.metadata.name if pod.metadata else last_pod
+            status = pod.status
+            phase = status.phase if status else None
+            if phase in ("Running", "Succeeded") and last_pod:
+                return last_pod
+            if phase == "Failed":
+                raise UmfRtiCaptureError(
+                    f"Capture pod {last_pod} failed before recording started."
+                )
+            for cs in (status.container_statuses or []) if status else []:
+                waiting = cs.state.waiting if cs.state else None
+                if waiting and waiting.reason in _POD_FATAL_WAITING:
+                    detail = f" - {waiting.message}" if waiting.message else ""
+                    raise UmfRtiCaptureError(
+                        f"Capture pod {last_pod} cannot start: {waiting.reason}{detail}"
+                    )
+        time.sleep(config.poll_interval_seconds)
+    where = f"last pod {last_pod}" if last_pod else "no pod was scheduled"
+    raise UmfRtiCaptureError(
+        f"Capture pod did not reach Running within "
+        f"{config.startup_timeout_seconds}s ({where})."
+    )
+
+
+def _wait_for_done(
+    core: client.CoreV1Api,
+    pod_name: str,
+    params: UmfRtiParams,
+    config: UmfRtiConfig,
+) -> None:
+    """Poll the pod for the `.done` sentinel the capture script drops.
+
+    The sentinel appears once recording stops and the DB is flushed, so this is
+    the signal that the files are safe to collect. Raises on pod death/timeout.
+    """
+    probe = f"test -f {config.output_dir}/.done && echo {_DONE_MARKER}"
+    deadline = (
+        time.monotonic() + params.umf_duration_seconds + config.collect_grace_seconds
+    )
+    while time.monotonic() < deadline:
+        try:
+            pod = core.read_namespaced_pod(name=pod_name, namespace=config.namespace)
+            phase = pod.status.phase if pod.status else None
+        except ApiException:
+            phase = None
+        if phase == "Failed":
+            raise UmfRtiCaptureError(
+                f"Capture pod {pod_name} exited (Failed) before signaling done."
+            )
+        try:
+            out = stream(
+                core.connect_get_namespaced_pod_exec,
+                pod_name,
+                config.namespace,
+                command=["sh", "-c", probe],
+                container="capture",
+                stderr=True,
+                stdin=False,
+                stdout=True,
+                tty=False,
+                _preload_content=True,
+                _request_timeout=15,
+            )
+        except ApiException:
+            out = ""
+        if _DONE_MARKER in out:
+            return
+        # Script touches .done before its final sleep, so a finished container
+        # means recording completed (exec can't reach a stopped container).
+        if phase == "Succeeded":
+            return
+        time.sleep(config.poll_interval_seconds)
+    raise UmfRtiCaptureError(
+        f"Recording did not finish within "
+        f"{params.umf_duration_seconds + config.collect_grace_seconds}s "
+        f"(pod {pod_name})."
+    )
 
 
 def capture_umf_rti(
@@ -249,7 +369,22 @@ def capture_umf_rti(
     params: UmfRtiParams,
     config: UmfRtiConfig,
 ) -> UmfRtiCaptureResult:
-    raise NotImplementedError  # TODO
+    """Run one capture: create the Job, wait for the pod, wait for recording.
+
+    Currently covers the lifecycle up to the `.done` signal. 
+    """
+    job = build_job_manifest(params, config)
+    job_name = _create_job(batch, job, config)
+    pod_name = _wait_for_pod_running(core, job_name, config)
+    _wait_for_done(core, pod_name, params, config)
+
+    # TODO: collect the recording from `pod_name:{output_dir}` via tar.
+    # TODO: parse the user-data DB for per-topic sample counts.
+    # TODO: delete the Job (propagation=Foreground) in a finally.
+    return UmfRtiCaptureResult(
+        domain_id=params.umf_domain_id,
+        duration_seconds=params.umf_duration_seconds,
+    )
 
 
 def write_artifacts(

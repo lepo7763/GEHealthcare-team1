@@ -1,16 +1,26 @@
-"""Unit tests for the UMF-RTI XML builders (pure functions, no cluster)."""
+"""Unit tests for the UMF-RTI service (XML builders + capture orchestration).
+
+The pure builders are tested directly; the capture lifecycle is tested with a
+mocked kubernetes client (the real thing is validated live on the cluster).
+"""
 
 import xml.etree.ElementTree as ET
+from unittest.mock import MagicMock
+
+import pytest
+from kubernetes.client.exceptions import ApiException
 
 from app.umf_rti.config import UmfRtiConfig
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import (
     CAPTURE_QOS_PROFILE,
     RECORDING_DB_BASENAME,
+    UmfRtiCaptureError,
     build_capture_command,
     build_job_manifest,
     build_override_xml,
     build_recording_cfg_xml,
+    capture_umf_rti,
 )
 
 config = UmfRtiConfig()
@@ -177,3 +187,70 @@ def test_job_manifest_mounts_emptydir_at_output_dir():
     mount = spec.containers[0].volume_mounts[0]
     assert mount.name == volume.name
     assert mount.mount_path == config.output_dir
+
+
+# --- capture lifecycle (mocked cluster) --------------------------------------
+
+
+def _mock_pod(name="umf-rti-capture-abcd1234", phase="Running", waiting_reason=None):
+    pod = MagicMock()
+    pod.metadata.name = name
+    pod.status.phase = phase
+    if waiting_reason is None:
+        pod.status.container_statuses = []
+    else:
+        cs = MagicMock()
+        cs.state.waiting.reason = waiting_reason
+        cs.state.waiting.message = "detail"
+        pod.status.container_statuses = [cs]
+    return pod
+
+
+def _mock_batch(job_name="umf-rti-capture-abcd1234"):
+    batch = MagicMock()
+    batch.create_namespaced_job.return_value.metadata.name = job_name
+    return batch
+
+
+def test_capture_happy_path(monkeypatch):
+    core = MagicMock()
+    core.list_namespaced_pod.return_value.items = [_mock_pod()]
+    core.read_namespaced_pod.return_value = _mock_pod()
+    monkeypatch.setattr(
+        "app.umf_rti.service.stream", lambda *a, **k: "__UMF_DONE__\n"
+    )
+    cfg = UmfRtiConfig(poll_interval_seconds=0)
+
+    result = capture_umf_rti(
+        core, _mock_batch(), UmfRtiParams(umf_domain_id=13, umf_duration_seconds=15), cfg
+    )
+
+    assert result.domain_id == 13
+    assert result.duration_seconds == 15
+    _, kwargs = core.list_namespaced_pod.call_args
+    assert kwargs["label_selector"] == "job-name=umf-rti-capture-abcd1234"
+
+
+def test_capture_raises_when_job_create_fails():
+    batch = MagicMock()
+    batch.create_namespaced_job.side_effect = ApiException(reason="Forbidden")
+    with pytest.raises(UmfRtiCaptureError):
+        capture_umf_rti(MagicMock(), batch, params, config)
+
+
+def test_capture_raises_when_pod_never_starts():
+    core = MagicMock()
+    core.list_namespaced_pod.return_value.items = []  # nothing ever scheduled
+    cfg = UmfRtiConfig(startup_timeout_seconds=0, poll_interval_seconds=0)
+    with pytest.raises(UmfRtiCaptureError, match="did not reach Running"):
+        capture_umf_rti(core, _mock_batch(), params, cfg)
+
+
+def test_capture_surfaces_image_pull_error():
+    core = MagicMock()
+    core.list_namespaced_pod.return_value.items = [
+        _mock_pod(phase="Pending", waiting_reason="ErrImageNeverPull")
+    ]
+    cfg = UmfRtiConfig(startup_timeout_seconds=5, poll_interval_seconds=0)
+    with pytest.raises(UmfRtiCaptureError, match="ErrImageNeverPull"):
+        capture_umf_rti(core, _mock_batch(), params, cfg)
