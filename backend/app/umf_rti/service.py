@@ -1,3 +1,4 @@
+import uuid
 import zipfile
 
 from app.log_collection.schemas import LogCollectionManifest
@@ -113,6 +114,119 @@ def build_recording_cfg_xml(domain_id: int, config: UmfRtiConfig) -> str:
   </recording_service>
 </dds>
 """
+
+
+# --- capture command + Job manifest ------------------------------------------
+# Env values the MDH-tools image expects that don't live in config (they're
+# fixed by the image, not deployment-tunable).
+_WITHWAN_QOS_PATH = "/opt/axone-tools/qos/MDH-tools-RTIAdminConsole-WithWAN.xml"
+_DDS_SECURE = "secure"
+_DDS_INTERFACES = "eth0"
+_RTI_LICENSE_FILE = "/opt/rti_license.dat"
+# The WithWAN QoS references these three role-named WAN port env vars and fails
+# to parse (silent 0 endpoints) if any is undefined, so all are exported. Each
+# maps to its domain's configured port; only the viewpod one is actually bound
+# for a single-domain capture, but all must exist.
+_WAN_ROLE_DOMAIN = {"LOGGER": 7, "SOURCEPOD": 12, "VIEWPOD": 13}
+# Backstop that reaps the Job if the backend never deletes it; this just prevents orphans.
+# TODO: explicitly delete the Jobs
+_JOB_TTL_SECONDS = 600
+
+
+def build_capture_command(params: UmfRtiParams, config: UmfRtiConfig) -> str:
+    """Build the shell script the capture pod runs (pure function).
+
+    Writes the two QoS/recording XML files, exports the image's env contract
+    (incl. the pod's own IP as the WAN public address), records for the
+    requested duration, restores the mangled user-data filename, drops a
+    `.done` sentinel, then idles so the backend can pull the files out.
+    """
+    override_xml = build_override_xml(config)
+    rec_xml = build_recording_cfg_xml(params.umf_domain_id, config)
+    db_path = f"{config.output_dir}/{RECORDING_DB_BASENAME}"
+    mangled_path = f"{config.output_dir}/capture."
+
+    wan_port_exports = "\n".join(
+        f"export DDS_RTWAN_SERVER_PORT_{role}={config.wan_ports[domain]}"
+        for role, domain in _WAN_ROLE_DOMAIN.items()
+        if domain in config.wan_ports
+    )
+
+    return f"""set -e
+mkdir -p {config.output_dir}
+
+cat > /tmp/override.xml <<'OVERRIDE_EOF'
+{override_xml}OVERRIDE_EOF
+
+cat > /tmp/rec.xml <<'REC_EOF'
+{rec_xml}REC_EOF
+
+export SDDS_HOME={config.sdds_home}
+export DDS_SECURE={_DDS_SECURE}
+export DDS_INTERFACES={_DDS_INTERFACES}
+export DDS_INTERFACES_MONITORING={_DDS_INTERFACES}
+export RTI_LICENSE_FILE={_RTI_LICENSE_FILE}
+export DDS_RTWAN_SERVER_PUBLIC_ADDRESS="$(hostname -i)"
+{wan_port_exports}
+export NDDS_QOS_PROFILES="{_WITHWAN_QOS_PATH};/tmp/override.xml"
+
+timeout {params.umf_duration_seconds} rtirecordingservice -cfgFile /tmp/rec.xml -cfgName cap || true
+
+# rtirecordingservice mangles the user-data filename ("{RECORDING_DB_BASENAME}" -> "capture."); restore it.
+mv {mangled_path} {db_path} 2>/dev/null || true
+
+touch {config.output_dir}/.done
+sleep {config.collect_grace_seconds}
+"""
+
+
+def build_job_manifest(params: UmfRtiParams, config: UmfRtiConfig) -> client.V1Job:
+    """Build the capture Job (pure function).
+
+    One-shot Job: a single container running the capture script on an emptyDir
+    at `output_dir`. The image is present on the node (pull policy Never).
+    """
+    job_name = f"{config.job_prefix}-{uuid.uuid4().hex[:8]}"
+    script = build_capture_command(params, config)
+    labels = {"app": config.job_prefix}
+
+    container = client.V1Container(
+        name="capture",
+        image=config.image,
+        image_pull_policy="Never",
+        command=["/bin/sh", "-c", script],
+        resources=client.V1ResourceRequirements(
+            requests={"cpu": "100m", "memory": "256Mi"},
+            limits={"cpu": "500m", "memory": "1Gi"},
+        ),
+        volume_mounts=[
+            client.V1VolumeMount(name="out", mount_path=config.output_dir),
+        ],
+    )
+    pod_spec = client.V1PodSpec(
+        restart_policy="Never",
+        containers=[container],
+        volumes=[
+            client.V1Volume(name="out", empty_dir=client.V1EmptyDirVolumeSource()),
+        ],
+    )
+    template = client.V1PodTemplateSpec(
+        metadata=client.V1ObjectMeta(labels=labels),
+        spec=pod_spec,
+    )
+    job_spec = client.V1JobSpec(
+        template=template,
+        backoff_limit=0,
+        ttl_seconds_after_finished=_JOB_TTL_SECONDS,
+    )
+    return client.V1Job(
+        api_version="batch/v1",
+        kind="Job",
+        metadata=client.V1ObjectMeta(
+            name=job_name, namespace=config.namespace, labels=labels
+        ),
+        spec=job_spec,
+    )
 
 
 def check_prerequisites(core: client.CoreV1Api, config: UmfRtiConfig) -> None:

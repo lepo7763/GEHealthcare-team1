@@ -3,13 +3,18 @@
 import xml.etree.ElementTree as ET
 
 from app.umf_rti.config import UmfRtiConfig
+from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import (
     CAPTURE_QOS_PROFILE,
+    RECORDING_DB_BASENAME,
+    build_capture_command,
+    build_job_manifest,
     build_override_xml,
     build_recording_cfg_xml,
 )
 
 config = UmfRtiConfig()
+params = UmfRtiParams()  # domain 13, 60s
 
 
 # --- override.xml (the Cap::universal QoS profile) ---------------------------
@@ -76,3 +81,99 @@ def test_recording_cfg_sets_wildcard_partition():
 def test_recording_cfg_references_capture_profile():
     assert CAPTURE_QOS_PROFILE == "Cap::universal"
     assert f'base_name="{CAPTURE_QOS_PROFILE}"' in build_recording_cfg_xml(13, config)
+
+
+# --- capture command (the pod's shell script) --------------------------------
+
+
+def test_command_writes_both_xml_files():
+    script = build_capture_command(params, config)
+    assert "cat > /tmp/override.xml <<'OVERRIDE_EOF'" in script
+    assert "cat > /tmp/rec.xml <<'REC_EOF'" in script
+    # the actual XML is embedded, not just the heredoc wrapper
+    assert "JSON_SQLITE" in script
+    assert "<accept_unknown_peers>true</accept_unknown_peers>" in script
+
+
+def test_command_sets_public_address_to_pod_ip():
+    # Must be evaluated at runtime in the pod, hence $(hostname -i).
+    script = build_capture_command(params, config)
+    assert 'export DDS_RTWAN_SERVER_PUBLIC_ADDRESS="$(hostname -i)"' in script
+
+
+def test_command_exports_all_three_wan_ports():
+    # WithWAN QoS fails to parse if any of the three is undefined.
+    script = build_capture_command(params, config)
+    assert "export DDS_RTWAN_SERVER_PORT_LOGGER=32007" in script
+    assert "export DDS_RTWAN_SERVER_PORT_SOURCEPOD=32013" in script
+    assert "export DDS_RTWAN_SERVER_PORT_VIEWPOD=32015" in script
+
+
+def test_command_loads_both_qos_profiles():
+    script = build_capture_command(params, config)
+    assert (
+        'export NDDS_QOS_PROFILES="/opt/axone-tools/qos/'
+        'MDH-tools-RTIAdminConsole-WithWAN.xml;/tmp/override.xml"'
+    ) in script
+
+
+def test_command_records_for_requested_duration():
+    script = build_capture_command(params, config)
+    assert (
+        f"timeout {params.umf_duration_seconds} rtirecordingservice "
+        "-cfgFile /tmp/rec.xml -cfgName cap" in script
+    )
+
+
+def test_command_restores_mangled_filename():
+    script = build_capture_command(params, config)
+    assert f"mv {config.output_dir}/capture. {config.output_dir}/{RECORDING_DB_BASENAME}" in script
+
+
+def test_command_signals_done_then_idles_for_grace():
+    script = build_capture_command(params, config)
+    done = script.index(f"touch {config.output_dir}/.done")
+    idle = script.index(f"sleep {config.collect_grace_seconds}")
+    # .done must be written before (and the pod then holds for) the grace window.
+    assert done < idle
+
+
+def test_command_passes_custom_duration():
+    script = build_capture_command(UmfRtiParams(umf_duration_seconds=120), config)
+    assert "timeout 120 rtirecordingservice" in script
+
+
+# --- Job manifest ------------------------------------------------------------
+
+
+def test_job_manifest_identity_and_policies():
+    job = build_job_manifest(params, config)
+    assert job.metadata.name.startswith(config.job_prefix)
+    assert job.metadata.namespace == config.namespace
+    assert job.spec.backoff_limit == 0
+    assert job.spec.ttl_seconds_after_finished is not None
+    assert job.spec.template.spec.restart_policy == "Never"
+
+
+def test_job_manifest_container_runs_the_script():
+    job = build_job_manifest(params, config)
+    container = job.spec.template.spec.containers[0]
+    assert container.image == config.image
+    assert container.image_pull_policy == "Never"
+    assert container.command[:2] == ["/bin/sh", "-c"]
+    assert "rtirecordingservice" in container.command[2]
+
+
+def test_job_manifest_resources_fit_quota():
+    container = build_job_manifest(params, config).spec.template.spec.containers[0]
+    assert container.resources.requests == {"cpu": "100m", "memory": "256Mi"}
+    assert container.resources.limits == {"cpu": "500m", "memory": "1Gi"}
+
+
+def test_job_manifest_mounts_emptydir_at_output_dir():
+    spec = build_job_manifest(params, config).spec.template.spec
+    volume = spec.volumes[0]
+    assert volume.empty_dir is not None
+    mount = spec.containers[0].volume_mounts[0]
+    assert mount.name == volume.name
+    assert mount.mount_path == config.output_dir
