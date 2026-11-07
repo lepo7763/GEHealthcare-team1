@@ -4,6 +4,10 @@ The pure builders are tested directly; the capture lifecycle is tested with a
 mocked kubernetes client (the real thing is validated live on the cluster).
 """
 
+import base64
+import io
+import os
+import tarfile
 import xml.etree.ElementTree as ET
 from unittest.mock import MagicMock
 
@@ -212,12 +216,43 @@ def _mock_batch(job_name="umf-rti-capture-abcd1234"):
     return batch
 
 
+def _recording_tar_b64(files):
+    """A base64'd .tar.gz of {name: bytes}, like the pod's `tar | base64`."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name=f"./{name}")
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def _fake_stream_factory(tar_b64):
+    """Return the done marker for the probe, the tar archive for the copy."""
+
+    def fake_stream(_method, _pod, _ns, command=None, **kwargs):
+        script = command[-1] if command else ""
+        if "tar" in script:
+            return tar_b64
+        return "__UMF_DONE__\n"
+
+    return fake_stream
+
+
 def test_capture_happy_path(monkeypatch):
     core = MagicMock()
     core.list_namespaced_pod.return_value.items = [_mock_pod()]
     core.read_namespaced_pod.return_value = _mock_pod()
+    tar_b64 = _recording_tar_b64(
+        {
+            "capture.db": b"x" * 100,
+            "discovery.db": b"y" * 50,
+            "metadata.db": b"z" * 20,
+            ".done": b"",
+        }
+    )
     monkeypatch.setattr(
-        "app.umf_rti.service.stream", lambda *a, **k: "__UMF_DONE__\n"
+        "app.umf_rti.service.stream", _fake_stream_factory(tar_b64)
     )
     cfg = UmfRtiConfig(poll_interval_seconds=0)
 
@@ -227,6 +262,19 @@ def test_capture_happy_path(monkeypatch):
 
     assert result.domain_id == 13
     assert result.duration_seconds == 15
+    # Only the .db files are counted; the sentinel is ignored.
+    assert sorted(result.recording_files) == ["capture.db", "discovery.db", "metadata.db"]
+    assert result.user_data_file == "capture.db"
+    assert result.total_bytes == 170
+    # The pulled files really landed in the temp dir.
+    assert result.recording_dir and os.path.isdir(result.recording_dir)
+    assert os.path.exists(os.path.join(result.recording_dir, "capture.db"))
+    # recording_dir is excluded from the serialized summary.
+    assert "recording_dir" not in result.model_dump()
+
+    import shutil
+
+    shutil.rmtree(result.recording_dir, ignore_errors=True)
     _, kwargs = core.list_namespaced_pod.call_args
     assert kwargs["label_selector"] == "job-name=umf-rti-capture-abcd1234"
 

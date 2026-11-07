@@ -1,3 +1,8 @@
+import base64
+import io
+import os
+import tarfile
+import tempfile
 import time
 import uuid
 import zipfile
@@ -363,27 +368,87 @@ def _wait_for_done(
     )
 
 
+def _collect_recording(
+    core: client.CoreV1Api, pod_name: str, config: UmfRtiConfig
+) -> str:
+    """Copy the recording dir out of the pod into a local temp dir.
+
+    Streams `tar | base64` over exec (base64 keeps the bytes intact across the
+    exec websocket, which otherwise mangles binary), decodes, and extracts.
+    Returns the temp dir path; the caller is responsible for deleting it.
+    """
+    command = [
+        "sh",
+        "-c",
+        f"tar czf - -C {config.output_dir} . 2>/dev/null | base64",
+        # the '-' means stream the binary to stdout instead of a file
+    ]
+    try:
+        out = stream(
+            core.connect_get_namespaced_pod_exec,
+            pod_name,
+            config.namespace,
+            command=command,
+            container="capture",
+            stderr=True,
+            stdin=False,
+            stdout=True,
+            tty=False,
+            _preload_content=True,
+            _request_timeout=120,
+        )
+    except ApiException as e:
+        raise UmfRtiCaptureError(
+            f"Could not copy recording from pod {pod_name}: {e.reason or e}"
+        ) from e
+
+    try:
+        archive = base64.b64decode(out)
+    except (ValueError, TypeError) as e:
+        raise UmfRtiCaptureError(f"Recording archive was not valid base64: {e}") from e
+
+    recording_dir = tempfile.mkdtemp(prefix="umf-rti-")
+    try:
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
+            tar.extractall(recording_dir, filter="data")
+    except (tarfile.TarError, EOFError) as e:
+        raise UmfRtiCaptureError(f"Could not unpack recording archive: {e}") from e
+    return recording_dir
+
+
 def capture_umf_rti(
     core: client.CoreV1Api,
     batch: client.BatchV1Api,
     params: UmfRtiParams,
     config: UmfRtiConfig,
 ) -> UmfRtiCaptureResult:
-    """Run one capture: create the Job, wait for the pod, wait for recording.
+    """Run one capture: create the Job, wait for recording, pull the files out.
 
-    Currently covers the lifecycle up to the `.done` signal. 
+    The returned result carries `recording_dir` (a local temp dir); the caller
+    must delete it once the files have been zipped.
     """
     job = build_job_manifest(params, config)
     job_name = _create_job(batch, job, config)
     pod_name = _wait_for_pod_running(core, job_name, config)
     _wait_for_done(core, pod_name, params, config)
+    recording_dir = _collect_recording(core, pod_name, config)
 
-    # TODO: collect the recording from `pod_name:{output_dir}` via tar.
+    names = sorted(os.listdir(recording_dir))
+    db_files = [n for n in names if n.endswith(".db")]
+    total_bytes = sum(
+        os.path.getsize(os.path.join(recording_dir, n)) for n in db_files
+    )
+    user_data_file = RECORDING_DB_BASENAME if RECORDING_DB_BASENAME in names else None
+
     # TODO: parse the user-data DB for per-topic sample counts.
     # TODO: delete the Job (propagation=Foreground) in a finally.
     return UmfRtiCaptureResult(
         domain_id=params.umf_domain_id,
         duration_seconds=params.umf_duration_seconds,
+        recording_dir=recording_dir,
+        recording_files=db_files,
+        user_data_file=user_data_file,
+        total_bytes=total_bytes,
     )
 
 
