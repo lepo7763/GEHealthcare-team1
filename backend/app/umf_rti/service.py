@@ -7,7 +7,8 @@ import time
 import uuid
 import zipfile
 
-from app.log_collection.schemas import LogCollectionManifest
+from app.log_collection.progress import UMF_RTI_LABEL, UMF_RTI_SERVICE_ID
+from app.log_collection.schemas import CollectedService, LogCollectionManifest
 from kubernetes.client.exceptions import ApiException
 from kubernetes.stream import stream
 
@@ -135,8 +136,14 @@ _RTI_LICENSE_FILE = "/opt/rti_license.dat"
 # maps to its domain's configured port; only the viewpod one is actually bound
 # for a single-domain capture, but all must exist.
 _WAN_ROLE_DOMAIN = {"LOGGER": 7, "SOURCEPOD": 12, "VIEWPOD": 13}
-# Backstop that reaps the Job if the backend never deletes it; this just prevents orphans.
-# TODO: explicitly delete the Jobs
+# Capture script writes the recorder's exit code and combined output into these
+# files (under output_dir), so a failed recording is visible in the bundle.
+_RC_FILENAME = ".rc"
+_RECORDER_LOG_FILENAME = "recorder.log"
+# timeout returns 124 when it kills the (normally endless) recorder at the
+# limit, and 0 on a clean exit; any other code means the recorder died early.
+_RECORDER_OK_RCS = {0, 124}
+# Backstop that reaps the Job if the explicit delete is missed; prevents orphans.
 _JOB_TTL_SECONDS = 600
 
 
@@ -177,7 +184,14 @@ export DDS_RTWAN_SERVER_PUBLIC_ADDRESS="$(hostname -i)"
 {wan_port_exports}
 export NDDS_QOS_PROFILES="{_WITHWAN_QOS_PATH};/tmp/override.xml"
 
-timeout {params.umf_duration_seconds} rtirecordingservice -cfgFile /tmp/rec.xml -cfgName cap || true
+# Record for the requested duration. timeout kills the (otherwise endless)
+# recorder at the limit (rc=124, the normal case); capture the real exit code
+# and the recorder's output so an early failure is visible in the bundle.
+set +e
+timeout {params.umf_duration_seconds} rtirecordingservice -cfgFile /tmp/rec.xml -cfgName cap > {config.output_dir}/{_RECORDER_LOG_FILENAME} 2>&1
+rc=$?
+set -e
+echo "$rc" > {config.output_dir}/{_RC_FILENAME}
 
 # rtirecordingservice mangles the user-data filename ("{RECORDING_DB_BASENAME}" -> "capture."); restore it.
 mv {mangled_path} {db_path} 2>/dev/null || true
@@ -429,23 +443,61 @@ def capture_umf_rti(
     """
     job = build_job_manifest(params, config)
     job_name = _create_job(batch, job, config)
-    pod_name = _wait_for_pod_running(core, job_name, config)
-    _wait_for_done(core, pod_name, params, config)
-    recording_dir = _collect_recording(core, pod_name, config)
+    try:
+        pod_name = _wait_for_pod_running(core, job_name, config)
+        _wait_for_done(core, pod_name, params, config)
+        recording_dir = _collect_recording(core, pod_name, config)
+    finally:
+        _delete_job(batch, job_name, config)
 
     names = sorted(os.listdir(recording_dir))
     db_files = [n for n in names if n.endswith(".db")]
     user_data_file = RECORDING_DB_BASENAME if RECORDING_DB_BASENAME in names else None
 
+    warnings = []
+    rc = _read_recorder_rc(recording_dir)
+    if rc is not None and rc not in _RECORDER_OK_RCS:
+        warnings.append(
+            f"Recorder exited early with code {rc}; see {_RECORDER_LOG_FILENAME}."
+        )
+
     # TODO: parse the user-data DB for per-topic sample counts.
-    # TODO: delete the Job (propagation=Foreground) in a finally.
     return UmfRtiCaptureResult(
         domain_id=params.umf_domain_id,
         duration_seconds=params.umf_duration_seconds,
         recording_dir=recording_dir,
         recording_files=db_files,
         user_data_file=user_data_file,
+        warnings=warnings,
     )
+
+
+def _delete_job(batch: client.BatchV1Api, job_name: str, config: UmfRtiConfig) -> None:
+    """Best-effort delete of the Job and its pod (Foreground = pod goes first).
+
+    Swallows errors: the Job may already be gone, and ttlSecondsAfterFinished is
+    the backstop. Never masks the original exception when called from a finally.
+    """
+    try:
+        batch.delete_namespaced_job(
+            name=job_name,
+            namespace=config.namespace,
+            # Foreground = delete the pod before the Job, so no pod lingers
+            # holding the emptyDir / its 1Gi against the namespace quota.
+            propagation_policy="Foreground",
+        )
+    except ApiException:
+        pass
+
+
+def _read_recorder_rc(recording_dir: str) -> int | None:
+    """Read the recorder's exit code from the collected `.rc` file, if present."""
+    path = os.path.join(recording_dir, _RC_FILENAME)
+    try:
+        with open(path) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
 
 
 def write_artifacts(
@@ -465,4 +517,27 @@ def write_failure_artifacts(
     params: UmfRtiParams,
     config: UmfRtiConfig,
 ) -> None:
-    pass  # TODO
+    """Record a capture failure in the zip so the bundle is still valid/useful.
+
+    Used when the capture raised before producing a recording (e.g. the Job
+    couldn't start). Writes a short note and marks the service as errored in the
+    manifest.
+    """
+    note_path = "umf_rti/ERROR.txt"
+    note = (
+        "UMF-RTI capture failed.\n\n"
+        f"domain_id: {params.umf_domain_id}\n"
+        f"duration_seconds: {params.umf_duration_seconds}\n\n"
+        f"{message}\n"
+    )
+    zf.writestr(note_path, note)
+    manifest.collected_files.append(note_path)
+    manifest.services.append(
+        CollectedService(
+            id=UMF_RTI_SERVICE_ID,
+            label=UMF_RTI_LABEL,
+            status="error",
+            files=[note_path],
+            error=message,
+        )
+    )

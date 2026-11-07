@@ -7,11 +7,14 @@ mocked kubernetes client (the real thing is validated live on the cluster).
 import base64
 import io
 import os
+import shutil
 import tarfile
 import xml.etree.ElementTree as ET
+import zipfile
 from unittest.mock import MagicMock
 
 import pytest
+from app.log_collection.schemas import LogCollectionManifest
 from app.umf_rti.config import UmfRtiConfig
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import (
@@ -23,6 +26,7 @@ from app.umf_rti.service import (
     build_override_xml,
     build_recording_cfg_xml,
     capture_umf_rti,
+    write_failure_artifacts,
 )
 from kubernetes.client.exceptions import ApiException
 
@@ -255,10 +259,11 @@ def test_capture_happy_path(monkeypatch):
     )
     monkeypatch.setattr("app.umf_rti.service.stream", _fake_stream_factory(tar_b64))
     cfg = UmfRtiConfig(poll_interval_seconds=0)
+    batch = _mock_batch()
 
     result = capture_umf_rti(
         core,
-        _mock_batch(),
+        batch,
         UmfRtiParams(umf_domain_id=13, umf_duration_seconds=15),
         cfg,
     )
@@ -272,17 +277,64 @@ def test_capture_happy_path(monkeypatch):
         "metadata.db",
     ]
     assert result.user_data_file == "capture.db"
+    assert result.warnings == []  # clean rc -> no warning
     # The pulled files really landed in the temp dir.
     assert result.recording_dir and os.path.isdir(result.recording_dir)
     assert os.path.exists(os.path.join(result.recording_dir, "capture.db"))
     # recording_dir is excluded from the serialized summary.
     assert "recording_dir" not in result.model_dump()
-
-    import shutil
+    # The Job is cleaned up on success.
+    batch.delete_namespaced_job.assert_called_once()
 
     shutil.rmtree(result.recording_dir, ignore_errors=True)
     _, kwargs = core.list_namespaced_pod.call_args
     assert kwargs["label_selector"] == "job-name=umf-rti-capture-abcd1234"
+
+
+def test_capture_warns_on_recorder_error_rc(monkeypatch):
+    core = MagicMock()
+    core.list_namespaced_pod.return_value.items = [_mock_pod()]
+    core.read_namespaced_pod.return_value = _mock_pod()
+    tar_b64 = _recording_tar_b64(
+        {
+            "capture.db": b"x" * 10,
+            ".done": b"",
+            ".rc": b"1\n",  # recorder died early
+            "recorder.log": b"boom",
+        }
+    )
+    monkeypatch.setattr("app.umf_rti.service.stream", _fake_stream_factory(tar_b64))
+
+    result = capture_umf_rti(
+        core, _mock_batch(), params, UmfRtiConfig(poll_interval_seconds=0)
+    )
+
+    assert any("exited early" in w for w in result.warnings)
+    shutil.rmtree(result.recording_dir, ignore_errors=True)
+
+
+def test_capture_deletes_job_even_on_failure():
+    core = MagicMock()
+    core.list_namespaced_pod.return_value.items = []  # never starts -> raises
+    batch = _mock_batch()
+    cfg = UmfRtiConfig(startup_timeout_seconds=0, poll_interval_seconds=0)
+    with pytest.raises(UmfRtiCaptureError):
+        capture_umf_rti(core, batch, params, cfg)
+    batch.delete_namespaced_job.assert_called_once()
+
+
+def test_write_failure_artifacts_records_error():
+    manifest = LogCollectionManifest(timestamp_utc="t", total_logs_collected=0)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        write_failure_artifacts(zf, manifest, "Job could not start", params, config)
+
+    with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as zf:
+        assert "umf_rti/ERROR.txt" in zf.namelist()
+        assert "Job could not start" in zf.read("umf_rti/ERROR.txt").decode()
+    assert "umf_rti/ERROR.txt" in manifest.collected_files
+    assert manifest.services[0].status == "error"
+    assert manifest.services[0].error == "Job could not start"
 
 
 def test_capture_raises_when_job_create_fails():
