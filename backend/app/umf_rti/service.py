@@ -192,6 +192,11 @@ def build_job_manifest(params: UmfRtiParams, config: UmfRtiConfig) -> client.V1J
 
     container = client.V1Container(
         name="capture",
+        # TODO(multi-node): "Never" assumes the image is already on the node, which
+        # holds for the single-node lab but will ErrImageNeverPull on a multi-node
+        # cluster if the Job lands on a node without it. Make pull policy + pull
+        # secret (and maybe nodeSelector) config-driven. I'm waiting to see how
+        # Ethan handles this for NetShoot so we can have the same approach.
         image=config.image,
         image_pull_policy="Never",
         command=["/bin/sh", "-c", script],
