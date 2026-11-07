@@ -262,10 +262,9 @@ def test_capture_happy_path(monkeypatch):
 
     assert result.domain_id == 13
     assert result.duration_seconds == 15
-    # Only the .db files are counted; the sentinel is ignored.
+    # Only the .db files are collected; the sentinel is ignored.
     assert sorted(result.recording_files) == ["capture.db", "discovery.db", "metadata.db"]
     assert result.user_data_file == "capture.db"
-    assert result.total_bytes == 170
     # The pulled files really landed in the temp dir.
     assert result.recording_dir and os.path.isdir(result.recording_dir)
     assert os.path.exists(os.path.join(result.recording_dir, "capture.db"))

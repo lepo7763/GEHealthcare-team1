@@ -46,7 +46,6 @@ class UmfRtiCaptureResult(BaseModel):
         default=None,
         description="The user-data SQLite file holding the recorded samples",
     )
-    total_bytes: int = Field(default=0, description="Total size of the recording files")
 
     # Parsed from the user-data DB: rows per topic table, and the sum.
     topic_sample_counts: Dict[str, int] = Field(

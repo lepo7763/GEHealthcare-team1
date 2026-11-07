@@ -435,9 +435,6 @@ def capture_umf_rti(
 
     names = sorted(os.listdir(recording_dir))
     db_files = [n for n in names if n.endswith(".db")]
-    total_bytes = sum(
-        os.path.getsize(os.path.join(recording_dir, n)) for n in db_files
-    )
     user_data_file = RECORDING_DB_BASENAME if RECORDING_DB_BASENAME in names else None
 
     # TODO: parse the user-data DB for per-topic sample counts.
@@ -448,7 +445,6 @@ def capture_umf_rti(
         recording_dir=recording_dir,
         recording_files=db_files,
         user_data_file=user_data_file,
-        total_bytes=total_bytes,
     )
 
 
