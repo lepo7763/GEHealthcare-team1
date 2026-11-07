@@ -12,8 +12,6 @@ import xml.etree.ElementTree as ET
 from unittest.mock import MagicMock
 
 import pytest
-from kubernetes.client.exceptions import ApiException
-
 from app.umf_rti.config import UmfRtiConfig
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import (
@@ -26,6 +24,7 @@ from app.umf_rti.service import (
     build_recording_cfg_xml,
     capture_umf_rti,
 )
+from kubernetes.client.exceptions import ApiException
 
 config = UmfRtiConfig()
 params = UmfRtiParams()  # domain 13, 60s
@@ -141,7 +140,10 @@ def test_command_records_for_requested_duration():
 
 def test_command_restores_mangled_filename():
     script = build_capture_command(params, config)
-    assert f"mv {config.output_dir}/capture. {config.output_dir}/{RECORDING_DB_BASENAME}" in script
+    assert (
+        f"mv {config.output_dir}/capture. {config.output_dir}/{RECORDING_DB_BASENAME}"
+        in script
+    )
 
 
 def test_command_signals_done_then_idles_for_grace():
@@ -251,19 +253,24 @@ def test_capture_happy_path(monkeypatch):
             ".done": b"",
         }
     )
-    monkeypatch.setattr(
-        "app.umf_rti.service.stream", _fake_stream_factory(tar_b64)
-    )
+    monkeypatch.setattr("app.umf_rti.service.stream", _fake_stream_factory(tar_b64))
     cfg = UmfRtiConfig(poll_interval_seconds=0)
 
     result = capture_umf_rti(
-        core, _mock_batch(), UmfRtiParams(umf_domain_id=13, umf_duration_seconds=15), cfg
+        core,
+        _mock_batch(),
+        UmfRtiParams(umf_domain_id=13, umf_duration_seconds=15),
+        cfg,
     )
 
     assert result.domain_id == 13
     assert result.duration_seconds == 15
     # Only the .db files are collected; the sentinel is ignored.
-    assert sorted(result.recording_files) == ["capture.db", "discovery.db", "metadata.db"]
+    assert sorted(result.recording_files) == [
+        "capture.db",
+        "discovery.db",
+        "metadata.db",
+    ]
     assert result.user_data_file == "capture.db"
     # The pulled files really landed in the temp dir.
     assert result.recording_dir and os.path.isdir(result.recording_dir)
