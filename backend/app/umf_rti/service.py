@@ -1,6 +1,8 @@
 import base64
 import io
+import json
 import os
+import sqlite3
 import tarfile
 import tempfile
 import time
@@ -456,18 +458,33 @@ def capture_umf_rti(
 
     warnings = []
     rc = _read_recorder_rc(recording_dir)
-    if rc is not None and rc not in _RECORDER_OK_RCS:
+    rc_ok = rc is None or rc in _RECORDER_OK_RCS
+    if not rc_ok:
         warnings.append(
             f"Recorder exited early with code {rc}; see {_RECORDER_LOG_FILENAME}."
         )
 
-    # TODO: parse the user-data DB for per-topic sample counts.
+    topic_counts: dict[str, int] = {}
+    if user_data_file:
+        try:
+            topic_counts = _count_samples(os.path.join(recording_dir, user_data_file))
+        except sqlite3.Error as e:
+            warnings.append(f"Could not read sample counts from {user_data_file}: {e}")
+    else:
+        warnings.append("No user-data recording file was produced.")
+
+    total_samples = sum(topic_counts.values())
+    if rc_ok and total_samples == 0:
+        warnings.append("No samples captured (the source may be idle).")
+
     return UmfRtiCaptureResult(
         domain_id=params.umf_domain_id,
         duration_seconds=params.umf_duration_seconds,
         recording_dir=recording_dir,
         recording_files=db_files,
         user_data_file=user_data_file,
+        topic_sample_counts=topic_counts,
+        total_samples=total_samples,
         warnings=warnings,
     )
 
@@ -500,6 +517,58 @@ def _read_recorder_rc(recording_dir: str) -> int | None:
         return None
 
 
+def _count_samples(db_path: str) -> dict[str, int]:
+    """Count rows per topic in the JSON_SQLITE user-data DB.
+
+    Each DDS topic recorded becomes a table (e.g. `umfnum@13`); the row count is
+    the number of samples captured. Only non-empty, non-internal tables are
+    reported. Opens read-only so a half-written DB can't be altered.
+    """
+    counts: dict[str, int] = {}
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        tables = [
+            row[0]
+            for row in con.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            )
+        ]
+        for table in tables:
+            try:
+                n = con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+            except sqlite3.Error:
+                continue
+            if n:
+                counts[table] = n
+    finally:
+        con.close()
+    return counts
+
+
+def _safe_filename(name: str) -> str:
+    """Make a topic name safe to use as a filename (topics look like `umfnum@13`)."""
+    return "".join(c if (c.isalnum() or c in "@._-") else "_" for c in name)
+
+
+def _read_topic_samples(db_path: str, table: str) -> list:
+    """Read and JSON-parse the sample payloads of one topic table (read-only)."""
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        rows = con.execute(f'SELECT rti_json_sample FROM "{table}"').fetchall()
+    finally:
+        con.close()
+    samples = []
+    for (raw,) in rows:
+        if raw is None:
+            continue
+        try:
+            samples.append(json.loads(raw))
+        except (ValueError, TypeError):
+            samples.append({"_unparsed": raw})
+    return samples
+
+
 def write_artifacts(
     zf: zipfile.ZipFile,
     manifest: LogCollectionManifest,
@@ -507,7 +576,56 @@ def write_artifacts(
     params: UmfRtiParams,
     config: UmfRtiConfig,
 ) -> None:
-    pass  # TODO
+    """Add the recording, the recorder log, and summary.json to the zip.
+
+    The caller is responsible for deleting `result.recording_dir` afterwards.
+    """
+    added: list[str] = []
+
+    if result.recording_dir:
+        for name in result.recording_files:
+            src = os.path.join(result.recording_dir, name)
+            arcname = f"umf_rti/recording/{name}"
+            try:
+                zf.write(src, arcname)
+                added.append(arcname)
+            except OSError:
+                continue
+        # Include the recorder log (diagnostic value, esp. on a failed capture).
+        # Normally, this path should always exist. In the scenario it doesnt,
+        # the code shouldn't even get here, but I'm scared, so guard anyways.
+        log_src = os.path.join(result.recording_dir, _RECORDER_LOG_FILENAME)
+        if os.path.exists(log_src):
+            arcname = f"umf_rti/{_RECORDER_LOG_FILENAME}"
+            zf.write(log_src, arcname)
+            added.append(arcname)
+
+        # Readable per-topic JSON, so the recording can be read without SQLite.
+        if result.user_data_file:
+            db_path = os.path.join(result.recording_dir, result.user_data_file)
+            for topic in result.topic_sample_counts:
+                try:
+                    samples = _read_topic_samples(db_path, topic)
+                except sqlite3.Error:
+                    continue
+                arcname = f"umf_rti/json/{_safe_filename(topic)}.json"
+                zf.writestr(arcname, json.dumps(samples, indent=2))
+                added.append(arcname)
+
+    summary_name = "umf_rti/summary.json"
+    zf.writestr(summary_name, result.model_dump_json(indent=2))
+    added.append(summary_name)
+
+    manifest.collected_files.extend(added)
+    manifest.services.append(
+        CollectedService(
+            id=UMF_RTI_SERVICE_ID,
+            label=UMF_RTI_LABEL,
+            status="done",
+            files=added,
+            error=None,
+        )
+    )
 
 
 def write_failure_artifacts(

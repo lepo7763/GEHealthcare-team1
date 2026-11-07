@@ -6,9 +6,12 @@ mocked kubernetes client (the real thing is validated live on the cluster).
 
 import base64
 import io
+import json
 import os
 import shutil
+import sqlite3
 import tarfile
+import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 from unittest.mock import MagicMock
@@ -233,6 +236,27 @@ def _recording_tar_b64(files):
     return base64.b64encode(buf.getvalue()).decode()
 
 
+def _sqlite_db_bytes(topic_payloads):
+    """Build a JSON_SQLITE-shaped user-data DB: {topic: [payload_dict, ...]}."""
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    con = sqlite3.connect(path)
+    for table, payloads in topic_payloads.items():
+        con.execute(
+            f'CREATE TABLE "{table}" (SampleInfo_flag INTEGER, rti_json_sample TEXT)'
+        )
+        con.executemany(
+            f'INSERT INTO "{table}" (rti_json_sample) VALUES (?)',
+            [(json.dumps(p),) for p in payloads],
+        )
+    con.commit()
+    con.close()
+    with open(path, "rb") as f:
+        data = f.read()
+    os.remove(path)
+    return data
+
+
 def _fake_stream_factory(tar_b64):
     """Return the done marker for the probe, the tar archive for the copy."""
 
@@ -249,12 +273,19 @@ def test_capture_happy_path(monkeypatch):
     core = MagicMock()
     core.list_namespaced_pod.return_value.items = [_mock_pod()]
     core.read_namespaced_pod.return_value = _mock_pod()
+    capture_db = _sqlite_db_bytes(
+        {
+            "umfnum@13": [{"n": i} for i in range(3)],
+            "umfwav@13": [{"w": i} for i in range(5)],
+        }
+    )
     tar_b64 = _recording_tar_b64(
         {
-            "capture.db": b"x" * 100,
+            "capture.db": capture_db,
             "discovery.db": b"y" * 50,
             "metadata.db": b"z" * 20,
             ".done": b"",
+            ".rc": b"124\n",
         }
     )
     monkeypatch.setattr("app.umf_rti.service.stream", _fake_stream_factory(tar_b64))
@@ -277,7 +308,9 @@ def test_capture_happy_path(monkeypatch):
         "metadata.db",
     ]
     assert result.user_data_file == "capture.db"
-    assert result.warnings == []  # clean rc -> no warning
+    assert result.topic_sample_counts == {"umfnum@13": 3, "umfwav@13": 5}
+    assert result.total_samples == 8
+    assert result.warnings == []  # clean rc, samples present -> no warning
     # The pulled files really landed in the temp dir.
     assert result.recording_dir and os.path.isdir(result.recording_dir)
     assert os.path.exists(os.path.join(result.recording_dir, "capture.db"))
@@ -360,3 +393,85 @@ def test_capture_surfaces_image_pull_error():
     cfg = UmfRtiConfig(startup_timeout_seconds=5, poll_interval_seconds=0)
     with pytest.raises(UmfRtiCaptureError, match="ErrImageNeverPull"):
         capture_umf_rti(core, _mock_batch(), params, cfg)
+
+
+def test_capture_warns_when_no_samples(monkeypatch):
+    core = MagicMock()
+    core.list_namespaced_pod.return_value.items = [_mock_pod()]
+    core.read_namespaced_pod.return_value = _mock_pod()
+    # A valid DB whose only topic table is empty -> nothing captured.
+    tar_b64 = _recording_tar_b64(
+        {
+            "capture.db": _sqlite_db_bytes({"umfnum@13": []}),
+            ".done": b"",
+            ".rc": b"124\n",
+        }
+    )
+    monkeypatch.setattr("app.umf_rti.service.stream", _fake_stream_factory(tar_b64))
+
+    result = capture_umf_rti(
+        core, _mock_batch(), params, UmfRtiConfig(poll_interval_seconds=0)
+    )
+
+    assert result.total_samples == 0
+    assert any("idle" in w for w in result.warnings)
+    shutil.rmtree(result.recording_dir, ignore_errors=True)
+
+
+# --- write_artifacts (zip assembly) ------------------------------------------
+
+
+def _populated_recording_dir():
+    """A temp recording dir like capture_umf_rti produces, with a real DB."""
+    d = tempfile.mkdtemp(prefix="umf-rti-test-")
+    with open(os.path.join(d, "capture.db"), "wb") as f:
+        f.write(_sqlite_db_bytes({"umfnum@13": [{"n": 1}, {"n": 2}]}))
+    for name in ("discovery.db", "metadata.db"):
+        with open(os.path.join(d, name), "wb") as f:
+            f.write(b"\x00")
+    with open(os.path.join(d, "recorder.log"), "w") as f:
+        f.write("recorder output")
+    return d
+
+
+def test_write_artifacts_bundles_recording_json_and_summary():
+    recording_dir = _populated_recording_dir()
+    from app.umf_rti.schemas import UmfRtiCaptureResult
+
+    result = UmfRtiCaptureResult(
+        domain_id=13,
+        duration_seconds=15,
+        recording_dir=recording_dir,
+        recording_files=["capture.db", "discovery.db", "metadata.db"],
+        user_data_file="capture.db",
+        topic_sample_counts={"umfnum@13": 2},
+        total_samples=2,
+    )
+    manifest = LogCollectionManifest(timestamp_utc="t", total_logs_collected=0)
+    buf = io.BytesIO()
+    try:
+        with zipfile.ZipFile(buf, "w") as zf:
+            from app.umf_rti.service import write_artifacts
+
+            write_artifacts(zf, manifest, result, params, config)
+
+        with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as zf:
+            names = zf.namelist()
+            assert "umf_rti/recording/capture.db" in names
+            assert "umf_rti/recording/discovery.db" in names
+            assert "umf_rti/recording/metadata.db" in names
+            assert "umf_rti/recorder.log" in names
+            assert "umf_rti/json/umfnum@13.json" in names
+            assert "umf_rti/summary.json" in names
+            # per-topic JSON is readable and matches the payloads
+            samples = json.loads(zf.read("umf_rti/json/umfnum@13.json"))
+            assert samples == [{"n": 1}, {"n": 2}]
+            # summary.json is valid and excludes the local temp path
+            summary = json.loads(zf.read("umf_rti/summary.json"))
+            assert summary["total_samples"] == 2
+            assert "recording_dir" not in summary
+        # manifest records the service as done with the files it added
+        assert manifest.services[0].status == "done"
+        assert "umf_rti/json/umfnum@13.json" in manifest.collected_files
+    finally:
+        shutil.rmtree(recording_dir, ignore_errors=True)
