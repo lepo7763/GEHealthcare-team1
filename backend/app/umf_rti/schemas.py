@@ -6,7 +6,7 @@ describes what a recording produced and is serialized into the zip as
 `summary.json`.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -14,14 +14,12 @@ from pydantic import BaseModel, Field
 class UmfRtiParams(BaseModel):
     """What the end user picks: which domain to record and for how long."""
 
-    # le=232: DDS derives its UDP ports from the domain id, and above ~232 the
-    # computed port exceeds 65535. (WAN uses fixed ports, but discovery on the
-    # participant still needs valid ids)
-    umf_domain_id: int = Field(
+    # Only the domains the image's built-in Test certs authorize (7/12/13).
+    # Others (e.g. 32 trunk, 34 persistence) aren't in that cert scope and would
+    # fail the DDS security handshake, so they're rejected here (422), not offered.
+    umf_domain_id: Literal[7, 12, 13] = Field(
         default=13,
-        ge=0,
-        le=232,
-        description="DDS domain ID to record (13 = viewpod / live vitals)",
+        description="DDS domain to record (13 = viewpod / live vitals, 12 = sourcepod, 7 = logger)",
     )
     umf_duration_seconds: int = Field(
         default=60,

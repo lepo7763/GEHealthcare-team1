@@ -475,3 +475,19 @@ def test_write_artifacts_bundles_recording_json_and_summary():
         assert "umf_rti/json/umfnum@13.json" in manifest.collected_files
     finally:
         shutil.rmtree(recording_dir, ignore_errors=True)
+
+
+# --- domain restriction (only the cert-authorized 7/12/13) -------------------
+
+
+def test_params_accepts_authorized_domains():
+    for domain in (7, 12, 13):
+        assert UmfRtiParams(umf_domain_id=domain).umf_domain_id == domain
+
+
+def test_params_rejects_unauthorized_domains():
+    import pydantic
+
+    for domain in (0, 32, 34, 232):
+        with pytest.raises(pydantic.ValidationError):
+            UmfRtiParams(umf_domain_id=domain)

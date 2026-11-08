@@ -23,12 +23,12 @@ _DEFAULT_IMAGE = "us-artifactory.apps.ge-healthcare.net/docker-axone-all/axone-u
 
 # Friendly labels for the domain dropdown. Display gloss only (the stored/sent
 # value is always the plain number); 13 is first so it's the default option.
+# Only 7/12/13 — the domains the image's built-in Test certs authorize. Must
+# stay in sync with the allowed set in schemas.py (UmfRtiParams.umf_domain_id).
 _DEFAULT_DOMAIN_LABELS: Dict[int, str] = {
     13: "Viewer — live vitals (viewpod)",
     12: "Source — from Hub (sourcepod)",
     7: "Logger",
-    32: "Control plane (trunk)",
-    34: "Persistence bus (queue)",
 }
 
 
