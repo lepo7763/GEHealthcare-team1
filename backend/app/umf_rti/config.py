@@ -9,9 +9,10 @@ End users never see any of this — they pick a domain number + duration
 (see schemas.py). Everything here is hidden infrastructure config.
 """
 
+import json
 import os
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional
 
 # WAN server ports the router exposes per DDS domain (its DDS_RTWAN_SERVER_PORT_*).
 # We list all of them as peers so any WAN-facing domain matches without the user
@@ -19,6 +20,26 @@ from typing import Dict
 _DEFAULT_WAN_PORTS: Dict[int, int] = {7: 32007, 12: 32013, 13: 32015}
 
 _DEFAULT_IMAGE = "us-artifactory.apps.ge-healthcare.net/docker-axone-all/axone-umf-rtitools:router-certs"
+
+# Friendly labels for the domain dropdown. Display gloss only (the stored/sent
+# value is always the plain number); 13 is first so it's the default option.
+_DEFAULT_DOMAIN_LABELS: Dict[int, str] = {
+    13: "Viewer — live vitals (viewpod)",
+    12: "Source — from Hub (sourcepod)",
+    7: "Logger",
+    32: "Control plane (trunk)",
+    34: "Persistence bus (queue)",
+}
+
+
+def _parse_domain_labels(raw: Optional[str]) -> Dict[int, str]:
+    """Parse UMF_RTI_DOMAIN_LABELS (JSON object) or fall back to the defaults."""
+    if not raw:
+        return dict(_DEFAULT_DOMAIN_LABELS)
+    try:
+        return {int(k): str(v) for k, v in json.loads(raw).items()}
+    except (ValueError, TypeError, AttributeError):
+        return dict(_DEFAULT_DOMAIN_LABELS)
 
 
 @dataclass(frozen=True)
@@ -58,6 +79,11 @@ class UmfRtiConfig:
     poll_interval_seconds: float = 1.0
     startup_timeout_seconds: int = 30
 
+    # --- UI ---
+    domain_labels: Dict[int, str] = field(
+        default_factory=lambda: dict(_DEFAULT_DOMAIN_LABELS)
+    )
+
     def initial_peers(self) -> list[str]:
         """Discovery peers: the internal router locator + every WAN port.
 
@@ -89,4 +115,5 @@ def get_umf_rti_config() -> UmfRtiConfig:
         collect_grace_seconds=int(os.environ.get("UMF_RTI_COLLECT_GRACE", "300")),
         poll_interval_seconds=float(os.environ.get("UMF_RTI_POLL_INTERVAL", "1.0")),
         startup_timeout_seconds=int(os.environ.get("UMF_RTI_STARTUP_TIMEOUT", "30")),
+        domain_labels=_parse_domain_labels(os.environ.get("UMF_RTI_DOMAIN_LABELS")),
     )
