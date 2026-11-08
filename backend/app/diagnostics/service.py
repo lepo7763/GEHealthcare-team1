@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 import zipfile
 from datetime import datetime, timezone
@@ -192,6 +193,7 @@ def _collect_umf_rti(
     config: UmfRtiConfig,
     selected: List[str],
 ) -> None:
+    result = None
     try:
         check_prerequisites(core, config)
         result = capture_umf_rti(core, batch, params, config)
@@ -211,3 +213,7 @@ def _collect_umf_rti(
         message = f"UMF RTI collection failed: {e}"
         tracker.fail_service(UMF_RTI_SERVICE_ID, message)
         write_failure_artifacts(zf, manifest, message, params, config)
+    finally:
+        # The recording was pulled to a local temp dir; drop it now it's zipped.
+        if result is not None and result.recording_dir:
+            shutil.rmtree(result.recording_dir, ignore_errors=True)
