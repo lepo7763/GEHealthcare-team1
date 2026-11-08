@@ -573,8 +573,6 @@ def write_artifacts(
     zf: zipfile.ZipFile,
     manifest: LogCollectionManifest,
     result: UmfRtiCaptureResult,
-    params: UmfRtiParams,
-    config: UmfRtiConfig,
 ) -> None:
     """Add the recording, the recorder log, and summary.json to the zip.
 

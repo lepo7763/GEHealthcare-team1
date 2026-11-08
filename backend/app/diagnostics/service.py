@@ -197,7 +197,7 @@ def _collect_umf_rti(
     try:
         check_prerequisites(core, config)
         result = capture_umf_rti(core, batch, params, config)
-        write_artifacts(zf, manifest, result, params, config)
+        write_artifacts(zf, manifest, result)
     except UmfRtiPrerequisiteError as e:
         message = str(e)
         tracker.fail_service(UMF_RTI_SERVICE_ID, message)
