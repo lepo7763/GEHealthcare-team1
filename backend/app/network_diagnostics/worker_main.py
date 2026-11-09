@@ -3,6 +3,8 @@ import os
 import sys
 
 from app.network_diagnostics.capture_worker import run_capture_session
+from app.network_diagnostics.artifact_packaging import create_capture_archive
+from pathlib import Path
 
 
 def main() -> int:
@@ -27,6 +29,21 @@ def main() -> int:
         print(f"Invalid capture configuration: {exc}", file=sys.stderr)
         return 2
 
+    #package the completed session files
+    archive_path = str(Path(output_dir) / "job-artifacts.zip")
+
+    try:
+        create_capture_archive(
+            capture_dir = output_dir,
+            archive_path = archive_path,
+        )
+
+    except(OSError, ValueError, KeyError) as exc:
+        print(f"Artifact packaging failed: {exc}", file = sys.stderr)
+        return 1
+
+    print(f"Capture archive created: {archive_path}")
+    
     print(
         f"Capture session finished: "
         f"{len(manifest['captures'])} captures, "

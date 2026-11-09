@@ -1,4 +1,3 @@
-
 from app.network_diagnostics.job_service import build_netshoot_job
 from app.network_diagnostics.job_service import submit_netshoot_job
 from app.network_diagnostics.job_service import get_netshoot_job_status
@@ -9,6 +8,7 @@ from app.network_diagnostics.job_service import find_ready_sandbox_id
 from app.network_diagnostics.job_service import extract_sandbox_pid
 from app.network_diagnostics.job_service import resolve_pod_pid
 from app.network_diagnostics.job_service import CRI_SOCKET_PATH
+
 from app.network_diagnostics.capture_worker import load_capture_targets
 from app.network_diagnostics.capture_worker import resolve_capture_targets
 from app.network_diagnostics.capture_worker import build_tcpdump_command
@@ -17,7 +17,19 @@ from app.network_diagnostics.capture_worker import finish_capture_processes
 from app.network_diagnostics.capture_worker import inspect_pcap_file
 from app.network_diagnostics.capture_worker import summarize_capture_results
 from app.network_diagnostics.capture_worker import run_capture_session
+
 from app.network_diagnostics import worker_main
+
+from app.network_diagnostics.artifact_packaging import (
+    create_capture_archive,
+)
+
+from app.network_diagnostics.artifact_upload import (upload_capture_archive,)
+
+from app.network_diagnostics.artifact_receiver import artifact_router
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 from types import SimpleNamespace
@@ -26,6 +38,7 @@ from unittest.mock import Mock
 import json
 import pytest
 import struct
+import hashlib
 
 def test_build_netshoot_job():
     job = build_netshoot_job("test-node")
@@ -896,6 +909,11 @@ def test_worker_main_reads_environment(monkeypatch, tmp_path):
             "unavailable": [],
         }
 
+    def fake_archive(capture_dir, archive_path):
+        received["archive_source"] = capture_dir
+        received["archive_path"] = archive_path
+        return archive_path
+
     monkeypatch.setenv("CAPTURE_TARGETS_JSON", json.dumps(targets))
     monkeypatch.setenv("CAPTURE_DURATION_SECONDS", "60")
     monkeypatch.setenv("CAPTURE_OUTPUT_DIR", str(tmp_path))
@@ -906,12 +924,20 @@ def test_worker_main_reads_environment(monkeypatch, tmp_path):
         fake_session,
     )
 
+    monkeypatch.setattr(
+        worker_main,
+        "create_capture_archive",
+        fake_archive,
+    )
+
     result = worker_main.main()
 
     assert result == 0
     assert received["targets"] == targets
     assert received["duration"] == 60
     assert received["output_dir"] == str(tmp_path)
+    assert received["archive_source"] == str(tmp_path)
+    assert received["archive_path"] == str(tmp_path / "job-artifacts.zip")
 
 
 def test_worker_main_rejects_missing_targets(monkeypatch):
@@ -946,3 +972,274 @@ def test_build_netshoot_job_worker_configuration():
         for volume in pod.volumes
     )
     assert job.spec.active_deadline_seconds == 360
+
+
+def test_create_capture_archive(tmp_path):
+    import zipfile
+
+    capture_dir = tmp_path / "captures"
+    capture_dir.mkdir()
+
+    (capture_dir / "capture-1.pcap").write_bytes(b"example pcap")
+    (capture_dir / "capture-1.log").write_text("50 packets captured")
+    (capture_dir / "capture-2.log").write_text("capture failed")
+
+    manifest = {
+        "captures": [
+            {
+                "pcap_file": "capture-1.pcap",
+                "log_file": "capture-1.log",
+                "include_in_zip": True,
+            },
+            {
+                "pcap_file": None,
+                "log_file": "capture-2.log",
+                "include_in_zip": False,
+            },
+        ]
+    }
+
+    (capture_dir / "manifest.json").write_text(
+        json.dumps(manifest)
+    )
+
+    output = tmp_path / "job-artifacts.zip"
+
+    result = create_capture_archive(
+        str(capture_dir),
+        str(output),
+    )
+
+    assert result == str(output)
+    assert output.exists()
+
+    with zipfile.ZipFile(output) as archive:
+        assert set(archive.namelist()) == {
+            "manifest.json",
+            "capture-1.pcap",
+            "capture-1.log",
+            "capture-2.log",
+        }
+
+
+def test_create_capture_archive_missing_pcap(tmp_path):
+    capture_dir = tmp_path / "captures"
+    capture_dir.mkdir()
+
+    manifest = {
+        "captures": [
+            {
+                "pcap_file": "missing.pcap",
+                "log_file": "capture-1.log",
+                "include_in_zip": True,
+            }
+        ]
+    }
+
+    (capture_dir / "manifest.json").write_text(
+        json.dumps(manifest)
+    )
+    (capture_dir / "capture-1.log").write_text("capture log")
+
+    with pytest.raises(FileNotFoundError):
+        create_capture_archive(
+            str(capture_dir),
+            str(tmp_path / "job-artifacts.zip"),
+        )
+
+def test_worker_main_archive_failure(monkeypatch, tmp_path):
+    monkeypatch.setenv("CAPTURE_TARGETS_JSON", "[]")
+    monkeypatch.setenv("CAPTURE_DURATION_SECONDS", "60")
+    monkeypatch.setenv("CAPTURE_OUTPUT_DIR", str(tmp_path))
+
+    monkeypatch.setattr(
+        worker_main,
+        "run_capture_session",
+        lambda **kwargs: {"captures": [], "unavailable": []},
+    )
+
+    def fake_archive(capture_dir, archive_path):
+        raise OSError("Unable to write ZIP")
+
+    monkeypatch.setattr(
+        worker_main,
+        "create_capture_archive",
+        fake_archive,
+    )
+
+    assert worker_main.main() == 1
+
+
+def test_upload_capture_archive_success(tmp_path):
+    import hashlib
+    import io
+    import json
+
+    data = b"example archive contents"
+    archive = tmp_path / "job-artifacts.zip"
+    archive.write_bytes(data)
+
+    expected_hash = hashlib.sha256(data).hexdigest()
+
+    def fake_opener(request, timeout):
+        assert request.get_method() == "POST"
+        assert request.data.read() == data
+
+        return io.BytesIO(json.dumps({
+            "stored": True,
+            "sha256": expected_hash,
+        }).encode())
+
+    result = upload_capture_archive(
+        str(archive),
+        "https://example.test/api/network/artifacts",
+        "test-token",
+        opener=fake_opener,
+    )
+
+    assert result["stored"] is True
+    assert result["sha256"] == expected_hash
+
+
+def test_upload_capture_archive_retries(tmp_path):
+    import urllib.error
+
+    archive = tmp_path / "job-artifacts.zip"
+    archive.write_bytes(b"example archive")
+
+    attempts = []
+    delays = []
+
+    def failing_opener(request, timeout):
+        attempts.append(1)
+        raise urllib.error.URLError("Connection unavailable")
+
+    with pytest.raises(RuntimeError):
+        upload_capture_archive(
+            str(archive),
+            "https://example.test/api/network/artifacts",
+            "test-token",
+            max_attempts=3,
+            opener=failing_opener,
+            sleeper=delays.append,
+        )
+
+    assert len(attempts) == 3
+    assert delays == [1, 2]
+
+
+def test_receive_archive_and_duplicate(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "IOMT_ARTIFACT_UPLOAD_TOKEN", "test-token"
+    )
+    monkeypatch.setenv(
+        "IOMT_ARTIFACT_STORAGE_DIR", str(tmp_path)
+    )
+
+    app = FastAPI()
+    app.include_router(artifact_router)
+    client = TestClient(app)
+
+    archive_data = b"example archive data"
+    digest = hashlib.sha256(archive_data).hexdigest()
+
+    url = "/api/network/sessions/session-1/jobs/job-1/artifacts"
+    headers = {
+        "Authorization": "Bearer test-token",
+        "X-Archive-SHA256": digest,
+        "Content-Type": "application/zip",
+    }
+
+    first = client.post(
+        url, content=archive_data, headers=headers
+    )
+
+    assert first.status_code == 200
+    assert first.json()["stored"] is True
+    assert first.json()["duplicate"] is False
+
+    stored = tmp_path / "session-1" / "job-1.zip"
+    assert stored.read_bytes() == archive_data
+
+    # Simulate a retry after the acknowledgement was lost.
+    second = client.post(
+        url, content=archive_data, headers=headers
+    )
+
+    assert second.status_code == 200
+    assert second.json()["duplicate"] is True
+    assert stored.read_bytes() == archive_data
+
+
+
+def test_receive_archive_conflicting_upload(tmp_path, monkeypatch):
+    monkeypatch.setenv("IOMT_ARTIFACT_UPLOAD_TOKEN", "test-token")
+    monkeypatch.setenv("IOMT_ARTIFACT_STORAGE_DIR", str(tmp_path))
+
+    app = FastAPI()
+    app.include_router(artifact_router)
+    client = TestClient(app)
+
+    url = "/api/network/sessions/session-1/jobs/job-1/artifacts"
+
+    def upload(data):
+        return client.post(
+            url,
+            content=data,
+            headers={
+                "Authorization": "Bearer test-token",
+                "X-Archive-SHA256": hashlib.sha256(data).hexdigest(),
+            },
+        )
+
+    first = upload(b"original archive")
+    second = upload(b"different archive")
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+
+    stored = tmp_path / "session-1" / "job-1.zip"
+    assert stored.read_bytes() == b"original archive"
+
+
+def test_receive_archive_invalid_checksum(tmp_path, monkeypatch):
+    monkeypatch.setenv("IOMT_ARTIFACT_UPLOAD_TOKEN", "test-token")
+    monkeypatch.setenv("IOMT_ARTIFACT_STORAGE_DIR", str(tmp_path))
+
+    app = FastAPI()
+    app.include_router(artifact_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/network/sessions/session-1/jobs/job-1/artifacts",
+        content=b"corrupted archive",
+        headers={
+            "Authorization": "Bearer test-token",
+            "X-Archive-SHA256": "0" * 64,
+        },
+    )
+
+    assert response.status_code == 422
+    assert not (tmp_path / "session-1" / "job-1.zip").exists()
+
+
+def test_receive_archive_unauthorized(tmp_path, monkeypatch):
+    monkeypatch.setenv("IOMT_ARTIFACT_UPLOAD_TOKEN", "test-token")
+    monkeypatch.setenv("IOMT_ARTIFACT_STORAGE_DIR", str(tmp_path))
+
+    app = FastAPI()
+    app.include_router(artifact_router)
+    client = TestClient(app)
+
+    data = b"example archive"
+
+    response = client.post(
+        "/api/network/sessions/session-1/jobs/job-1/artifacts",
+        content=data,
+        headers={
+            "X-Archive-SHA256": hashlib.sha256(data).hexdigest(),
+        },
+    )
+
+    assert response.status_code == 401
+    assert not (tmp_path / "session-1" / "job-1.zip").exists()
