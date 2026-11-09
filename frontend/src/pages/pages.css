@@ -458,6 +458,63 @@ code {
   animation: eds-fade-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Configure step: one service per row, settings open under the service they belong to */
+.service-list-stacked {
+  grid-template-columns: 1fr;
+  grid-auto-rows: auto;
+}
+.service-list-stacked > li {
+  flex-direction: column;
+}
+/* The card and its settings read as one block: square off the joining corners */
+.service-list-stacked > li.has-settings > .service-option {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+/* Don't lift the card on hover when something is attached under it */
+.service-list-stacked > li.has-settings > .service-option:hover {
+  transform: none;
+}
+.service-list-stacked > li > .service-options {
+  margin-top: 0;
+  border-color: var(--eds-color-purple);
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.service-settings-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--eds-spacing-md);
+  width: 100%;
+  padding: var(--eds-spacing-sm) var(--eds-spacing-md);
+  border: 1px solid var(--eds-color-purple);
+  border-top: none;
+  border-radius: 0 0 var(--eds-radius-md) var(--eds-radius-md);
+  background: var(--eds-color-purple-faint);
+  font-family: var(--eds-font-family);
+  font-size: var(--eds-font-size-sm);
+  color: var(--eds-color-gray-700);
+  text-align: left;
+  cursor: pointer;
+}
+.service-settings-summary:hover {
+  background: var(--eds-color-purple-subtle);
+}
+.service-settings-summary.invalid {
+  color: var(--eds-color-error);
+  font-weight: var(--eds-font-weight-semibold);
+}
+.service-settings-edit {
+  color: var(--eds-color-purple);
+  font-weight: var(--eds-font-weight-semibold);
+  white-space: nowrap;
+}
+.service-options .action-row {
+  margin-top: var(--eds-spacing-md);
+}
+
 .service-options-title {
   margin: 0;
   font-size: var(--eds-font-size-md);
