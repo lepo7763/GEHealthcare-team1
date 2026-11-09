@@ -453,7 +453,7 @@ def test_write_artifacts_bundles_recording_json_and_summary():
         with zipfile.ZipFile(buf, "w") as zf:
             from app.umf_rti.service import write_artifacts
 
-            write_artifacts(zf, manifest, result, params, config)
+            write_artifacts(zf, manifest, result)
 
         with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as zf:
             names = zf.namelist()
