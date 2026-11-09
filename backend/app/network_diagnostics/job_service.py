@@ -1,14 +1,22 @@
 import json
+import subprocess
+
 from kubernetes import client
+from app.network_diagnostics.runtime_discovery import (
+    find_ready_sandbox_id,
+    extract_sandbox_pid,
+    resolve_pod_pid,
+)
 
 
 DIAGNOSTICS_NAMESPACE = "iomt-integration"
-NETSHOOT_IMAGE = "docker.io/nicolaka/netshoot:v0.16"
-
+NETSHOOT_IMAGE = "iomt-netshoot-worker:dev"
+CRI_SOCKET_PATH = "/run/k3s/containerd/containerd.sock"
 
 def build_netshoot_job(
     node_name: str,
     targets: list[dict] | None = None,
+    duration_seconds: int = 60
 ) -> client.V1Job:
     """
     Build a temporary Netshoot Job for a specific node.
@@ -18,13 +26,15 @@ def build_netshoot_job(
     if not node_name:
         raise ValueError("Node name is required")
 
+    if type(duration_seconds) is not int or not 1 <= duration_seconds <= 600:
+        raise ValueError("Capture duration must be 1-600 seconds")
+
     labels = {"app": "netshoot-diagnostics"}
 
     container = client.V1Container(
         name="netshoot",
         image=NETSHOOT_IMAGE,
         image_pull_policy="IfNotPresent",
-        command=["/bin/sh", "-c", "echo Netshoot Job started"],
         resources=client.V1ResourceRequirements(
             requests={"cpu": "100m", "memory": "128Mi"},
             limits={"cpu": "250m", "memory": "256Mi"},
@@ -33,7 +43,29 @@ def build_netshoot_job(
             client.V1EnvVar(
                 name="CAPTURE_TARGETS_JSON",
                 value=json.dumps(targets if targets is not None else []),
-            )
+            ),
+            client.V1EnvVar(
+                name="CAPTURE_DURATION_SECONDS",
+                value=str(duration_seconds),
+            ),
+            client.V1EnvVar(
+                name="CAPTURE_OUTPUT_DIR",
+                value="/captures",
+            ),
+        ],
+        security_context=client.V1SecurityContext(
+        privileged=True,
+        run_as_user=0,
+        ),
+        volume_mounts=[
+            client.V1VolumeMount(
+                name="containerd-socket",
+                mount_path=CRI_SOCKET_PATH,
+            ),
+            client.V1VolumeMount(
+                name="capture-data",
+                mount_path="/captures",
+            ),
         ],
     )
 
@@ -41,6 +73,21 @@ def build_netshoot_job(
         node_name=node_name,
         restart_policy="Never",
         containers=[container],
+        host_pid=True,
+        automount_service_account_token=False,
+        volumes=[
+            client.V1Volume(
+                name="containerd-socket",
+                host_path=client.V1HostPathVolumeSource(
+                    path=CRI_SOCKET_PATH,
+                    type="Socket",
+                ),
+            ),
+            client.V1Volume(
+                name="capture-data",
+                empty_dir=client.V1EmptyDirVolumeSource(),
+            ),
+        ],
     )
 
     return client.V1Job(
@@ -53,7 +100,7 @@ def build_netshoot_job(
         ),
         spec=client.V1JobSpec(
             backoff_limit=0,
-            active_deadline_seconds=120,
+            active_deadline_seconds=duration_seconds + 300,
             ttl_seconds_after_finished=600,
             template=client.V1PodTemplateSpec(
                 metadata=client.V1ObjectMeta(labels=labels),
@@ -238,42 +285,6 @@ def discover_targets_across_namespaces(
             targets_by_node.setdefault(node_name, []).extend(targets)
 
     return targets_by_node
-
-
-def find_ready_sandbox_id(
-    pod_uid: str,
-    sandboxes: list[dict],
-) -> str:
-    """
-    Find the active container runtime sandbox
-    corresponding to a Kubernetes Pod UID.
-    """
-
-    matches = []
-
-    for sandbox in sandboxes:
-        metadata = sandbox.get("metadata") or {}
-
-        if metadata.get("uid") != pod_uid:
-            continue
-
-        if sandbox.get("state") != "SANDBOX_READY":
-            continue
-
-        matches.append(sandbox)
-
-    if len(matches) != 1:
-        raise ValueError(
-            f"Expected one ready sandbox for pod {pod_uid}, "
-            f"found {len(matches)}"
-        )
-
-    sandbox_id = matches[0].get("id")
-
-    if not sandbox_id:
-        raise ValueError("Ready sandbox has no ID")
-
-    return sandbox_id
 
 
 
