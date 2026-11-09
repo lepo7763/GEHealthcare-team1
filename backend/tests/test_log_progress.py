@@ -115,7 +115,7 @@ def test_progress_reports_error_when_cluster_unreachable(mock_k8s):
     assert "boom" in body["message"]
 
 
-def test_zip_returns_409_while_a_collection_is_running():
+def test_zip_returns_409_while_a_collection_is_running(mock_k8s):
     tracker.begin(
         [ServiceProgress(id=CONTAINER_LOGS_SERVICE_ID, label="Container Log Collection")]
     )
