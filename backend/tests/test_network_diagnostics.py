@@ -49,6 +49,24 @@ def make_pod(name, status, ip):
         status=SimpleNamespace(phase=status, pod_ip=ip),
     )
 
+def make_capture_pod(name, node, ip, phase="Running"):
+    """Construct a pod with the metadata needed for capture discovery."""
+    return SimpleNamespace(
+        metadata=SimpleNamespace(
+            name=name,
+            uid=f"uid-{name}",
+            deletion_timestamp=None,
+        ),
+        spec=SimpleNamespace(
+            node_name=node,
+            host_network=False,
+        ),
+        status=SimpleNamespace(
+            phase=phase,
+            pod_ip=ip,
+        ),
+    )
+
 
 def test_list_pods_success(mock_k8s):
     mock_k8s.list_namespaced_pod.return_value = SimpleNamespace(
@@ -122,6 +140,87 @@ def test_list_pods_unavailable(mock_k8s):
     assert response.json()["detail"] == (
         "Unable to retrieve Kubernetes pods"
     )
+
+def test_capture_targets_success(mock_k8s):
+    mock_k8s.list_namespaced_pod.return_value = SimpleNamespace(
+        items=[
+            make_capture_pod(
+                "http-test-1", "node-1", "10.0.0.1"
+            ),
+            make_capture_pod(
+                "http-test-2", "node-2", "10.0.0.2"
+            ),
+            make_capture_pod(
+                "pending-pod", "node-1", "10.0.0.3",
+                phase="Pending",
+            ),
+        ]
+    )
+
+    response = TestClient(app).get(
+        "/api/network/capture-targets"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "namespace": "iomt-dev-1",
+        "targets_by_node": {
+            "node-1": [
+                {
+                    "name": "http-test-1",
+                    "namespace": "iomt-dev-1",
+                    "uid": "uid-http-test-1",
+                    "ip": "10.0.0.1",
+                }
+            ],
+            "node-2": [
+                {
+                    "name": "http-test-2",
+                    "namespace": "iomt-dev-1",
+                    "uid": "uid-http-test-2",
+                    "ip": "10.0.0.2",
+                }
+            ],
+        },
+    }
+
+    mock_k8s.list_namespaced_pod.assert_called_once_with(
+        namespace="iomt-dev-1",
+        _request_timeout=10,
+    )
+
+
+def test_capture_targets_forbidden(mock_k8s):
+    mock_k8s.list_namespaced_pod.side_effect = ApiException(
+        status=403,
+        reason="Forbidden",
+    )
+
+    response = TestClient(app).get(
+        "/api/network/capture-targets"
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == (
+        "Not authorized to discover capture targets"
+    )
+
+
+def test_capture_targets_unavailable(mock_k8s):
+    mock_k8s.list_namespaced_pod.side_effect = ApiException(
+        status=503,
+        reason="Service Unavailable",
+    )
+
+    response = TestClient(app).get(
+        "/api/network/capture-targets"
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Unable to discover capture targets"
+    )
+
 
 def test_capture_request_default_duration():
     request = CaptureRequest(pod_name="http-test")
@@ -232,6 +331,12 @@ def test_capture_validation_endpoint(mock_k8s):
         "status": "Running",
         "ip": "10.0.0.5"
     }
+
+    mock_k8s.read_namespaced_pod.assert_called_once_with(
+        name="http-test",
+        namespace="iomt-dev-1",
+        _request_timeout=10,
+    )
 
 @pytest.mark.parametrize("request_body", [
     {"pod_name": "http-test", "duration_seconds": 120},
