@@ -21,7 +21,9 @@ EXAMPLES_PER_CATEGORY = 3
 KEY = r"[\"']?\s*[:=]\s*[\"']?"
 PATTERNS = [
     ("ssn", "Social Security number", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
-    ("email", "Email address", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
+    # The last part of the domain must be letters (".com", ".org"). Without that, Go module
+    # versions like "k8s.io/client-go@v0.34.2" matched: 14,655 false hits on the lab cluster.
+    ("email", "Email address", re.compile(r"\b[\w.+-]+@(?:[\w-]+\.)+[A-Za-z]{2,}\b")),
     ("phone", "Phone number", re.compile(r"(?<![\d-])\(?\d{3}\)?[-. ]\d{3}[-.]\d{4}\b")),
     (
         "mrn",
