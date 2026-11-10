@@ -18,6 +18,22 @@ RULES = [
         ),
     ),
     (
+        # CoreDNS failing to forward lookups. Seen on the lab cluster as tens of thousands of
+        # "[ERROR] plugin/errors ... read udp ...->8.8.8.8:53: i/o timeout" lines. Must come
+        # before the generic timeout and connection rules, which these lines also match.
+        re.compile(
+            r"plugin/errors|udp [^ ]*:53\b|:53: i/o timeout|no such host|server misbehaving",
+            re.I,
+        ),
+        Recommendation(
+            title="DNS lookups failing",
+            action="CoreDNS can't reach the DNS server it forwards to. On an offline hospital or "
+            "lab network, public resolvers like 8.8.8.8 are unreachable. Check the forward "
+            "setting in the CoreDNS config (kubectl -n kube-system get configmap coredns -o yaml); "
+            "if services only need in-cluster names, this is noise rather than the root cause.",
+        ),
+    ),
+    (
         re.compile(r"no space left on device|disk ?pressure", re.I),
         Recommendation(
             title="Disk full",

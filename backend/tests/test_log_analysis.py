@@ -424,3 +424,49 @@ def test_privacy_scan_rejects_non_zip():
     response = scan(b"not a zip")
 
     assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 7. Found by running on a real zip from the lab cluster
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "[ERROR] plugin/errors: 2 axone-router-2. A: read udp 100.64.64.64:49424->8.8.8.8:53: i/o timeout",
+        "[ERROR] plugin/errors: 2 axone-router-2. A: dial udp [2001:4860:4860::8888]:53: socket: address family not supported by protocol",
+        "ERROR lookup axone-registry on 10.43.0.10:53: no such host",
+    ],
+)
+def test_dns_failures_get_dns_action_not_generic_timeout(line):
+    """CoreDNS lines also say 'timeout'; the DNS rule must win over the generic timeout rule."""
+    from app.log_analysis.recommendations import recommend_action
+
+    assert recommend_action(line).title == "DNS lookups failing"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "go.opentelemetry.io/otel@v1.28.0/sdk.go:91",
+        "k8s.io/client-go@v0.34.2/tools/cache/reflector.go:561: watch closed",
+        "image pulled: registry/axone@sha256",
+    ],
+)
+def test_version_strings_are_not_emails(line):
+    """Go module paths like client-go@v0.34.2 gave 14,655 false email hits on the lab cluster."""
+    report = scan(make_zip({"logs/kube-system/k3s/k3s.log": line + "\n"})).json()
+
+    assert report["total_findings"] == 0
+
+
+def test_real_emails_still_found_after_tightening():
+    data = make_zip(
+        {"logs/ns/pod/app.log": "notify icu.charge@hospital.example and j.doe@med.wisc.edu\n"}
+    )
+
+    report = scan(data).json()
+
+    assert report["categories"][0]["category"] == "email"
+    assert report["categories"][0]["count"] == 2
