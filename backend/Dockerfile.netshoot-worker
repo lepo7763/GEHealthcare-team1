@@ -1,0 +1,32 @@
+
+FROM docker.io/nicolaka/netshoot:v0.16
+
+# Python runs our capture worker.
+RUN apk add --no-cache python3
+
+# Match the CRI client version to our lab's Kubernetes 1.34.
+ARG TARGETARCH
+
+RUN set -eux; \
+    case "$TARGETARCH" in \
+    amd64) SHA="a8ff2a3edb37a98daf3aba7c3b284fe0aa5bff24166d896ab9ef64c8913c9f51" ;; \
+    arm64) SHA="c31d252e203df5f4cf37f314bd3092eb79087e791631c1e607087c74b6d0423f" ;; \
+    *) echo "Unsupported architecture: $TARGETARCH"; exit 1 ;; \
+    esac; \
+    curl -fsSL \
+    "https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.34.0/crictl-v1.34.0-linux-${TARGETARCH}.tar.gz" \
+    -o /tmp/crictl.tar.gz; \
+    echo "$SHA  /tmp/crictl.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/crictl.tar.gz -C /usr/local/bin crictl; \
+    rm /tmp/crictl.tar.gz
+
+WORKDIR /opt/iomt
+
+# Include our worker and runtime discovery Python modules.
+COPY app ./app
+
+ENV PYTHONPATH=/opt/iomt \
+    PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["python3", "-m", "app.network_diagnostics.worker_main"]
+CMD []

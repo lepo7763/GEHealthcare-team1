@@ -10,17 +10,9 @@ const Step3Review = ({
 }) => {
   const serviceSummary =
     selectedServices.length > 0
-      ? selectedServices
-          .map((service) =>
-            service.id === 'umf-rti'
-              ? `UMF RTI — domain ${String(umfDomain).trim()}, ${String(umfDuration).trim()} s`
-              : service.name,
-          )
-          .join(', ')
+      ? selectedServices.map((service) => service.name).join(', ')
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
-  const tsharkSelected = selectedServices.some((service) => service.id === 'wireshark-tshark');
-  const domainIsTwelve = umfSelected && Number(umfDomain) === 12;
 
   return (
     <section className="section-narrow">
@@ -58,35 +50,16 @@ const Step3Review = ({
               <div>
                 <div className="check-title">UMF RTI capture</div>
                 <div className="check-detail">
-                  Discovery and QoS only; no sample values are read. The capture runs
-                  in a short-lived Kubernetes Job and is deleted afterwards.
+                  Domain {umfDomain} · {String(umfDuration).trim()} s
                 </div>
-              </div>
-            </li>
-          )}
-          {tsharkSelected && (
-            <li>
-              <div>
-                <div className="check-title">Wireshark / tshark live capture</div>
                 <div className="check-detail">
-                  Network traffic capture via tshark-test container on eth0 to inspect TCP resets,
-                  retransmissions, and DNS failures.
+                  Captures live RTI telemetry in a short-lived Kubernetes Job (deleted
+                  afterwards) and bundles it into the diagnostic zip.
                 </div>
               </div>
             </li>
           )}
         </ul>
-
-        {domainIsTwelve && (
-          <div className="alert alert-warning">
-            <strong>Domain 12 may be denied by RTI security</strong>
-            <span>
-              The commissioning identity in this lab is permitted on domains 2 and 32.
-              Domain 12 needs a dedicated UMF RTI identity; otherwise the capture will
-              fail with an actionable security error.
-            </span>
-          </div>
-        )}
 
         <div className="action-row">
           <button className="btn btn-secondary" onClick={onBack}>

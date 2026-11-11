@@ -1,60 +1,74 @@
-"""Pydantic models for UMF RTI capture requests and results."""
+"""Request params and result model for a UMF-RTI capture.
 
-from __future__ import annotations
+The end user chooses only a domain and a duration (`UmfRtiParams`); everything
+else about how the capture runs lives in config.py. `UmfRtiCaptureResult`
+describes what a recording produced and is serialized into the zip as
+`summary.json`.
+"""
 
+from enum import IntEnum
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 
-class UmfRtiParams(BaseModel):
-    """Query parameters accepted by the diagnostics download endpoint."""
+class UmfDomain(IntEnum):
+    """Domains the image's built-in Test certs authorize (7/12/13).
 
-    umf_domain_id: int = Field(
-        default=32,
-        ge=0,
-        le=100,
-        description=(
-            "UMF DDS domain. 32 is the live platform UMF domain in the lab; "
-            "12 is selectable but requires an identity permitted on that domain."
-        ),
+    Others (e.g. 32 trunk, 34 persistence) aren't in that cert scope and would
+    fail the DDS security handshake, so they're rejected (422), not offered.
+    An IntEnum (not Literal[7, 12, 13]) so the query-string value "13" is
+    accepted. Must stay in sync with the domain labels in config.py.
+    """
+
+    VIEWER = 13
+    SOURCE = 12
+    LOGGER = 7
+
+
+class UmfRtiParams(BaseModel):
+    """What the end user picks: which domain to record and for how long."""
+
+    umf_domain_id: UmfDomain = Field(
+        default=UmfDomain.VIEWER,
+        description="DDS domain to record (13 = viewpod / live vitals, 12 = sourcepod, 7 = logger)",
     )
     umf_duration_seconds: int = Field(
-        default=120,
-        ge=30,
+        default=60,
+        ge=10,
         le=600,
-        description="How long the UMF RTI job listens for discovery data.",
-    )
-    umf_max_bytes: int = Field(
-        default=20 * 1024 * 1024,
-        ge=1024,
-        le=100 * 1024 * 1024,
-        description="Maximum collector log bytes fetched from the pod.",
+        description="How long to record, in seconds",
     )
 
 
 class UmfRtiCaptureResult(BaseModel):
-    """Everything the orchestrator needs to write UMF RTI artifacts."""
+    """Outcome of a capture run; serialized into the zip as summary.json."""
 
     domain_id: int
     duration_seconds: int
-    router_peer: str
-    router_port: int
-    namespace: str
-    job_name: str
-    pod_name: Optional[str] = None
-    node_name: Optional[str] = None
-    image: str
-    status: str = "unknown"  # succeeded | failed | timeout
-    exit_code: Optional[int] = None
-    started_at_utc: str
-    finished_at_utc: str
-    log_text: str = ""
-    log_bytes: int = 0
-    truncated: bool = False
-    error: Optional[str] = None
+
+    # The recording is a set of SQLite files (user-data + discovery.db + metadata.db).
+    recording_files: List[str] = Field(
+        default_factory=list,
+        description="Recording files bundled into the zip",
+    )
+    user_data_file: Optional[str] = Field(
+        default=None,
+        description="The user-data SQLite file holding the recorded samples",
+    )
+
+    # Parsed from the user-data DB: rows per topic table, and the sum.
+    topic_sample_counts: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Samples captured per topic",
+    )
+    total_samples: int = Field(
+        default=0, description="Total samples captured across all topics"
+    )
+
+    # Non-fatal notes, e.g. "no samples captured (source may be idle)".
     warnings: List[str] = Field(default_factory=list)
-    counts: Dict[str, int] = Field(default_factory=dict)
-    collector_version: Optional[str] = None
-    rti_version: Optional[str] = None
-    job_deleted: bool = False
+
+    # Local temp dir holding the pulled recording files, for the zip step to read.
+    # Excluded from serialization (not part of summary.json); the caller deletes it.
+    recording_dir: Optional[str] = Field(default=None, exclude=True)

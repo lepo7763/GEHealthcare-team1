@@ -37,6 +37,11 @@ dist-ssr
 __pycache__
 .venv
 .pytest_cache
+# Frontend generated files
+/frontend/node_modules/
+/frontend/dist/
+/frontend/public/demo/*.zip
+/frontend/public/demo/*.pcap
 
 # Local scratch / generated collector inputs
 .tmp/
