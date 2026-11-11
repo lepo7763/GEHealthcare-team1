@@ -34,7 +34,7 @@ const Step2Configure = ({
   const settingsPanels = {
     'umf-rti': {
       isValid: domainValid && durationValid,
-      summary: `Domain ${umfDomain}${domainOption ? ` (${domainOption.label})` : ''} · ${String(umfDuration).trim() || '—'} s`,
+      summary: `Domain ${umfDomain}${domainOption ? ` · ${domainOption.label}` : ''} · ${String(umfDuration).trim() || '—'} s`,
       fields: (
         <>
           <div className="form-row">
@@ -47,7 +47,7 @@ const Step2Configure = ({
               >
                 {umfDomainOptions.map((option) => (
                   <option key={option.domain} value={option.domain}>
-                    {option.domain} — {option.label}
+                    {option.domain} · {option.label}
                   </option>
                 ))}
               </select>
