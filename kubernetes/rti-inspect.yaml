@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rti-inspect
+  namespace: iomt-integration
+spec:
+  restartPolicy: Never
+  containers:
+    - name: inspect
+      image: docker.io/library/axone-umf-rtitools:temp
+      imagePullPolicy: IfNotPresent
+      command: ["sleep", "infinity"]
+      volumeMounts:
+        - name: axone-router-certs
+          mountPath: /opt/axone-tools/sdds
+          readOnly: true
+  volumes:
+    - name: axone-router-certs
+      secret:
+        secretName: umf-router-sdds
+        defaultMode: 0400
+

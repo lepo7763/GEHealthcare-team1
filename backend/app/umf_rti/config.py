@@ -1,144 +1,119 @@
-"""Configuration for UMF RTI discovery captures.
+"""Configuration for the UMF-RTI capture feature.
 
-Everything that identifies platform resources is environment-driven so the
-same backend image can run against a lab cluster or a customer installation.
-The defaults match the lab platform described in kubernetes/README.md.
+Deployment-level constants for running an `rtirecordingservice` capture Job
+against the Axone router. Defaults are the validated test-cluster values
+(see backend/app/umf_rti/PLAN.md); every scalar is env-overridable so a real
+cluster only needs different env, not code changes.
+
+End users never see any of this — they pick a domain number + duration
+(see schemas.py). Everything here is hidden infrastructure config.
 """
 
-from __future__ import annotations
-
+import json
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, Optional
 
-DEFAULT_UMF_RTI_IMAGE = (
-    "192.168.0.3:30003/spectro-images/"
-    "us-artifactory.apps.ge-healthcare.net/docker-axone-all/"
-    "axone-umfcompatibilitycheck:uw-badger-latest"
-)
+# WAN server ports the router exposes per DDS domain (its DDS_RTWAN_SERVER_PORT_*).
+# We list all of them as peers so any WAN-facing domain matches without the user
+# needing to know which transport/port a given domain uses.
+_DEFAULT_WAN_PORTS: Dict[int, int] = {7: 32007, 12: 32013, 13: 32015}
+
+_DEFAULT_IMAGE = "us-artifactory.apps.ge-healthcare.net/docker-axone-all/axone-umf-rtitools:router-certs"
+
+# Friendly labels for the domain dropdown. Display gloss only (the stored/sent
+# value is always the plain number); 13 is first so it's the default option.
+# Only 7/12/13 — the domains the image's built-in Test certs authorize. Must
+# stay in sync with the allowed set in schemas.py (UmfRtiParams.umf_domain_id).
+_DEFAULT_DOMAIN_LABELS: Dict[int, str] = {
+    13: "Viewer — live vitals (viewpod)",
+    12: "Source — from Hub (sourcepod)",
+    7: "Logger",
+}
 
 
-def _env(name: str, default: str) -> str:
-    value = os.getenv(name)
-    return default if value is None or value.strip() == "" else value.strip()
-
-
-def _env_int(name: str, default: int, minimum: int = 1) -> int:
-    raw = os.getenv(name)
-    if raw is None or raw.strip() == "":
-        return default
+def _parse_domain_labels(raw: Optional[str]) -> Dict[int, str]:
+    """Parse UMF_RTI_DOMAIN_LABELS (JSON object) or fall back to the defaults."""
+    if not raw:
+        return dict(_DEFAULT_DOMAIN_LABELS)
     try:
-        value = int(raw)
-    except ValueError as exc:
-        raise ValueError(f"{name} must be an integer, got {raw!r}") from exc
-    if value < minimum:
-        raise ValueError(f"{name} must be >= {minimum}, got {value}")
-    return value
-
-
-def _env_list(name: str, default: List[str]) -> List[str]:
-    raw = os.getenv(name)
-    if raw is None:
-        return list(default)
-    return [item.strip() for item in raw.split(",") if item.strip()]
+        return {int(k): str(v) for k, v in json.loads(raw).items()}
+    except (ValueError, TypeError, AttributeError):
+        return dict(_DEFAULT_DOMAIN_LABELS)
 
 
 @dataclass(frozen=True)
 class UmfRtiConfig:
-    """Platform resources and Job settings for one UMF RTI capture."""
+    # --- Kubernetes placement ---
+    namespace: str = "iomt-integration"  # where the capture Job runs
+    router_namespace: str = "pm"  # where axone-router lives
+    image: str = (
+        _DEFAULT_IMAGE  # rtitools image, present on the node (pull policy Never)
+    )
+    job_prefix: str = "umf-rti-capture"  # k8s Job name prefix (+ uuid)
 
-    image: str = DEFAULT_UMF_RTI_IMAGE
-    namespace: str = "iomt-integration"
-    image_pull_secrets: List[str] = field(
-        default_factory=lambda: ["192-168-0-3-30003-pull-secret"]
+    # --- DDS identity / transport ---
+    # The image ships Test certs authorized for domains 7/12/13. no other secret needed.
+    sdds_home: str = "/opt/axone-tools/sdds"
+    router_pod_peer: str = (
+        "udpv4://100.64.64.200"  # internal plain-UDP locator (router pod IP)
+    )
+    wan_public: str = "192.168.0.3"  # router's DDS_RTWAN_SERVER_PUBLIC_ADDRESS
+    wan_ports: Dict[int, int] = field(default_factory=lambda: dict(_DEFAULT_WAN_PORTS))
+    max_message_size: int = 1400  # router's WAN message_size_max
+
+    # --- recorder tuning (both MANDATORY for umfnum/umfwav) ---
+    # S35c_sapphire TypeObjects exceed the 300000 default -> recorder records nothing
+    # for the clinical topics without this. (-1/UNLIMITED is rejected; use a number.)
+    type_object_max_serialized_length: int = 33554432
+    # Viewpod umfnum/umfwav writers are in a NAMED partition; a wildcard subscriber
+    # partition is required or the reader silently never matches (no error logged).
+    partition: str = "*"
+    reader_history_depth: int = 64
+
+    # --- capture lifecycle ---
+    output_dir: str = "/out"  # recording dir inside the Job pod
+    collect_grace_seconds: int = (
+        300  # pod holds after recording so the backend can pull files
+    )
+    poll_interval_seconds: float = 1.0
+    startup_timeout_seconds: int = 30
+
+    # --- UI ---
+    domain_labels: Dict[int, str] = field(
+        default_factory=lambda: dict(_DEFAULT_DOMAIN_LABELS)
     )
 
-    qos_configmap: str = "umf-rti-qos"
-    qos_key: str = "CommissioningQoS.xml"
-    sdds_secret: str = "umf-rti-sdds"
-    collector_secret: str = "umf-rti-collector"
-    collector_key: str = "umf-rti-collector.jar"
-    license_secret: str = "umf-rti-license"
-    license_key: str = "rti_license.dat"
+    def initial_peers(self) -> list[str]:
+        """Discovery peers: the internal router locator + every WAN port.
 
-    router_namespace: str = "pm"
-    router_service: str = "axone-router-1"
-    discovery_peers_override: Optional[str] = None
-    dds_interfaces: str = "eth0"
-
-    cpu_request: str = "100m"
-    memory_request: str = "256Mi"
-    cpu_limit: str = "1"
-    memory_limit: str = "1Gi"
-
-    job_ttl_seconds: int = 600
-    wait_timeout_seconds: int = 360
-    poll_interval_seconds: float = 1.0
-    job_active_deadline_grace_seconds: int = 300
-    pod_creation_timeout_seconds: int = 60
-
-    collector_container_name: str = "umf-rti-collector"
-    collector_version: str = "1.0.0"
-    collector_max_records: int = 5000
-
-    @property
-    def service_label_selector(self) -> str:
-        return f"iomt-analysis-tool/service=umf-rti"
-
-    @property
-    def qos_mount_path(self) -> str:
-        return "/opt/axone-tools/qos"
-
-    @property
-    def sdds_mount_path(self) -> str:
-        return "/opt/axone-tools/sdds"
-
-    @property
-    def license_mount_path(self) -> str:
-        return "/opt/axone-tools/license"
-
-    @property
-    def collector_mount_path(self) -> str:
-        return "/opt/umf-rti"
+        Both transports are enabled on the capture participant and all peers
+        are listed, so DDS auto-selects whichever matches the requested domain.
+        """
+        return [self.router_pod_peer] + [
+            f"udpv4_wan://{self.wan_public}:{port}" for port in self.wan_ports.values()
+        ]
 
 
 def get_umf_rti_config() -> UmfRtiConfig:
-    """Build the config from environment variables (fresh for each request)."""
-    overrides = _env_list("IOMT_UMF_RTI_IMAGE_PULL_SECRETS", ["192-168-0-3-30003-pull-secret"])
-    poll_interval = float(_env("IOMT_UMF_RTI_POLL_INTERVAL_SECONDS", "1"))
-    if poll_interval <= 0:
-        raise ValueError("IOMT_UMF_RTI_POLL_INTERVAL_SECONDS must be positive")
+    """Build config from environment, defaulting to validated test-cluster values."""
     return UmfRtiConfig(
-        image=_env("IOMT_UMF_RTI_IMAGE", DEFAULT_UMF_RTI_IMAGE),
-        namespace=_env("IOMT_UMF_RTI_NAMESPACE", "iomt-integration"),
-        image_pull_secrets=overrides,
-        qos_configmap=_env("IOMT_UMF_RTI_QOS_CONFIGMAP", "umf-rti-qos"),
-        qos_key=_env("IOMT_UMF_RTI_QOS_KEY", "CommissioningQoS.xml"),
-        sdds_secret=_env("IOMT_UMF_RTI_SDDS_SECRET", "umf-rti-sdds"),
-        collector_secret=_env("IOMT_UMF_RTI_COLLECTOR_SECRET", "umf-rti-collector"),
-        collector_key=_env("IOMT_UMF_RTI_COLLECTOR_KEY", "umf-rti-collector.jar"),
-        license_secret=_env("IOMT_UMF_RTI_LICENSE_SECRET", "umf-rti-license"),
-        license_key=_env("IOMT_UMF_RTI_LICENSE_KEY", "rti_license.dat"),
-        router_namespace=_env("IOMT_UMF_RTI_ROUTER_NAMESPACE", "pm"),
-        router_service=_env("IOMT_UMF_RTI_ROUTER_SERVICE", "axone-router-1"),
-        discovery_peers_override=(
-            _env("IOMT_UMF_RTI_DISCOVERY_PEERS", "")
-            or None
+        namespace=os.environ.get("UMF_RTI_NAMESPACE", "iomt-integration"),
+        router_namespace=os.environ.get("UMF_RTI_ROUTER_NAMESPACE", "pm"),
+        image=os.environ.get("UMF_RTI_IMAGE", _DEFAULT_IMAGE),
+        job_prefix=os.environ.get("UMF_RTI_JOB_PREFIX", "umf-rti-capture"),
+        sdds_home=os.environ.get("UMF_RTI_SDDS_HOME", "/opt/axone-tools/sdds"),
+        router_pod_peer=os.environ.get("UMF_RTI_ROUTER_PEER", "udpv4://100.64.64.200"),
+        wan_public=os.environ.get("UMF_RTI_WAN_PUBLIC", "192.168.0.3"),
+        max_message_size=int(os.environ.get("UMF_RTI_MAX_MESSAGE_SIZE", "1400")),
+        type_object_max_serialized_length=int(
+            os.environ.get("UMF_RTI_TYPE_OBJECT_MAX", "33554432")
         ),
-        dds_interfaces=_env("IOMT_UMF_RTI_DDS_INTERFACES", "eth0"),
-        cpu_request=_env("IOMT_UMF_RTI_CPU_REQUEST", "100m"),
-        memory_request=_env("IOMT_UMF_RTI_MEMORY_REQUEST", "256Mi"),
-        cpu_limit=_env("IOMT_UMF_RTI_CPU_LIMIT", "1"),
-        memory_limit=_env("IOMT_UMF_RTI_MEMORY_LIMIT", "1Gi"),
-        job_ttl_seconds=_env_int("IOMT_UMF_RTI_JOB_TTL_SECONDS", 600, 0),
-        wait_timeout_seconds=_env_int("IOMT_UMF_RTI_WAIT_TIMEOUT_SECONDS", 360, 30),
-        poll_interval_seconds=poll_interval,
-        job_active_deadline_grace_seconds=_env_int(
-            "IOMT_UMF_RTI_ACTIVE_DEADLINE_GRACE_SECONDS", 300, 30
-        ),
-        pod_creation_timeout_seconds=_env_int(
-            "IOMT_UMF_RTI_POD_CREATION_TIMEOUT_SECONDS", 60, 10
-        ),
-        collector_version=_env("IOMT_UMF_RTI_COLLECTOR_VERSION", "1.0.0"),
-        collector_max_records=_env_int("IOMT_UMF_RTI_MAX_RECORDS", 5000, 1),
+        partition=os.environ.get("UMF_RTI_PARTITION", "*"),
+        reader_history_depth=int(os.environ.get("UMF_RTI_READER_DEPTH", "64")),
+        output_dir=os.environ.get("UMF_RTI_OUTPUT_DIR", "/out"),
+        collect_grace_seconds=int(os.environ.get("UMF_RTI_COLLECT_GRACE", "300")),
+        poll_interval_seconds=float(os.environ.get("UMF_RTI_POLL_INTERVAL", "1.0")),
+        startup_timeout_seconds=int(os.environ.get("UMF_RTI_STARTUP_TIMEOUT", "30")),
+        domain_labels=_parse_domain_labels(os.environ.get("UMF_RTI_DOMAIN_LABELS")),
     )
