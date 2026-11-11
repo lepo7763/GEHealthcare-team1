@@ -1,6 +1,8 @@
 const Step3Review = ({
   result,
   selectedServices,
+  umfDomain,
+  umfDuration,
   onEditConnection,
   onEditServices,
   onBack,
@@ -47,6 +49,9 @@ const Step3Review = ({
             <li>
               <div>
                 <div className="check-title">UMF RTI capture</div>
+                <div className="check-detail">
+                  Domain {umfDomain} · {String(umfDuration).trim()} s
+                </div>
                 <div className="check-detail">
                   Captures live RTI telemetry in a short-lived Kubernetes Job (deleted
                   afterwards) and bundles it into the diagnostic zip.

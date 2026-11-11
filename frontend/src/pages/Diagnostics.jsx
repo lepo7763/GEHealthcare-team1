@@ -14,6 +14,25 @@ import Step4Collect from './diagnostics/Step4Collect';
 // - "Cool Gray" (Pantone Cool Gray 1 C, RGB 228/228/228, CMYK 0/0/0/10)
 // Font requirement: "Inter" system-ui, Avenir, Helvetica, Arial, sans-serif
 
+// FastAPI sends `detail` as a string for our own errors, but as a list of
+// { loc, msg } objects for request validation errors (422).
+const formatErrorDetail = (detail) => {
+  if (!Array.isArray(detail)) return String(detail);
+  return detail
+    .map((item) => {
+      const field = Array.isArray(item?.loc) ? item.loc[item.loc.length - 1] : '';
+      const message = item?.msg || 'Invalid value';
+      return field ? `${field}: ${message}` : message;
+    })
+    .join('; ');
+};
+
+const FALLBACK_UMF_DOMAINS = [
+  { domain: 13, label: 'Viewer — live vitals (viewpod)' },
+  { domain: 12, label: 'Source — from Hub (sourcepod)' },
+  { domain: 7, label: 'Logger' },
+];
+
 const Diagnostics = () => {
   const [host, setHost] = useState('192.168.0.3');
   const [step, setStep] = useState(1);
@@ -22,6 +41,12 @@ const Diagnostics = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(['container-logs']);
+
+  // UMF RTI capture settings (Step 2). Domain options come from the backend so they
+  // stay in sync with the domains it accepts; the fallback mirrors its defaults.
+  const [umfDomain, setUmfDomain] = useState(13);
+  const [umfDuration, setUmfDuration] = useState('60');
+  const [umfDomainOptions, setUmfDomainOptions] = useState(FALLBACK_UMF_DOMAINS);
 
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
@@ -88,9 +113,10 @@ const Diagnostics = () => {
 
     const params = new URLSearchParams();
     selected.forEach((serviceId) => params.append('services', serviceId));
-    // TODO(frontend): when the UMF-RTI config UI lands, set umf_domain_id and
-    // umf_duration_seconds here. Until then the backend defaults (domain 13, 60s)
-    // are used. See src/pages/diagnostics/UMF_RTI_TODO.md.
+    if (selected.includes('umf-rti')) {
+      params.set('umf_domain_id', String(umfDomain));
+      params.set('umf_duration_seconds', String(umfDuration).trim());
+    }
 
     fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
       .then(async (res) => {
@@ -98,7 +124,7 @@ const Diagnostics = () => {
           let detail = `Collection failed (${res.status}).`;
           try {
             const body = await res.json();
-            if (body?.detail) detail = body.detail;
+            if (body?.detail) detail = formatErrorDetail(body.detail);
           } catch {
             /* non-JSON error body */
           }
@@ -124,6 +150,20 @@ const Diagnostics = () => {
 
     startPolling();
   };
+
+  // Load the UMF RTI domain options once.
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/umf-rti/domains', { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((options) => {
+        if (Array.isArray(options) && options.length > 0) setUmfDomainOptions(options);
+      })
+      .catch(() => {
+        /* keep the fallback list */
+      });
+    return () => controller.abort();
+  }, []);
 
   // Stop polling and abort any in-flight request if the page is left.
   useEffect(() => {
@@ -226,6 +266,11 @@ const Diagnostics = () => {
         <Step2Configure
           selected={selected}
           onToggleService={toggleService}
+          umfDomain={umfDomain}
+          setUmfDomain={setUmfDomain}
+          umfDuration={umfDuration}
+          setUmfDuration={setUmfDuration}
+          umfDomainOptions={umfDomainOptions}
           onBack={handleBackToConnect}
           onContinue={() => setStep(3)}
         />
@@ -235,6 +280,8 @@ const Diagnostics = () => {
         <Step3Review
           result={result}
           selectedServices={selectedServices}
+          umfDomain={umfDomain}
+          umfDuration={umfDuration}
           onEditConnection={() => setStep(1)}
           onEditServices={() => setStep(2)}
           onBack={() => setStep(2)}

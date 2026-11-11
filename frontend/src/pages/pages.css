@@ -458,6 +458,63 @@ code {
   animation: eds-fade-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Configure step: one service per row, settings open under the service they belong to */
+.service-list-stacked {
+  grid-template-columns: 1fr;
+  grid-auto-rows: auto;
+}
+.service-list-stacked > li {
+  flex-direction: column;
+}
+/* The card and its settings read as one block: square off the joining corners */
+.service-list-stacked > li.has-settings > .service-option {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+/* Don't lift the card on hover when something is attached under it */
+.service-list-stacked > li.has-settings > .service-option:hover {
+  transform: none;
+}
+.service-list-stacked > li > .service-options {
+  margin-top: 0;
+  border-color: var(--eds-color-purple);
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.service-settings-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--eds-spacing-md);
+  width: 100%;
+  padding: var(--eds-spacing-sm) var(--eds-spacing-md);
+  border: 1px solid var(--eds-color-purple);
+  border-top: none;
+  border-radius: 0 0 var(--eds-radius-md) var(--eds-radius-md);
+  background: var(--eds-color-purple-faint);
+  font-family: var(--eds-font-family);
+  font-size: var(--eds-font-size-sm);
+  color: var(--eds-color-gray-700);
+  text-align: left;
+  cursor: pointer;
+}
+.service-settings-summary:hover {
+  background: var(--eds-color-purple-subtle);
+}
+.service-settings-summary.invalid {
+  color: var(--eds-color-error);
+  font-weight: var(--eds-font-weight-semibold);
+}
+.service-settings-edit {
+  color: var(--eds-color-purple);
+  font-weight: var(--eds-font-weight-semibold);
+  white-space: nowrap;
+}
+.service-options .action-row {
+  margin-top: var(--eds-spacing-md);
+}
+
 .service-options-title {
   margin: 0;
   font-size: var(--eds-font-size-md);
@@ -646,7 +703,8 @@ code {
 }
 .field small { font-size: var(--eds-font-size-sm); color: var(--eds-color-gray-500); }
 
-.field input {
+.field input,
+.field select {
   height: 42px;
   padding: 0 var(--eds-spacing-sm);
   border: 1px solid var(--eds-color-gray-200);
@@ -665,8 +723,27 @@ code {
   background: var(--eds-color-gray-50);
 }
 
-.field input:focus {
+/* background-color only, so the arrow image set below survives hover. */
+.field select:hover:not(:disabled) {
+  background-color: var(--eds-color-gray-50);
+}
+
+.field input:focus,
+.field select:focus {
   border-color: var(--eds-color-purple);
+}
+
+/* Native selects ignore most styling; draw our own arrow so it matches the inputs. */
+.field select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 36px;
+  background-color: var(--eds-color-white);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236022a6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  color: inherit;
+  cursor: pointer;
 }
 
 .input-with-action { position: relative; }
