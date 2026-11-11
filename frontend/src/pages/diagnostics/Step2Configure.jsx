@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
 
-const validateDomain = (value) => {
-  const text = String(value ?? '').trim();
-  const number = Number(text);
-  return text !== '' && Number.isInteger(number) && number >= 0 && number <= 100;
-};
+// Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
+const MIN_DURATION = 10;
+const MAX_DURATION = 600;
 
 const validateDuration = (value) => {
   const text = String(value ?? '').trim();
   const number = Number(text);
-  return text !== '' && Number.isInteger(number) && number >= 30 && number <= 600;
+  return (
+    text !== '' && Number.isInteger(number) && number >= MIN_DURATION && number <= MAX_DURATION
+  );
 };
 
 const Step2Configure = ({
@@ -20,62 +20,61 @@ const Step2Configure = ({
   setUmfDomain,
   umfDuration,
   setUmfDuration,
+  umfDomainOptions,
   onBack,
   onContinue,
 }) => {
-  const domainValid = validateDomain(umfDomain);
+  const domainOption = umfDomainOptions.find((option) => option.domain === Number(umfDomain));
+  const domainValid = Boolean(domainOption);
   const durationValid = validateDuration(umfDuration);
 
   // Settings for each service that has any, keyed by service id. To give a new service
-  // (e.g. Wireshark) its own settings, add an entry here: whether its values are valid,
+  // (e.g. Netshoot) its own settings, add an entry here: whether its values are valid,
   // a one-line summary shown while collapsed, and the fields shown while expanded.
   const settingsPanels = {
     'umf-rti': {
       isValid: domainValid && durationValid,
-      summary: `Domain ${String(umfDomain).trim() || '—'} · ${String(umfDuration).trim() || '—'} s`,
+      summary: `Domain ${umfDomain}${domainOption ? ` (${domainOption.label})` : ''} · ${String(umfDuration).trim() || '—'} s`,
       fields: (
         <>
           <div className="form-row">
             <label className="field grow">
-              <span>Domain ID</span>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="1"
+              <span>Domain</span>
+              <select
                 value={umfDomain}
-                onChange={(e) => setUmfDomain(e.target.value)}
+                onChange={(e) => setUmfDomain(Number(e.target.value))}
                 aria-invalid={!domainValid}
-              />
-              <small>
-                Domain 32 is the live UMF domain in this lab. Domain 12 requires a
-                dedicated identity permitted on that domain.
-              </small>
-              {!domainValid && (
-                <small className="field-error">Enter a whole number from 0 to 100.</small>
-              )}
+              >
+                {umfDomainOptions.map((option) => (
+                  <option key={option.domain} value={option.domain}>
+                    {option.domain} — {option.label}
+                  </option>
+                ))}
+              </select>
+              <small>The DDS domain to record.</small>
+              {!domainValid && <small className="field-error">Choose a domain.</small>}
             </label>
             <label className="field grow">
               <span>Capture duration (seconds)</span>
               <input
                 type="number"
-                min="30"
-                max="600"
+                min={MIN_DURATION}
+                max={MAX_DURATION}
                 step="1"
                 value={umfDuration}
                 onChange={(e) => setUmfDuration(e.target.value)}
                 aria-invalid={!durationValid}
               />
-              <small>Between 30 and 600 seconds.</small>
+              <small>
+                Between {MIN_DURATION} and {MAX_DURATION} seconds.
+              </small>
               {!durationValid && (
-                <small className="field-error">Enter a whole number from 30 to 600.</small>
+                <small className="field-error">
+                  Enter a whole number from {MIN_DURATION} to {MAX_DURATION}.
+                </small>
               )}
             </label>
           </div>
-          <p className="future-note">
-            UMF RTI captures discovery and QoS metadata only. No sample values or
-            patient data are read.
-          </p>
         </>
       ),
     },

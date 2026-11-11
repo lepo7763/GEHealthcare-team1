@@ -1,0 +1,69 @@
+
+# Identity used by our backend pod
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: iomt-network-backend
+  namespace: iomt-integration
+
+---
+# Allow that identity to discover pods in iomt-dev-1
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: network-pod-reader-integration-backend
+  namespace: iomt-dev-1
+subjects:
+  - kind: ServiceAccount
+    name: iomt-network-backend
+    namespace: iomt-integration
+roleRef:
+  kind: Role
+  name: network-pod-reader
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Run the existing FastAPI backend
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iomt-backend
+  namespace: iomt-integration
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: iomt-backend
+  template:
+    metadata:
+      labels:
+        app: iomt-backend
+    spec:
+      serviceAccountName: iomt-network-backend
+      containers:
+        - name: backend
+          image: us-artifactory.apps.ge-healthcare.net/docker-axone-all/iomt-backend:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+

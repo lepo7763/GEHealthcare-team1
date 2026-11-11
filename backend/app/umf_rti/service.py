@@ -1,648 +1,435 @@
-"""Create, watch and clean up the short-lived UMF RTI capture Job."""
-
-from __future__ import annotations
-
+import base64
+import io
 import json
-import logging
+import os
+import sqlite3
+import tarfile
+import tempfile
 import time
 import uuid
 import zipfile
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+
+from app.log_collection.progress import UMF_RTI_LABEL, UMF_RTI_SERVICE_ID
+from app.log_collection.schemas import CollectedService, LogCollectionManifest
+from kubernetes.client.exceptions import ApiException
+from kubernetes.stream import stream
 
 from kubernetes import client
-from kubernetes.client.exceptions import ApiException
-
-from app.log_collection.progress import UMF_RTI_SERVICE_ID, tracker
-from app.log_collection.schemas import CollectedService, LogCollectionManifest, LogErrorEntry
 
 from .config import UmfRtiConfig
 from .schemas import UmfRtiCaptureResult, UmfRtiParams
 
-logger = logging.getLogger(__name__)
-
-UMF_RTI_FILES = (
-    "umf-rti/umf-rti-discovery.ndjson",
-    "umf-rti/umf-rti-summary.json",
-    "umf-rti/README.txt",
-)
-
-SDDS_REQUIRED_KEYS = (
-    "Commissioning_CA.cert.pem",
-    "Commissioning_Governance.p7s",
-    "Commissioning_Permission.p7s",
-    "MDHEndPoint.cert.pem",
-    "MDHEndPoint.key.pem",
-)
-
-# Waiting reasons that cannot recover without an operator changing something.
-FAST_FAIL_WAITING_REASONS = frozenset(
-    {
-        "ImagePullBackOff",
-        "ErrImagePull",
-        "InvalidImageName",
-        "CreateContainerConfigError",
-        "CreateContainerError",
-        "RunContainerError",
-        "CrashLoopBackOff",
-        "Unschedulable",
-    }
-)
-
 
 class UmfRtiPrerequisiteError(Exception):
-    """A required platform resource is missing or the caller lacks access."""
+    """Raised when required Secrets or cluster resources for UMF RTI are missing."""
 
 
 class UmfRtiCaptureError(Exception):
-    """The capture Job could not be created or observed."""
+    """Raised when UMF RTI capture Job fails or times out."""
 
 
-@dataclass
-class ParsedUmfRtiLog:
-    json_lines: List[str] = field(default_factory=list)
-    raw_lines: List[str] = field(default_factory=list)
-    counts: Dict[str, int] = field(
-        default_factory=lambda: {
-            "participants": 0,
-            "topics": 0,
-            "writers": 0,
-            "readers": 0,
-            "discovered_topic_handles": 0,
-        }
-    )
-    warnings: List[str] = field(default_factory=list)
-    error: Optional[str] = None
-    summary: Optional[Dict[str, Any]] = None
-    collector_version: Optional[str] = None
-    rti_version: Optional[str] = None
+# --- QoS / recording config builders -----------------------------------------
+# The capture layers a small override profile on top of the image's built-in WAN
+# profile. Both XML docs are reproduced verbatim from the validated spike
+# (see PLAN.md Appendix B); only values that live in config.py are substituted,
+# so peers/limits/partition are never re-hardcoded here.
+
+# The image's built-in WAN QoS profile we extend.
+_BASE_QOS_PROFILE = "AxoneNetQoSLibrary::umfwan_server_viewpod_qos"
+_QOS_LIBRARY = "Cap"
+_QOS_PROFILE = "universal"
+# base_name the recording config references to pull in our overrides.
+CAPTURE_QOS_PROFILE = f"{_QOS_LIBRARY}::{_QOS_PROFILE}"
+# TODO: rtirecordingservice mangles the <file> name (capture.db -> "capture."). the capture command mv's it to this clean name afterwards.
+RECORDING_DB_BASENAME = "capture.db"
 
 
-def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+def build_override_xml(config: UmfRtiConfig) -> str:
+    """Build the universal QoS override profile (`Cap::universal`).
 
-
-def _reason(exception: ApiException) -> str:
-    return exception.reason or f"HTTP {exception.status}"
-
-
-def _access_error(action: str, namespace: str, exception: ApiException) -> str:
-    """Actionable message when the cluster rejects the kubeconfig identity."""
-    if exception.status == 401:
-        return (
-            "The Kubernetes credentials in ~/.kube/config were rejected "
-            "(401 Unauthorized)."
-        )
-    return (
-        f"The Kubernetes identity in ~/.kube/config is not allowed to {action} "
-        f"in {namespace}. Check it with: "
-        f"kubectl auth can-i {action} -n {namespace}"
-    )
-
-
-def _read_config_map(core: client.CoreV1Api, name: str, namespace: str) -> client.V1ConfigMap:
-    try:
-        return core.read_namespaced_config_map(name=name, namespace=namespace)
-    except ApiException as e:
-        if e.status == 404:
-            raise UmfRtiPrerequisiteError(
-                f"ConfigMap {namespace}/{name} was not found. "
-                "Run kubernetes/umf-rti-setup.sh to create the UMF RTI prerequisites."
-            ) from e
-        raise UmfRtiPrerequisiteError(
-            f"Could not read ConfigMap {namespace}/{name}: {_reason(e)}"
-        ) from e
-
-
-def _read_secret(core: client.CoreV1Api, name: str, namespace: str) -> client.V1Secret:
-    try:
-        return core.read_namespaced_secret(name=name, namespace=namespace)
-    except ApiException as e:
-        if e.status == 404:
-            raise UmfRtiPrerequisiteError(
-                f"Secret {namespace}/{name} was not found. "
-                "Run kubernetes/umf-rti-setup.sh to create the UMF RTI prerequisites."
-            ) from e
-        raise UmfRtiPrerequisiteError(
-            f"Could not read Secret {namespace}/{name}: {_reason(e)}"
-        ) from e
-
-
-def check_prerequisites(core: client.CoreV1Api, config: UmfRtiConfig) -> None:
-    """Fail with an actionable message before creating a Job that cannot start."""
-    missing: List[str] = []
-
-    qos = _read_config_map(core, config.qos_configmap, config.namespace)
-    qos_xml = (qos.data or {}).get(config.qos_key)
-    if not qos_xml:
-        missing.append(
-            f"ConfigMap {config.namespace}/{config.qos_configmap} is missing key {config.qos_key}"
-        )
-
-    sdds = _read_secret(core, config.sdds_secret, config.namespace)
-    sdds_keys = set((sdds.data or {}).keys())
-    missing_sdds = [key for key in SDDS_REQUIRED_KEYS if key not in sdds_keys]
-    if missing_sdds:
-        missing.append(
-            f"Secret {config.namespace}/{config.sdds_secret} is missing {', '.join(missing_sdds)}"
-        )
-
-    collector = _read_secret(core, config.collector_secret, config.namespace)
-    collector_value = (collector.data or {}).get(config.collector_key)
-    if not collector_value:
-        missing.append(
-            f"Secret {config.namespace}/{config.collector_secret} is missing key {config.collector_key}"
-        )
-
-    license_secret = _read_secret(core, config.license_secret, config.namespace)
-    if not (license_secret.data or {}).get(config.license_key):
-        missing.append(
-            f"Secret {config.namespace}/{config.license_secret} is missing key {config.license_key}"
-        )
-
-    if missing:
-        raise UmfRtiPrerequisiteError(
-            "UMF RTI prerequisites are not ready: "
-            + "; ".join(missing)
-            + ". Run kubernetes/umf-rti-setup.sh to create/repair them."
-        )
-
-
-def resolve_router_peer(
-    core: client.CoreV1Api, domain_id: int, config: UmfRtiConfig
-) -> Tuple[str, int]:
-    """Return (NDDS_DISCOVERY_PEERS value, expected domain port).
-
-    RTI derives the discovery port from the domain, so the peer URI deliberately
-    has no ``:port`` suffix.  In this RTI build a suffix such as
-    ``udpv4://axone-router-1.pm.svc.cluster.local:15410`` is passed to
-    getaddrinfo as part of the hostname and silently fails.  The service port is
-    still validated and reported in the summary.
+    Pure function. Enables both transports via the base profile, lists every
+    router peer, and applies the two fixes the recorder needs (raised
+    type_object limit + unbounded reader resource limits).
     """
-    if config.discovery_peers_override:
-        return config.discovery_peers_override, 0
-
-    try:
-        service = core.read_namespaced_service(
-            name=config.router_service, namespace=config.router_namespace
-        )
-    except ApiException as e:
-        if e.status == 404:
-            raise UmfRtiPrerequisiteError(
-                f"Router Service {config.router_namespace}/{config.router_service} was not found. "
-                f"Set IOMT_UMF_RTI_DISCOVERY_PEERS to an explicit peer URI if the router "
-                f"is not called {config.router_service}."
-            ) from e
-        raise UmfRtiPrerequisiteError(
-            f"Could not read router Service {config.router_namespace}/{config.router_service}: "
-            f"{_reason(e)}"
-        ) from e
-
-    ports = [
-        port.port
-        for port in (service.spec.ports or [])
-        if port.name and port.name.startswith(f"domain-{domain_id}-") and port.port is not None
-    ]
-    if not ports:
-        available = sorted(
-            {
-                port.name.split("-")[1]
-                for port in (service.spec.ports or [])
-                if port.name and port.name.startswith("domain-")
-            }
-        )
-        raise UmfRtiPrerequisiteError(
-            f"Router Service {config.router_namespace}/{config.router_service} does not expose "
-            f"domain {domain_id}. Available domain ports: {', '.join(available) or 'none'}. "
-            "Use a domain that the platform actually exposes (32 is the live UMF domain in this lab)."
-        )
-
-    peer = (
-        f"udpv4://{config.router_service}.{config.router_namespace}.svc.cluster.local"
+    peers = "\n".join(
+        f"            <element>{peer}</element>" for peer in config.initial_peers()
     )
-    return peer, min(ports)
+    return f"""<?xml version="1.0"?>
+<dds xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <qos_library name="{_QOS_LIBRARY}">
+    <qos_profile name="{_QOS_PROFILE}" base_name="{_BASE_QOS_PROFILE}">
+      <participant_qos>
+        <discovery>
+          <initial_peers>
+{peers}
+          </initial_peers>
+          <accept_unknown_peers>true</accept_unknown_peers>
+        </discovery>
+        <resource_limits>
+          <!-- REQUIRED: S35c_sapphire TypeObjects exceed the 300000 default; recorder records nothing for umfnum/umfwav without this. -1/UNLIMITED is rejected. -->
+          <type_object_max_serialized_length>{config.type_object_max_serialized_length}</type_object_max_serialized_length>
+        </resource_limits>
+      </participant_qos>
+      <datareader_qos>
+        <history><kind>KEEP_LAST_HISTORY_QOS</kind><depth>8</depth></history>
+        <resource_limits>
+          <max_samples>LENGTH_UNLIMITED</max_samples>
+          <max_instances>LENGTH_UNLIMITED</max_instances>
+          <max_samples_per_instance>LENGTH_UNLIMITED</max_samples_per_instance>
+        </resource_limits>
+      </datareader_qos>
+    </qos_profile>
+  </qos_library>
+</dds>
+"""
 
 
-def _job_labels(domain_id: int) -> Dict[str, str]:
-    return {
-        "iomt-analysis-tool/service": "umf-rti",
-        "iomt-analysis-tool/domain": str(domain_id),
-    }
+def build_recording_cfg_xml(domain_id: int, config: UmfRtiConfig) -> str:
+    """Build the `rtirecordingservice` config for one domain.
+
+    Pure function. `domain_id` is the only per-capture variable; everything else
+    comes from config. Stores readable JSON-in-SQLite and uses a wildcard
+    subscriber partition so the named-partition viewpod writers match.
+    """
+    db_path = f"{config.output_dir}/{RECORDING_DB_BASENAME}"
+    return f"""<?xml version="1.0"?>
+<dds xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <recording_service name="cap">
+    <storage>
+      <sqlite>
+        <storage_format>JSON_SQLITE</storage_format>
+        <file>{db_path}</file>
+      </sqlite>
+    </storage>
+    <domain_participant name="P">
+      <domain_id>{domain_id}</domain_id>
+      <participant_qos base_name="{CAPTURE_QOS_PROFILE}"/>
+    </domain_participant>
+    <session name="S">
+      <!-- REQUIRED: viewpod umfnum/umfwav writers are in a named partition; wildcard matches them. Without this they silently never match. -->
+      <subscriber_qos><partition><name><element>{config.partition}</element></name></partition></subscriber_qos>
+      <topic_group name="G" participant_ref="P">
+        <allow_topic_name_filter>*</allow_topic_name_filter>
+        <datareader_qos>
+          <reliability><kind>RELIABLE_RELIABILITY_QOS</kind></reliability>
+          <history><kind>KEEP_LAST_HISTORY_QOS</kind><depth>{config.reader_history_depth}</depth></history>
+          <resource_limits>
+            <max_samples>LENGTH_UNLIMITED</max_samples>
+            <max_instances>LENGTH_UNLIMITED</max_instances>
+            <max_samples_per_instance>LENGTH_UNLIMITED</max_samples_per_instance>
+          </resource_limits>
+        </datareader_qos>
+      </topic_group>
+    </session>
+  </recording_service>
+</dds>
+"""
 
 
-def _collector_script() -> str:
-    return "\n".join(
-        [
-            "set -eu",
-            'APP_JAR="$(ls /opt/axone-umfcompatibilitycheck/bin/axone-umfcompatibilitycheck-*.jar 2>/dev/null | head -n 1 || true)"',
-            'CP="/opt/umf-rti/umf-rti-collector.jar:/opt/axone-umfcompatibilitycheck/lib/nddsjava.jar"',
-            'if [ -n "$APP_JAR" ]; then CP="$CP:$APP_JAR"; fi',
-            "exec java -cp \"$CP\" \\",
-            "  -Djava.library.path=/opt/axone-umfcompatibilitycheck/lib \\",
-            "  com.gehc.iomt.umfrti.UmfRtiCollector \\",
-            '  --domain "$UMF_DOMAIN_ID" \\',
-            '  --duration "$UMF_DURATION_SECONDS" \\',
-            "  --qos-file /opt/axone-tools/qos/CommissioningQoS.xml \\",
-            "  --qos-profile AxoneNetQoSLibrary::umfgeneral_qos \\",
-            '  --max-records "$UMF_MAX_RECORDS"',
-        ]
+# --- capture command + Job manifest ------------------------------------------
+# Env values the MDH-tools image expects that don't live in config (they're
+# fixed by the image, not deployment-tunable).
+_WITHWAN_QOS_PATH = "/opt/axone-tools/qos/MDH-tools-RTIAdminConsole-WithWAN.xml"
+_DDS_SECURE = "secure"
+_DDS_INTERFACES = "eth0"
+_RTI_LICENSE_FILE = "/opt/rti_license.dat"
+# The WithWAN QoS references these three role-named WAN port env vars and fails
+# to parse (silent 0 endpoints) if any is undefined, so all are exported. Each
+# maps to its domain's configured port; only the viewpod one is actually bound
+# for a single-domain capture, but all must exist.
+_WAN_ROLE_DOMAIN = {"LOGGER": 7, "SOURCEPOD": 12, "VIEWPOD": 13}
+# Capture script writes the recorder's exit code and combined output into these
+# files (under output_dir), so a failed recording is visible in the bundle.
+_RC_FILENAME = ".rc"
+_RECORDER_LOG_FILENAME = "recorder.log"
+# timeout returns 124 when it kills the (normally endless) recorder at the
+# limit, and 0 on a clean exit; any other code means the recorder died early.
+_RECORDER_OK_RCS = {0, 124}
+# Backstop that reaps the Job if the explicit delete is missed; prevents orphans.
+_JOB_TTL_SECONDS = 600
+
+
+def build_capture_command(params: UmfRtiParams, config: UmfRtiConfig) -> str:
+    """Build the shell script the capture pod runs (pure function).
+
+    Writes the two QoS/recording XML files, exports the image's env contract
+    (incl. the pod's own IP as the WAN public address), records for the
+    requested duration, restores the mangled user-data filename, drops a
+    `.done` sentinel, then idles so the backend can pull the files out.
+    """
+    override_xml = build_override_xml(config)
+    rec_xml = build_recording_cfg_xml(params.umf_domain_id, config)
+    db_path = f"{config.output_dir}/{RECORDING_DB_BASENAME}"
+    mangled_path = f"{config.output_dir}/capture."
+
+    wan_port_exports = "\n".join(
+        f"export DDS_RTWAN_SERVER_PORT_{role}={config.wan_ports[domain]}"
+        for role, domain in _WAN_ROLE_DOMAIN.items()
+        if domain in config.wan_ports
     )
 
+    return f"""set -e
+mkdir -p {config.output_dir}
 
-def build_job(
-    config: UmfRtiConfig, params: UmfRtiParams, peer: str, job_name: str
-) -> client.V1Job:
-    """Build the Job spec.  Kept separate so it can be unit-tested."""
-    labels = _job_labels(params.umf_domain_id)
-    active_deadline = (
-        params.umf_duration_seconds + config.job_active_deadline_grace_seconds
-    )
+cat > /tmp/override.xml <<'OVERRIDE_EOF'
+{override_xml}OVERRIDE_EOF
 
-    env = [
-        client.V1EnvVar(name="SDDS_HOME", value=config.sdds_mount_path),
-        client.V1EnvVar(
-            name="NDDS_QOS_PROFILES",
-            value=f"{config.qos_mount_path}/{config.qos_key}",
-        ),
-        client.V1EnvVar(name="DDS_SECURE", value="secure"),
-        client.V1EnvVar(name="DDS_INTERFACES", value=config.dds_interfaces),
-        client.V1EnvVar(name="DDS_INTERFACES_MONITORING", value=config.dds_interfaces),
-        client.V1EnvVar(name="NDDS_DISCOVERY_PEERS", value=peer),
-        client.V1EnvVar(
-            name="RTI_LICENSE_FILE",
-            value=f"{config.license_mount_path}/{config.license_key}",
-        ),
-        client.V1EnvVar(name="HOME", value="/tmp"),
-        client.V1EnvVar(name="UMF_DOMAIN_ID", value=str(params.umf_domain_id)),
-        client.V1EnvVar(
-            name="UMF_DURATION_SECONDS", value=str(params.umf_duration_seconds)
-        ),
-        client.V1EnvVar(
-            name="UMF_MAX_RECORDS", value=str(config.collector_max_records)
-        ),
-    ]
+cat > /tmp/rec.xml <<'REC_EOF'
+{rec_xml}REC_EOF
 
-    volumes = [
-        client.V1Volume(
-            name="umf-rti-collector",
-            secret=client.V1SecretVolumeSource(
-                secret_name=config.collector_secret,
-                default_mode=0o444,
-                items=[
-                    client.V1KeyToPath(
-                        key=config.collector_key, path="umf-rti-collector.jar"
-                    )
-                ],
-            ),
-        ),
-        client.V1Volume(
-            name="umf-rti-license",
-            secret=client.V1SecretVolumeSource(
-                secret_name=config.license_secret,
-                default_mode=0o444,
-                items=[
-                    client.V1KeyToPath(key=config.license_key, path=config.license_key)
-                ],
-            ),
-        ),
-        client.V1Volume(
-            name="umf-rti-qos",
-            config_map=client.V1ConfigMapVolumeSource(
-                name=config.qos_configmap,
-                default_mode=0o444,
-                items=[
-                    client.V1KeyToPath(key=config.qos_key, path=config.qos_key)
-                ],
-            ),
-        ),
-        client.V1Volume(
-            name="umf-rti-sdds",
-            secret=client.V1SecretVolumeSource(
-                secret_name=config.sdds_secret, default_mode=0o444
-            ),
-        ),
-    ]
+export SDDS_HOME={config.sdds_home}
+export DDS_SECURE={_DDS_SECURE}
+export DDS_INTERFACES={_DDS_INTERFACES}
+export DDS_INTERFACES_MONITORING={_DDS_INTERFACES}
+export RTI_LICENSE_FILE={_RTI_LICENSE_FILE}
+export DDS_RTWAN_SERVER_PUBLIC_ADDRESS="$(hostname -i)"
+{wan_port_exports}
+export NDDS_QOS_PROFILES="{_WITHWAN_QOS_PATH};/tmp/override.xml"
 
-    volume_mounts = [
-        client.V1VolumeMount(
-            name="umf-rti-collector",
-            mount_path=config.collector_mount_path,
-            read_only=True,
-        ),
-        client.V1VolumeMount(
-            name="umf-rti-license",
-            mount_path=config.license_mount_path,
-            read_only=True,
-        ),
-        client.V1VolumeMount(
-            name="umf-rti-qos", mount_path=config.qos_mount_path, read_only=True
-        ),
-        client.V1VolumeMount(
-            name="umf-rti-sdds", mount_path=config.sdds_mount_path, read_only=True
-        ),
-    ]
+# Record for the requested duration. timeout kills the (otherwise endless)
+# recorder at the limit (rc=124, the normal case); capture the real exit code
+# and the recorder's output so an early failure is visible in the bundle.
+set +e
+timeout {params.umf_duration_seconds} rtirecordingservice -cfgFile /tmp/rec.xml -cfgName cap > {config.output_dir}/{_RECORDER_LOG_FILENAME} 2>&1
+rc=$?
+set -e
+echo "$rc" > {config.output_dir}/{_RC_FILENAME}
+
+# rtirecordingservice mangles the user-data filename ("{RECORDING_DB_BASENAME}" -> "capture."); restore it.
+mv {mangled_path} {db_path} 2>/dev/null || true
+
+touch {config.output_dir}/.done
+sleep {config.collect_grace_seconds}
+"""
+
+
+def build_job_manifest(params: UmfRtiParams, config: UmfRtiConfig) -> client.V1Job:
+    """Build the capture Job (pure function).
+
+    One-shot Job: a single container running the capture script on an emptyDir
+    at `output_dir`. The image is present on the node (pull policy Never).
+    """
+    job_name = f"{config.job_prefix}-{uuid.uuid4().hex[:8]}"
+    script = build_capture_command(params, config)
+    labels = {"app": config.job_prefix}
 
     container = client.V1Container(
-        name=config.collector_container_name,
+        name="capture",
+        # TODO(multi-node): "Never" assumes the image is already on the node, which
+        # holds for the single-node lab but will ErrImageNeverPull on a multi-node
+        # cluster if the Job lands on a node without it. Make pull policy + pull
+        # secret (and maybe nodeSelector) config-driven. I'm waiting to see how
+        # Ethan handles this for NetShoot so we can have the same approach.
         image=config.image,
-        image_pull_policy="IfNotPresent",
-        command=["/bin/sh", "-c", _collector_script()],
-        env=env,
-        volume_mounts=volume_mounts,
+        image_pull_policy="Never",
+        command=["/bin/sh", "-c", script],
         resources=client.V1ResourceRequirements(
-            requests={"cpu": config.cpu_request, "memory": config.memory_request},
-            limits={"cpu": config.cpu_limit, "memory": config.memory_limit},
+            requests={"cpu": "100m", "memory": "256Mi"},
+            limits={"cpu": "500m", "memory": "1Gi"},
         ),
-        security_context=client.V1SecurityContext(
-            allow_privilege_escalation=False,
-            privileged=False,
-            run_as_non_root=True,
-            run_as_user=2017,
-            run_as_group=2017,
-            capabilities=client.V1Capabilities(drop=["ALL"]),
-        ),
-        termination_message_policy="FallbackToLogsOnError",
-    )
-
-    pod_spec = client.V1PodSpec(
-        containers=[container],
-        restart_policy="Never",
-        host_network=False,
-        dns_policy="ClusterFirst",
-        automount_service_account_token=False,
-        security_context=client.V1PodSecurityContext(
-            run_as_non_root=True,
-            run_as_user=2017,
-            run_as_group=2017,
-            fs_group=2017,
-        ),
-        image_pull_secrets=[
-            client.V1LocalObjectReference(name=name)
-            for name in config.image_pull_secrets
+        volume_mounts=[
+            client.V1VolumeMount(name="out", mount_path=config.output_dir),
         ],
-        volumes=volumes,
     )
-
+    pod_spec = client.V1PodSpec(
+        restart_policy="Never",
+        containers=[container],
+        volumes=[
+            client.V1Volume(name="out", empty_dir=client.V1EmptyDirVolumeSource()),
+        ],
+    )
     template = client.V1PodTemplateSpec(
         metadata=client.V1ObjectMeta(labels=labels),
         spec=pod_spec,
     )
-
+    job_spec = client.V1JobSpec(
+        template=template,
+        backoff_limit=0,
+        ttl_seconds_after_finished=_JOB_TTL_SECONDS,
+    )
     return client.V1Job(
         api_version="batch/v1",
         kind="Job",
-        metadata=client.V1ObjectMeta(name=job_name, labels=labels),
-        spec=client.V1JobSpec(
-            template=template,
-            backoff_limit=0,
-            active_deadline_seconds=active_deadline,
-            ttl_seconds_after_finished=config.job_ttl_seconds,
+        metadata=client.V1ObjectMeta(
+            name=job_name, namespace=config.namespace, labels=labels
         ),
+        spec=job_spec,
     )
 
 
-def _new_job_name(domain_id: int) -> str:
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    return f"umf-rti-{domain_id}-{stamp}-{uuid.uuid4().hex[:6]}"
+def check_prerequisites(core: client.CoreV1Api, config: UmfRtiConfig) -> None:
+    """No prerequisites to verify for the current approach.
 
-
-def _pod_waiting_reason(pod: client.V1Pod) -> Optional[str]:
-    status = pod.status
-    if not status:
-        return None
-    for container_status in (status.init_container_statuses or []) + (
-        status.container_statuses or []
-    ):
-        waiting = getattr(getattr(container_status, "state", None), "waiting", None)
-        if waiting and waiting.reason:
-            return waiting.reason
-    if status.reason:
-        return status.reason
+    TODO: delete this,
+    """
     return None
 
 
-def _pod_exit_code(pod: client.V1Pod) -> Optional[int]:
-    status = pod.status
-    if not status:
-        return None
-    for container_status in (status.init_container_statuses or []) + (
-        status.container_statuses or []
-    ):
-        terminated = getattr(getattr(container_status, "state", None), "terminated", None)
-        if terminated is not None and terminated.exit_code is not None:
-            return int(terminated.exit_code)
-    return None
+# Echoed by the in-pod probe when the capture script has finished recording.
+_DONE_MARKER = "__UMF_DONE__"
+# Container waiting reasons we treat as fatal (fail fast with a clear message
+# instead of waiting out the startup timeout). ErrImageNeverPull is the
+# multi-node pull-policy case (see the TODO in build_job_manifest).
+_POD_FATAL_WAITING = {"ErrImageNeverPull", "ImagePullBackOff", "CrashLoopBackOff"}
 
 
-def _pod_pending_message(pod: client.V1Pod) -> Optional[str]:
-    status = pod.status
-    if not status:
-        return None
-    messages = []
-    for container_status in (status.init_container_statuses or []) + (
-        status.container_statuses or []
-    ):
-        waiting = getattr(getattr(container_status, "state", None), "waiting", None)
-        if waiting and waiting.message:
-            messages.append(waiting.message)
-    if status.message:
-        messages.append(status.message)
-    return "; ".join(messages) if messages else None
-
-
-def _job_failure_message(job_status: client.V1JobStatus) -> Optional[str]:
-    for condition in job_status.conditions or []:
-        if condition.type == "Failed":
-            return condition.message or condition.reason or "Job failed"
-    if job_status.failed:
-        return (
-            f"Job failed (failed={job_status.failed}, "
-            f"active={job_status.active or 0})."
-        )
-    return None
-
-
-def _pod_termination_message(pod: client.V1Pod) -> Optional[str]:
-    status = pod.status
-    if not status:
-        return None
-    for container_status in (status.init_container_statuses or []) + (
-        status.container_statuses or []
-    ):
-        terminated = getattr(getattr(container_status, "state", None), "terminated", None)
-        if terminated is not None:
-            reason = terminated.reason or "unknown reason"
-            return (
-                f"container {container_status.name} terminated with exit code "
-                f"{terminated.exit_code} ({reason})"
-            )
-    return status.message
-
-
-def _job_warning_events(
-    core: client.CoreV1Api, namespace: str, job_name: str
-) -> Optional[str]:
-    """Best-effort explanation for a Job that never created a Pod."""
+def _create_job(
+    batch: client.BatchV1Api, job: client.V1Job, config: UmfRtiConfig
+) -> str:
+    """Create the capture Job and return the server-assigned name."""
     try:
-        events = core.list_namespaced_event(
-            namespace=namespace,
-            field_selector=(
-                f"involvedObject.name={job_name},involvedObject.kind=Job"
-            ),
-            _request_timeout=10,
-        )
-    except Exception:
-        return None
-    messages = []
-    for event in events.items or []:
-        if event.type == "Warning" and event.message:
-            messages.append(event.message)
-    if not messages:
-        return None
-    return " ".join(messages[:3])
-
-
-def _find_pod(
-    core: client.CoreV1Api, namespace: str, job_name: str
-) -> Optional[client.V1Pod]:
-    try:
-        pods = core.list_namespaced_pod(
-            namespace=namespace,
-            label_selector=f"job-name={job_name}",
-            _request_timeout=10,
-        ).items
+        created = batch.create_namespaced_job(namespace=config.namespace, body=job)
     except ApiException as e:
-        # "No Pods" is normal while the Job starts, but a rejected credential
-        # would look identical and surface later as a misleading timeout.
-        if e.status in (401, 403):
-            raise
-        return None
-    return pods[0] if pods else None
+        raise UmfRtiCaptureError(
+            f"Could not create capture Job in {config.namespace}: {e.reason or e}"
+        ) from e
+    name = created.metadata.name if created.metadata else None
+    if not name:
+        raise UmfRtiCaptureError("Created capture Job has no name.")
+    return name
 
 
-def _delete_job(
-    batch: client.BatchV1Api, namespace: str, job_name: str
-) -> bool:
-    try:
-        batch.delete_namespaced_job(
-            name=job_name,
-            namespace=namespace,
-            propagation_policy="Foreground",
-            grace_period_seconds=0,
-        )
-        return True
-    except ApiException as e:
-        return e.status == 404
-    except Exception:
-        return False
+def _wait_for_pod_running(
+    core: client.CoreV1Api, job_name: str, config: UmfRtiConfig
+) -> str:
+    """Resolve the Job's pod and wait until it is Running (or already done).
 
-
-def _wait_for_cleanup(
-    core: client.CoreV1Api, batch: client.BatchV1Api, namespace: str, job_name: str,
-    timeout_seconds: float = 15.0,
-) -> None:
-    """Best-effort wait so the acceptance check sees no leftover Job/Pod."""
-    deadline = time.monotonic() + timeout_seconds
+    Raises UmfRtiCaptureError on a failed/unschedulable pod or startup timeout.
+    """
+    selector = f"job-name={job_name}"
+    deadline = time.monotonic() + config.startup_timeout_seconds
+    last_pod: str | None = None
     while time.monotonic() < deadline:
-        job_gone = False
+        pods = core.list_namespaced_pod(
+            namespace=config.namespace, label_selector=selector
+        ).items
+        if pods:
+            pod = pods[0]
+            last_pod = pod.metadata.name if pod.metadata else last_pod
+            status = pod.status
+            phase = status.phase if status else None
+            if phase in ("Running", "Succeeded") and last_pod:
+                return last_pod
+            if phase == "Failed":
+                raise UmfRtiCaptureError(
+                    f"Capture pod {last_pod} failed before recording started."
+                )
+            for cs in (status.container_statuses or []) if status else []:
+                waiting = cs.state.waiting if cs.state else None
+                if waiting and waiting.reason in _POD_FATAL_WAITING:
+                    detail = f" - {waiting.message}" if waiting.message else ""
+                    raise UmfRtiCaptureError(
+                        f"Capture pod {last_pod} cannot start: {waiting.reason}{detail}"
+                    )
+        time.sleep(config.poll_interval_seconds)
+    where = f"last pod {last_pod}" if last_pod else "no pod was scheduled"
+    raise UmfRtiCaptureError(
+        f"Capture pod did not reach Running within "
+        f"{config.startup_timeout_seconds}s ({where})."
+    )
+
+
+def _wait_for_done(
+    core: client.CoreV1Api,
+    pod_name: str,
+    params: UmfRtiParams,
+    config: UmfRtiConfig,
+) -> None:
+    """Poll the pod for the `.done` sentinel the capture script drops.
+
+    The sentinel appears once recording stops and the DB is flushed, so this is
+    the signal that the files are safe to collect. Raises on pod death/timeout.
+    """
+    probe = f"test -f {config.output_dir}/.done && echo {_DONE_MARKER}"
+    deadline = (
+        time.monotonic() + params.umf_duration_seconds + config.collect_grace_seconds
+    )
+    while time.monotonic() < deadline:
         try:
-            batch.read_namespaced_job_status(name=job_name, namespace=namespace)
-        except ApiException as e:
-            job_gone = e.status == 404
-        pod = _find_pod(core, namespace, job_name)
-        if job_gone and pod is None:
-            return
-        time.sleep(0.5)
-
-
-def _parse_ndjson(log_text: str) -> ParsedUmfRtiLog:
-    parsed = ParsedUmfRtiLog()
-    seen_participants: set[str] = set()
-    seen_writers: set[str] = set()
-    seen_readers: set[str] = set()
-    seen_topics: set[str] = set()
-
-    for raw_line in (log_text or "").splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        if not line.startswith("{"):
-            parsed.raw_lines.append(raw_line)
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            parsed.raw_lines.append(raw_line)
-            continue
-        if not isinstance(record, dict):
-            parsed.raw_lines.append(raw_line)
-            continue
-        parsed.json_lines.append(line)
-        record_type = record.get("type")
-        if record_type == "participant":
-            guid = record.get("guid")
-            if guid and guid not in seen_participants:
-                seen_participants.add(guid)
-                parsed.counts["participants"] += 1
-        elif record_type == "writer":
-            guid = record.get("guid")
-            if guid and guid not in seen_writers:
-                seen_writers.add(guid)
-                parsed.counts["writers"] += 1
-        elif record_type == "reader":
-            guid = record.get("guid")
-            if guid and guid not in seen_readers:
-                seen_readers.add(guid)
-                parsed.counts["readers"] += 1
-        elif record_type == "topic":
-            key = f"{record.get('name')}\u0000{record.get('type_name')}"
-            if key not in seen_topics:
-                seen_topics.add(key)
-                parsed.counts["topics"] += 1
-        elif record_type == "summary":
-            parsed.summary = record
-            counts = record.get("counts")
-            if isinstance(counts, dict):
-                for key in ("participants", "topics", "writers", "readers"):
-                    value = counts.get(key)
-                    if isinstance(value, int):
-                        parsed.counts[key] = value
-                handles = counts.get("discovered_topic_handles")
-                if isinstance(handles, int):
-                    parsed.counts["discovered_topic_handles"] = handles
-            parsed.collector_version = record.get("collector_version") or parsed.collector_version
-            parsed.rti_version = record.get("rti_version") or parsed.rti_version
-            for warning in record.get("warnings") or []:
-                if isinstance(warning, str) and warning not in parsed.warnings:
-                    parsed.warnings.append(warning)
-        elif record_type == "collector":
-            parsed.collector_version = record.get("collector_version") or parsed.collector_version
-            parsed.rti_version = record.get("rti_version") or parsed.rti_version
-        elif record_type == "error":
-            message = record.get("message") or "Collector reported an error"
-            hint = record.get("hint")
-            parsed.error = f"{message} {hint}".strip() if hint else message
-        else:
-            parsed.warnings.append(
-                f"Collector emitted an unknown record type: {record_type!r}"
+            pod = core.read_namespaced_pod(name=pod_name, namespace=config.namespace)
+            phase = pod.status.phase if pod.status else None
+        except ApiException:
+            phase = None
+        if phase == "Failed":
+            raise UmfRtiCaptureError(
+                f"Capture pod {pod_name} exited (Failed) before signaling done."
             )
+        try:
+            out = stream(
+                core.connect_get_namespaced_pod_exec,
+                pod_name,
+                config.namespace,
+                command=["sh", "-c", probe],
+                container="capture",
+                stderr=True,
+                stdin=False,
+                stdout=True,
+                tty=False,
+                _preload_content=True,
+                _request_timeout=15,
+            )
+        except ApiException:
+            out = ""
+        if _DONE_MARKER in out:
+            return
+        # Script touches .done before its final sleep, so a finished container
+        # means recording completed (exec can't reach a stopped container).
+        if phase == "Succeeded":
+            return
+        time.sleep(config.poll_interval_seconds)
+    raise UmfRtiCaptureError(
+        f"Recording did not finish within "
+        f"{params.umf_duration_seconds + config.collect_grace_seconds}s "
+        f"(pod {pod_name})."
+    )
 
-    if parsed.summary:
-        summary_counts = parsed.summary.get("counts")
-        if isinstance(summary_counts, dict):
-            handles = summary_counts.get("discovered_topic_handles")
-            if isinstance(handles, int):
-                parsed.counts["discovered_topic_handles"] = handles
 
-    if parsed.raw_lines:
-        preview = "; ".join(line[:300] for line in parsed.raw_lines[:5])
-        parsed.warnings.append(
-            f"Collector stderr/non-JSON output was captured in the backend pod log: {preview}"
+def _collect_recording(
+    core: client.CoreV1Api, pod_name: str, config: UmfRtiConfig
+) -> str:
+    """Copy the recording dir out of the pod into a local temp dir.
+
+    Streams `tar | base64` over exec (base64 keeps the bytes intact across the
+    exec websocket, which otherwise mangles binary), decodes, and extracts.
+    Returns the temp dir path; the caller is responsible for deleting it.
+    """
+    command = [
+        "sh",
+        "-c",
+        f"tar czf - -C {config.output_dir} . 2>/dev/null | base64",
+        # the '-' means stream the binary to stdout instead of a file
+    ]
+    try:
+        out = stream(
+            core.connect_get_namespaced_pod_exec,
+            pod_name,
+            config.namespace,
+            command=command,
+            container="capture",
+            stderr=True,
+            stdin=False,
+            stdout=True,
+            tty=False,
+            _preload_content=True,
+            _request_timeout=120,
         )
-    if parsed.summary is None and parsed.json_lines:
-        parsed.warnings.append("Collector log did not contain a final summary record (possibly truncated).")
-    return parsed
+    except ApiException as e:
+        raise UmfRtiCaptureError(
+            f"Could not copy recording from pod {pod_name}: {e.reason or e}"
+        ) from e
+
+    try:
+        archive = base64.b64decode(out)
+    except (ValueError, TypeError) as e:
+        raise UmfRtiCaptureError(f"Recording archive was not valid base64: {e}") from e
+
+    recording_dir = tempfile.mkdtemp(prefix="umf-rti-")
+    try:
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
+            tar.extractall(recording_dir, filter="data")
+    except (tarfile.TarError, EOFError) as e:
+        raise UmfRtiCaptureError(f"Could not unpack recording archive: {e}") from e
+    return recording_dir
 
 
 def capture_umf_rti(
@@ -651,442 +438,222 @@ def capture_umf_rti(
     params: UmfRtiParams,
     config: UmfRtiConfig,
 ) -> UmfRtiCaptureResult:
-    """Create the Job, wait for it, read the log, and always delete the Job."""
-    peer, router_port = resolve_router_peer(core, params.umf_domain_id, config)
-    job_name = _new_job_name(params.umf_domain_id)
-    job = build_job(config, params, peer, job_name)
-    started_at = _utcnow()
-    started_monotonic = time.monotonic()
+    """Run one capture: create the Job, wait for recording, pull the files out.
 
-    tracker.set_service_total(
-        UMF_RTI_SERVICE_ID, params.umf_duration_seconds, unit="seconds"
-    )
-    tracker.set_service_completed(
-        UMF_RTI_SERVICE_ID,
-        0,
-        current=f"Starting UMF RTI (domain {params.umf_domain_id})",
-    )
-
+    The returned result carries `recording_dir` (a local temp dir); the caller
+    must delete it once the files have been zipped.
+    """
+    job = build_job_manifest(params, config)
+    job_name = _create_job(batch, job, config)
     try:
-        batch.create_namespaced_job(namespace=config.namespace, body=job)
-    except ApiException as e:
-        if e.status == 404:
-            raise UmfRtiPrerequisiteError(
-                f"Namespace {config.namespace} was not found."
-            ) from e
-        if e.status in (401, 403):
-            raise UmfRtiCaptureError(
-                _access_error("create jobs", config.namespace, e)
-            ) from e
-        raise UmfRtiCaptureError(
-            f"Could not create UMF RTI Job {job_name}: {_reason(e)}"
-        ) from e
-    except Exception as e:
-        raise UmfRtiCaptureError(
-            f"Could not create UMF RTI Job {job_name}: {e}"
-        ) from e
-
-    status = "unknown"
-    error: Optional[str] = None
-    pod_name: Optional[str] = None
-    node_name: Optional[str] = None
-    exit_code: Optional[int] = None
-    log_text = ""
-    warnings: List[str] = []
-    parsed = ParsedUmfRtiLog()
-    delete_ok = False
-
-    try:
-        deadline = (
-            started_monotonic
-            + params.umf_duration_seconds
-            + config.wait_timeout_seconds
-        )
-        job_created_monotonic = time.monotonic()
-        while True:
-            job_status: Optional[client.V1JobStatus] = None
-            try:
-                job_status = batch.read_namespaced_job_status(
-                    name=job_name, namespace=config.namespace, _request_timeout=10
-                ).status
-            except ApiException as e:
-                if e.status == 404:
-                    error = f"UMF RTI Job {job_name} disappeared before completion."
-                    status = "failed"
-                    break
-                warnings.append(f"Could not read Job status: {_reason(e)}")
-
-            try:
-                pod = _find_pod(core, config.namespace, job_name)
-            except ApiException as e:
-                error = _access_error("list pods", config.namespace, e)
-                status = "failed"
-                break
-            waiting_reason = None
-            if pod is not None:
-                pod_name = pod.metadata.name if pod.metadata else pod_name
-                node_name = pod.spec.node_name if pod.spec else node_name
-                waiting_reason = _pod_waiting_reason(pod)
-                if waiting_reason in FAST_FAIL_WAITING_REASONS:
-                    message = _pod_pending_message(pod) or waiting_reason
-                    error = f"UMF RTI pod cannot start ({waiting_reason}): {message}"
-                    status = "failed"
-                    break
-                if pod.status and pod.status.phase == "Failed":
-                    exit_code = _pod_exit_code(pod)
-                    error = (
-                        _pod_termination_message(pod)
-                        or pod.status.message
-                        or f"UMF RTI pod finished in phase Failed ({pod.status.reason or 'unknown'})."
-                    )
-                    status = "failed"
-                    break
-                if pod.status and pod.status.phase == "Succeeded":
-                    # The Job controller usually updates status immediately after
-                    # the pod, but accept the pod phase if it is already terminal.
-                    status = "succeeded"
-                    exit_code = _pod_exit_code(pod)
-                    break
-
-            if pod is None and (
-                time.monotonic() - job_created_monotonic
-                >= config.pod_creation_timeout_seconds
-            ):
-                explanation = _job_warning_events(core, config.namespace, job_name)
-                error = (
-                    f"UMF RTI Job did not create a Pod within "
-                    f"{config.pod_creation_timeout_seconds} seconds."
-                )
-                if explanation:
-                    error += f" {explanation}"
-                else:
-                    error += (
-                        " Check the iomt-integration quota, RBAC, and image pull "
-                        "secret (kubectl describe job -n "
-                        f"{config.namespace} {job_name})."
-                    )
-                status = "failed"
-                break
-
-            if job_status is not None:
-                if job_status.succeeded:
-                    status = "succeeded"
-                    if pod is not None:
-                        exit_code = _pod_exit_code(pod)
-                    break
-                if job_status.failed:
-                    status = "failed"
-                    if pod is not None:
-                        exit_code = _pod_exit_code(pod)
-                    error = _job_failure_message(job_status) or "UMF RTI Job failed."
-                    break
-
-            elapsed = min(
-                params.umf_duration_seconds,
-                int(time.monotonic() - started_monotonic),
-            )
-            tracker.set_service_completed(
-                UMF_RTI_SERVICE_ID,
-                elapsed,
-                current=f"Capturing UMF RTI (domain {params.umf_domain_id})",
-            )
-            if time.monotonic() >= deadline:
-                status = "timeout"
-                error = (
-                    "UMF RTI capture did not finish within "
-                    f"{params.umf_duration_seconds + config.wait_timeout_seconds} seconds."
-                )
-                break
-            time.sleep(max(0.05, config.poll_interval_seconds))
-
-        if pod_name:
-            try:
-                log_text = (
-                    core.read_namespaced_pod_log(
-                        name=pod_name,
-                        namespace=config.namespace,
-                        container=config.collector_container_name,
-                        limit_bytes=params.umf_max_bytes,
-                        timestamps=False,
-                        _request_timeout=30,
-                    )
-                    or ""
-                )
-            except ApiException as e:
-                warnings.append(
-                    f"Could not read UMF RTI pod log for {pod_name}: {_reason(e)}"
-                )
-            except Exception as e:
-                warnings.append(f"Could not read UMF RTI pod log for {pod_name}: {e}")
-
-        if log_text:
-            parsed = _parse_ndjson(log_text)
-            warnings.extend(w for w in parsed.warnings if w not in warnings)
-            if parsed.error:
-                if not error:
-                    error = parsed.error
-                elif parsed.error not in error:
-                    error = f"{error}; collector: {parsed.error}"
-                if status == "succeeded":
-                    status = "failed"
-            if parsed.summary:
-                exit_code = parsed.summary.get("exit_code")  # collector does not set it
-            if parsed.counts:
-                pass
-            if not parsed.json_lines and not error:
-                error = "UMF RTI collector produced no JSON records."
-                status = "failed"
-        elif status == "succeeded":
-            error = "UMF RTI collector produced no log output."
-            status = "failed"
+        pod_name = _wait_for_pod_running(core, job_name, config)
+        _wait_for_done(core, pod_name, params, config)
+        recording_dir = _collect_recording(core, pod_name, config)
     finally:
-        delete_ok = _delete_job(batch, config.namespace, job_name)
-        if delete_ok:
-            try:
-                _wait_for_cleanup(core, batch, config.namespace, job_name)
-            except Exception:
-                pass
-        else:
-            warnings.append(
-                f"Could not delete UMF RTI Job {job_name}; TTL {config.job_ttl_seconds}s will clean it up."
-            )
+        _delete_job(batch, job_name, config)
 
-    finished_at = _utcnow()
-    log_bytes = len(log_text.encode("utf-8"))
-    truncated = bool(params.umf_max_bytes and log_bytes >= params.umf_max_bytes)
+    names = sorted(os.listdir(recording_dir))
+    db_files = [n for n in names if n.endswith(".db")]
+    user_data_file = RECORDING_DB_BASENAME if RECORDING_DB_BASENAME in names else None
 
-    if status == "succeeded" and error:
-        status = "failed"
-    if status == "succeeded" and exit_code is None:
-        # A successful collector exits 0 even when the pod status has already
-        # been removed by the Job/pod cleanup.
-        exit_code = 0
-    if status == "unknown":
-        status = "failed"
-        error = error or "UMF RTI capture ended without a terminal Job state."
-
-    if error:
-        tracker.fail_service(UMF_RTI_SERVICE_ID, error)
-    else:
-        tracker.set_service_completed(
-            UMF_RTI_SERVICE_ID,
-            params.umf_duration_seconds,
+    warnings = []
+    rc = _read_recorder_rc(recording_dir)
+    rc_ok = rc is None or rc in _RECORDER_OK_RCS
+    if not rc_ok:
+        warnings.append(
+            f"Recorder exited early with code {rc}; see {_RECORDER_LOG_FILENAME}."
         )
-        tracker.set_service_current(UMF_RTI_SERVICE_ID, None)
+
+    topic_counts: dict[str, int] = {}
+    if user_data_file:
+        try:
+            topic_counts = _count_samples(os.path.join(recording_dir, user_data_file))
+        except sqlite3.Error as e:
+            warnings.append(f"Could not read sample counts from {user_data_file}: {e}")
+    else:
+        warnings.append("No user-data recording file was produced.")
+
+    total_samples = sum(topic_counts.values())
+    if rc_ok and total_samples == 0:
+        warnings.append("No samples captured (the source may be idle).")
 
     return UmfRtiCaptureResult(
         domain_id=params.umf_domain_id,
         duration_seconds=params.umf_duration_seconds,
-        router_peer=peer,
-        router_port=router_port,
-        namespace=config.namespace,
-        job_name=job_name,
-        pod_name=pod_name,
-        node_name=node_name,
-        image=config.image,
-        status=status,
-        exit_code=exit_code,
-        started_at_utc=started_at,
-        finished_at_utc=finished_at,
-        log_text=log_text,
-        log_bytes=log_bytes,
-        truncated=truncated,
-        error=error,
+        recording_dir=recording_dir,
+        recording_files=db_files,
+        user_data_file=user_data_file,
+        topic_sample_counts=topic_counts,
+        total_samples=total_samples,
         warnings=warnings,
-        counts=parsed.counts,
-        collector_version=parsed.collector_version,
-        rti_version=parsed.rti_version,
-        job_deleted=delete_ok,
     )
 
 
-def _readme(result: UmfRtiCaptureResult) -> str:
-    return f"""UMF RTI discovery capture
-=========================
+def _delete_job(batch: client.BatchV1Api, job_name: str, config: UmfRtiConfig) -> None:
+    """Best-effort delete of the Job and its pod (Foreground = pod goes first).
 
-Domain:            {result.domain_id}
-Duration:          {result.duration_seconds} seconds
-Router peer:       {result.router_peer}
-Router port:       {result.router_port}
-Image:             {result.image}
-Namespace:         {result.namespace}
-Job:               {result.job_name}
-Pod:               {result.pod_name or '(not created)'}
-Node:              {result.node_name or '(unknown)'}
-Status:            {result.status}
-Started (UTC):     {result.started_at_utc}
-Finished (UTC):    {result.finished_at_utc}
-Collector:         {result.collector_version or '(unknown)'}
-RTI version:       {result.rti_version or '(unknown)'}
-Log bytes:         {result.log_bytes}
-Log truncated:     {result.truncated}
-Counts:            {json.dumps(result.counts, sort_keys=True)}
+    Swallows errors: the Job may already be gone, and ttlSecondsAfterFinished is
+    the backstop. Never masks the original exception when called from a finally.
+    """
+    try:
+        batch.delete_namespaced_job(
+            name=job_name,
+            namespace=config.namespace,
+            # Foreground = delete the pod before the Job, so no pod lingers
+            # holding the emptyDir / its 1Gi against the namespace quota.
+            propagation_policy="Foreground",
+        )
+    except ApiException:
+        pass
 
-Files in this package
----------------------
-umf-rti/umf-rti-discovery.ndjson
-  One JSON object per line: collector metadata, participants, topics,
-  writers, readers, and a final summary.  Each writer/reader record includes
-  topic name, type name, GUID, participant GUID/name, liveness, and QoS.
 
-umf-rti/umf-rti-summary.json
-  Machine-readable capture summary (domain, duration, peer, counts).
+def _read_recorder_rc(recording_dir: str) -> int | None:
+    """Read the recorder's exit code from the collected `.rc` file, if present."""
+    path = os.path.join(recording_dir, _RC_FILENAME)
+    try:
+        with open(path) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
 
-umf-rti/README.txt
-  This overview.
 
-What is captured
-----------------
-- Live DDS participants discovered on the selected domain.
-- UMF topics observed from matched writers/readers, including umf_cfg,
-  umfcmd_req, umfcmd_resp, and umf_cfg_state.
-- Remote writers/readers, their topic/type names, GUIDs, participant names,
-  liveness at capture time, and QoS (reliability, durability, deadline,
-  liveliness, history/ownership/presentation/partition where available).
+def _count_samples(db_path: str) -> dict[str, int]:
+    """Count rows per topic in the JSON_SQLITE user-data DB.
 
-Privacy
--------
-The package contains discovery and QoS metadata only. No sample values or
-patient data are included.
-"""
+    Each DDS topic recorded becomes a table (e.g. `umfnum@13`); the row count is
+    the number of samples captured. Only non-empty, non-internal tables are
+    reported. Opens read-only so a half-written DB can't be altered.
+    """
+    counts: dict[str, int] = {}
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        tables = [
+            row[0]
+            for row in con.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            )
+        ]
+        for table in tables:
+            try:
+                n = con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+            except sqlite3.Error:
+                continue
+            if n:
+                counts[table] = n
+    finally:
+        con.close()
+    return counts
+
+
+def _safe_filename(name: str) -> str:
+    """Make a topic name safe to use as a filename (topics look like `umfnum@13`)."""
+    return "".join(c if (c.isalnum() or c in "@._-") else "_" for c in name)
+
+
+def _read_topic_samples(db_path: str, table: str) -> list:
+    """Read and JSON-parse the sample payloads of one topic table (read-only)."""
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        rows = con.execute(f'SELECT rti_json_sample FROM "{table}"').fetchall()
+    finally:
+        con.close()
+    samples = []
+    for (raw,) in rows:
+        if raw is None:
+            continue
+        try:
+            samples.append(json.loads(raw))
+        except (ValueError, TypeError):
+            samples.append({"_unparsed": raw})
+    return samples
 
 
 def write_artifacts(
     zf: zipfile.ZipFile,
     manifest: LogCollectionManifest,
     result: UmfRtiCaptureResult,
-    params: UmfRtiParams,
-    config: UmfRtiConfig,
 ) -> None:
-    """Write UMF RTI files into the diagnostic zip and update the manifest.
+    """Add the recording, the recorder log, and summary.json to the zip.
 
-    Internal warnings and raw collector stderr stay in the backend pod log.
-    The package is deliberately limited to the discovery records, a clean
-    summary, and the overview README.
+    The caller is responsible for deleting `result.recording_dir` afterwards.
     """
-    parsed = _parse_ndjson(result.log_text)
-    counts = dict(result.counts or parsed.counts)
+    added: list[str] = []
 
-    internal_warnings = list(result.warnings)
-    for warning in parsed.warnings:
-        if warning not in internal_warnings:
-            internal_warnings.append(warning)
-    for warning in internal_warnings:
-        logger.info("UMF RTI internal note: %s", warning)
+    if result.recording_dir:
+        for name in result.recording_files:
+            src = os.path.join(result.recording_dir, name)
+            arcname = f"umf_rti/recording/{name}"
+            try:
+                zf.write(src, arcname)
+                added.append(arcname)
+            except OSError:
+                continue
+        # Include the recorder log (diagnostic value, esp. on a failed capture).
+        # Normally, this path should always exist. In the scenario it doesnt,
+        # the code shouldn't even get here, but I'm scared, so guard anyways.
+        log_src = os.path.join(result.recording_dir, _RECORDER_LOG_FILENAME)
+        if os.path.exists(log_src):
+            arcname = f"umf_rti/{_RECORDER_LOG_FILENAME}"
+            zf.write(log_src, arcname)
+            added.append(arcname)
 
-    ndjson_text = "\n".join(parsed.json_lines)
-    if ndjson_text:
-        ndjson_text += "\n"
-    summary = {
-        "domain": result.domain_id,
-        "duration_seconds": result.duration_seconds,
-        "router_peer": result.router_peer,
-        "router_port": result.router_port,
-        "image": result.image,
-        "namespace": result.namespace,
-        "job": result.job_name,
-        "pod": result.pod_name,
-        "node": result.node_name,
-        "status": result.status,
-        "exit_code": result.exit_code,
-        "started_at_utc": result.started_at_utc,
-        "finished_at_utc": result.finished_at_utc,
-        "log_bytes": result.log_bytes,
-        "truncated": result.truncated,
-        "counts": counts,
-        "collector_version": result.collector_version or parsed.collector_version,
-        "rti_version": result.rti_version or parsed.rti_version,
-        "job_deleted": result.job_deleted,
-        "sample_values_captured": False,
-    }
-    if result.error:
-        summary["error"] = result.error
+        # Readable per-topic JSON, so the recording can be read without SQLite.
+        if result.user_data_file:
+            db_path = os.path.join(result.recording_dir, result.user_data_file)
+            for topic in result.topic_sample_counts:
+                try:
+                    samples = _read_topic_samples(db_path, topic)
+                except sqlite3.Error:
+                    continue
+                arcname = f"umf_rti/json/{_safe_filename(topic)}.json"
+                zf.writestr(arcname, json.dumps(samples, indent=2))
+                added.append(arcname)
 
-    files = list(UMF_RTI_FILES)
-    zf.writestr(files[0], ndjson_text)
-    zf.writestr(files[1], json.dumps(summary, indent=2, sort_keys=False))
-    zf.writestr(files[2], _readme(result))
-    manifest.collected_files.extend(files)
+    summary_name = "umf_rti/summary.json"
+    zf.writestr(summary_name, result.model_dump_json(indent=2))
+    added.append(summary_name)
 
-    service_status = "done" if result.status == "succeeded" and not result.error else "error"
+    manifest.collected_files.extend(added)
     manifest.services.append(
         CollectedService(
             id=UMF_RTI_SERVICE_ID,
-            label="UMF RTI",
-            status=service_status,
-            files=files,
-            error=result.error,
+            label=UMF_RTI_LABEL,
+            status="done",
+            files=added,
+            error=None,
         )
     )
-    if result.error:
-        manifest.errors.append(
-            LogErrorEntry(
-                namespace=result.namespace,
-                pod=result.pod_name or result.job_name,
-                container=config.collector_container_name,
-                reason=result.error,
-                service=UMF_RTI_SERVICE_ID,
-            )
-        )
 
 
 def write_failure_artifacts(
     zf: zipfile.ZipFile,
     manifest: LogCollectionManifest,
-    error: str,
+    message: str,
     params: UmfRtiParams,
     config: UmfRtiConfig,
 ) -> None:
-    """Write a minimal UMF RTI section when no Job could run at all."""
-    summary = {
-        "domain": params.umf_domain_id,
-        "duration_seconds": params.umf_duration_seconds,
-        "status": "failed",
-        "error": error,
-        "job": None,
-        "pod": None,
-        "counts": {
-            "participants": 0,
-            "topics": 0,
-            "writers": 0,
-            "readers": 0,
-            "discovered_topic_handles": 0,
-        },
-        "sample_values_captured": False,
-    }
-    files = [
-        "umf-rti/umf-rti-discovery.ndjson",
-        "umf-rti/umf-rti-summary.json",
-        "umf-rti/README.txt",
-    ]
-    zf.writestr(files[0], "")
-    zf.writestr(files[1], json.dumps(summary, indent=2))
-    zf.writestr(
-        files[2],
-        "UMF RTI discovery capture\n"
-        "=========================\n\n"
-        f"Domain: {params.umf_domain_id}\n"
-        f"Status: failed\n\n"
-        f"{error}\n\n"
-        "No collection Job was created or no log could be read. "
-        "See manifest.json for the recorded error.\n",
+    """Record a capture failure in the zip so the bundle is still valid/useful.
+
+    Used when the capture raised before producing a recording (e.g. the Job
+    couldn't start). Writes a short note and marks the service as errored in the
+    manifest.
+    """
+    note_path = "umf_rti/ERROR.txt"
+    note = (
+        "UMF-RTI capture failed.\n\n"
+        f"domain_id: {params.umf_domain_id}\n"
+        f"duration_seconds: {params.umf_duration_seconds}\n\n"
+        f"{message}\n"
     )
-    manifest.collected_files.extend(files)
+    zf.writestr(note_path, note)
+    manifest.collected_files.append(note_path)
     manifest.services.append(
         CollectedService(
             id=UMF_RTI_SERVICE_ID,
-            label="UMF RTI",
+            label=UMF_RTI_LABEL,
             status="error",
-            files=files,
-            error=error,
-        )
-    )
-    manifest.errors.append(
-        LogErrorEntry(
-            namespace=config.namespace,
-            pod="(umf-rti-job)",
-            container=config.collector_container_name,
-            reason=error,
-            service=UMF_RTI_SERVICE_ID,
+            files=[note_path],
+            error=message,
         )
     )
