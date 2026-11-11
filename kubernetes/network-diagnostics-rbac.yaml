@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: iomt-network-backend
+  namespace: iomt-dev-1
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: network-pod-reader
+  namespace: iomt-dev-1
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: network-pod-reader-binding
+  namespace: iomt-dev-1
+subjects:
+  - kind: ServiceAccount
+    name: iomt-network-backend
+    namespace: iomt-dev-1
+roleRef:
+  kind: Role
+  name: network-pod-reader
+  apiGroup: rbac.authorization.k8s.io

@@ -1,11 +1,16 @@
 from kubernetes import client, config
 from fastapi import HTTPException
+import os
+
 
 
 def _load_config() -> None:
-    """Loads the Kubernetes configuration from the local kubeconfig."""
+    """Load Kubernetes configuration for local or in-cluster execution."""
     try:
-        config.load_kube_config()
+        if os.environ.get("KUBERNETES_SERVICE_HOST"):
+            config.load_incluster_config()
+        else:
+            config.load_kube_config()
     except config.ConfigException as e:
         raise HTTPException(
             status_code=503,
