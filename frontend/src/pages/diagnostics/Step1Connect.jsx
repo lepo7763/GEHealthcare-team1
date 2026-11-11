@@ -27,10 +27,7 @@ const Step1Connect = ({ host, setHost, phase, result, error, isChecking, onCheck
             onClick={onCheck}
             disabled={isChecking || !host.trim()}
           >
-<<<<<<< HEAD
-=======
             {isChecking && <span className="btn-spinner" aria-hidden="true" />}
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
             {isChecking ? 'Checking…' : 'Check Kubernetes & access'}
           </button>
         </div>

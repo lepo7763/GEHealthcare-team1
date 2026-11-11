@@ -183,9 +183,6 @@ code {
   font-weight: var(--eds-font-weight-semibold);
   cursor: pointer;
   white-space: nowrap;
-<<<<<<< HEAD
-  transition: background 0.15s ease;
-=======
   gap: var(--eds-spacing-xs);
   transition:
     background-color 0.2s ease,
@@ -193,7 +190,6 @@ code {
     color 0.2s ease,
     box-shadow 0.2s ease,
     transform 0.16s ease;
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
   /* Also used on <a> elements (e.g. the download link). */
   display: inline-flex;
   align-items: center;
@@ -202,8 +198,6 @@ code {
   box-sizing: border-box;
 }
 
-<<<<<<< HEAD
-=======
 .btn:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: var(--eds-shadow-sm);
@@ -236,7 +230,6 @@ code {
   to { transform: rotate(360deg); }
 }
 
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 .btn-primary {
   background: var(--eds-color-purple);
   color: var(--eds-color-white);
@@ -264,46 +257,27 @@ code {
   cursor: pointer;
 }
 
-<<<<<<< HEAD
-/* Readiness progress */
-.progress {
-  height: 8px;
-=======
 /* Readiness / collection progress */
 .progress {
   height: 6px;
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
   border-radius: var(--eds-radius-full);
   background: var(--eds-color-purple-subtle);
   margin: var(--eds-spacing-md) 0 var(--eds-spacing-xs);
   overflow: hidden;
 }
 .progress-fill {
-<<<<<<< HEAD
-  height: 100%;
-  background: var(--eds-color-success);
-=======
   width: 0;
   height: 100%;
   border-radius: inherit;
   background: var(--eds-color-purple);
   transition: width 0.75s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: width;
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 }
 
 /* Indeterminate variant: used while we don't know how long a check will take. */
 .progress-indeterminate .progress-fill {
   width: 40%;
   background: var(--eds-color-purple);
-<<<<<<< HEAD
-  animation: eds-progress-indeterminate 1.1s ease-in-out infinite;
-}
-
-@keyframes eds-progress-indeterminate {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(250%); }
-=======
   transition: none;
   animation: eds-progress-indeterminate 1.55s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   will-change: transform;
@@ -322,7 +296,6 @@ code {
 @keyframes eds-fade-slide-in {
   from { opacity: 0; transform: translateY(7px); }
   to { opacity: 1; transform: translateY(0); }
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 }
 
 /* Lists */
@@ -407,13 +380,10 @@ code {
   margin-top: var(--eds-spacing-lg);
 }
 
-<<<<<<< HEAD
-=======
 .collect-panel > .action-row {
   animation: eds-fade-slide-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 .service-option {
   position: relative;
   display: flex;
@@ -429,15 +399,11 @@ code {
   padding: var(--eds-spacing-md);
   font-family: var(--eds-font-family);
   cursor: pointer;
-<<<<<<< HEAD
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-=======
   transition:
     border-color 0.2s ease,
     background-color 0.2s ease,
     box-shadow 0.2s ease,
     transform 0.2s ease;
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 }
 
 .service-option > div {
@@ -453,10 +419,7 @@ code {
   border-color: var(--eds-color-purple);
   background: var(--eds-color-purple-faint);
   box-shadow: var(--eds-shadow-sm);
-<<<<<<< HEAD
-=======
   transform: translateY(-1px);
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 }
 
 .service-option.selected {
@@ -485,8 +448,6 @@ code {
   border-color: var(--eds-color-purple);
 }
 
-<<<<<<< HEAD
-=======
 /* Per-service options (UMF RTI domain/duration) */
 .service-options {
   margin-top: var(--eds-spacing-md);
@@ -574,7 +535,6 @@ code {
   overflow-wrap: anywhere;
 }
 
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 .mono,
 .mono-strong {
   font-family: ui-monospace, 'SF Mono', Consolas, monospace;
@@ -605,10 +565,7 @@ code {
   border-radius: var(--eds-radius-md);
   font-size: var(--eds-font-size-sm);
   margin: var(--eds-spacing-md) 0;
-<<<<<<< HEAD
-=======
   animation: eds-fade-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 }
 .alert-warning { background: var(--eds-color-warning-bg); }
 .alert-warning strong { color: var(--eds-color-warning); }
@@ -697,8 +654,6 @@ code {
   font-family: var(--eds-font-family);
   font-size: var(--eds-font-size-md);
   width: 100%;
-<<<<<<< HEAD
-=======
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease,
@@ -712,7 +667,6 @@ code {
 
 .field input:focus {
   border-color: var(--eds-color-purple);
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 }
 
 .input-with-action { position: relative; }
@@ -749,8 +703,6 @@ code {
 .summary-list dd { margin: 0; font-weight: var(--eds-font-weight-semibold); }
 .summary-list dd.warn { color: var(--eds-color-warning); }
 
-<<<<<<< HEAD
-=======
 /* Log export filters */
 .log-export-fields {
   border: 0;
@@ -806,4 +758,3 @@ code {
 @media (max-width: 640px) {
   .log-export-grid { grid-template-columns: 1fr; }
 }
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf

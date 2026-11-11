@@ -1,22 +1,3 @@
-<<<<<<< HEAD
-import { STATUS_LABEL } from './constants';
-
-const Step4Collect = ({ collect, collectError, download, onBack }) => {
-  const collectServices = collect?.services || [];
-  const containersTotal = collectServices.reduce((sum, s) => sum + (s.containers_total || 0), 0);
-  const containersDone = collectServices.reduce((sum, s) => sum + (s.containers_done || 0), 0);
-  const collectErrors = collectServices.reduce((sum, s) => sum + (s.errors || 0), 0);
-  const currentPod = collectServices.find((s) => s.current)?.current;
-  const collectStatus = collect?.status || 'idle';
-  const isDeterminate = collectStatus === 'collecting' && containersTotal > 0;
-  const percent = containersTotal > 0 ? Math.round((containersDone / containersTotal) * 100) : 0;
-  const collectFailed =
-    collectError || (collectStatus === 'error' ? collect?.message || 'Collection failed.' : '');
-  const statusLabel =
-    collectStatus === 'collecting'
-      ? `${containersDone} of ${containersTotal} containers (${percent}%)`
-      : STATUS_LABEL[collectStatus] || 'Working…';
-=======
 import { SERVICE_STATUS_LABEL, STATUS_LABEL } from './constants';
 
 const ServiceProgressCard = ({ service }) => {
@@ -85,21 +66,12 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
   const serviceErrors = services.filter((service) => service.status === 'error').length;
   const totalErrors = services.reduce((sum, service) => sum + (service.errors || 0), 0);
   const allDone = collectStatus === 'done';
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 
   return (
     <section className="section-narrow">
       <div className="card">
         <h3 className="card-title">Collect</h3>
         <p className="card-subtitle">
-<<<<<<< HEAD
-          Collecting logs from the selected services. This can take a while on large clusters.
-        </p>
-
-        <div className="collect-panel">
-          {collectFailed && (
-            <div className="alert alert-error">
-=======
           Collecting from the selected services. Each service reports its own progress
           and units.
         </p>
@@ -110,21 +82,11 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
         >
           {collectFailed && (
             <div className="alert alert-error" role="alert">
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
               <strong>Collection failed</strong>
               <span>{collectFailed}</span>
             </div>
           )}
 
-<<<<<<< HEAD
-          {!collectFailed && collectStatus === 'done' && (
-            <div className="alert alert-success">
-              <strong>Collection complete</strong>
-              <span>
-                {containersDone} of {containersTotal} containers collected
-                {collectErrors > 0
-                  ? ` · ${collectErrors} error${collectErrors === 1 ? '' : 's'}`
-=======
           {!collectFailed && allDone && (
             <div
               className={`alert ${serviceErrors ? 'alert-warning' : 'alert-success'}`}
@@ -139,36 +101,12 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
                   : 'All selected services finished'}
                 {totalErrors > 0
                   ? ` · ${totalErrors} error${totalErrors === 1 ? '' : 's'} reported`
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
                   : ''}
                 .
               </span>
             </div>
           )}
 
-<<<<<<< HEAD
-          {!collectFailed && collectStatus !== 'done' && (
-            <>
-              <div
-                className={`progress ${isDeterminate ? '' : 'progress-indeterminate'}`}
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={isDeterminate ? percent : undefined}
-              >
-                <div
-                  className="progress-fill"
-                  style={isDeterminate ? { width: `${percent}%` } : undefined}
-                />
-              </div>
-              <p className="collect-meta">{statusLabel}</p>
-              {currentPod && (
-                <p className="collect-meta">
-                  Current: <span className="mono">{currentPod}</span>
-                </p>
-              )}
-            </>
-=======
           {services.length > 0 ? (
             <div className="service-progress-list">
               {services.map((service) => (
@@ -191,17 +129,12 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
                 </p>
               </>
             )
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
           )}
 
           {download && (
             <div className="action-row">
               <a className="btn btn-primary" href={download.url} download={download.filename}>
-<<<<<<< HEAD
-                Download logs
-=======
                 Download diagnostic package
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
               </a>
             </div>
           )}

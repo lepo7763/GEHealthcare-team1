@@ -9,26 +9,10 @@ export const SERVICES = [
     description: 'Logs from every container across all namespaces.',
   },
   {
-<<<<<<< HEAD
-    id: 'wireshark',
-    name: 'Wireshark',
-    description: 'Placeholder — capture platform network traffic.',
-  },
-  {
-    id: 'netshoot',
-    name: 'Netshoot',
-    description: 'Capture network traffic from Kubernetes test pods and download PCAP files.',
-  },
-  {
-    id: 'umf-rti',
-    name: 'UMF RTI',
-    description: 'Placeholder — UMF real-time interface data.',
-=======
     id: 'umf-rti',
     name: 'UMF RTI',
     description:
       'Captures UMF RTI discovery and QoS data from the live platform. No sample values are read.',
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
   },
 ];
 
@@ -56,10 +40,6 @@ export const RUNNING_STATUSES = ['listing', 'collecting', 'packaging'];
 
 export const STATUS_LABEL = {
   idle: 'Starting collection…',
-<<<<<<< HEAD
-  listing: 'Listing pods across the cluster…',
-  packaging: 'Packaging logs…',
-=======
   listing: 'Preparing collection…',
   collecting: 'Collecting…',
   packaging: 'Packaging diagnostic package…',
@@ -72,7 +52,6 @@ export const SERVICE_STATUS_LABEL = {
   collecting: 'Collecting',
   done: 'Complete',
   error: 'Failed',
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 };
 
 export const parseFilename = (disposition) => {

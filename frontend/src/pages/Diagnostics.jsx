@@ -6,11 +6,6 @@ import Step1Connect from './diagnostics/Step1Connect';
 import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
-<<<<<<< HEAD
-import Step4Netshoot from './diagnostics/Step4Netshoot';
-import Step4RecordedNetshoot from './diagnostics/Step4RecordedNetshoot';
-=======
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -27,11 +22,6 @@ const Diagnostics = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(['container-logs']);
-<<<<<<< HEAD
-=======
-  const [umfDomain, setUmfDomain] = useState('32');
-  const [umfDuration, setUmfDuration] = useState('120');
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
@@ -40,10 +30,6 @@ const Diagnostics = () => {
   const pollRef = useRef(null);
   const abortRef = useRef(null);
   const downloadUrlRef = useRef(null);
-<<<<<<< HEAD
-  const [captureMode, setCaptureMode] = useState('live');
-=======
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
 
   const isChecking = phase === 'checking';
   const info = STEP_INFO[step] || STEP_INFO[1];
@@ -59,14 +45,10 @@ const Diagnostics = () => {
     fetch('/api/logs/progress')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-<<<<<<< HEAD
-        if (data) setCollect(data);
-=======
         if (!data) return;
         setCollect((previous) =>
           previous && JSON.stringify(previous) === JSON.stringify(data) ? previous : data,
         );
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
       })
       .catch(() => {
         /* keep polling */
@@ -75,19 +57,12 @@ const Diagnostics = () => {
 
   const startPolling = () => {
     stopPolling();
-<<<<<<< HEAD
-    pollRef.current = setInterval(pollProgress, 400);
-=======
     pollRef.current = setInterval(pollProgress, 600);
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
   };
 
   const startCollection = async () => {
     setCollectError('');
-<<<<<<< HEAD
-=======
     setCollect(null);
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
     setDownload(null);
     if (downloadUrlRef.current) {
       URL.revokeObjectURL(downloadUrlRef.current);
@@ -111,18 +86,13 @@ const Diagnostics = () => {
     const controller = new AbortController();
     abortRef.current = controller;
 
-<<<<<<< HEAD
-    fetch('/api/logs/zip', { signal: controller.signal })
-=======
     const params = new URLSearchParams();
     selected.forEach((serviceId) => params.append('services', serviceId));
-    if (selected.includes('umf-rti')) {
-      params.set('umf_domain_id', String(umfDomain).trim());
-      params.set('umf_duration_seconds', String(umfDuration).trim());
-    }
+    // TODO(frontend): when the UMF-RTI config UI lands, set umf_domain_id and
+    // umf_duration_seconds here. Until then the backend defaults (domain 13, 60s)
+    // are used. See src/pages/diagnostics/UMF_RTI_TODO.md.
 
     fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
       .then(async (res) => {
         if (!res.ok) {
           let detail = `Collection failed (${res.status}).`;
@@ -135,11 +105,7 @@ const Diagnostics = () => {
           throw new Error(detail);
         }
         const filename =
-<<<<<<< HEAD
-          parseFilename(res.headers.get('Content-Disposition')) || 'k8s_cluster_logs.zip';
-=======
           parseFilename(res.headers.get('Content-Disposition')) || 'iomt_diagnostics.zip';
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
         const blob = await res.blob();
         return { blob, filename };
       })
@@ -182,62 +148,6 @@ const Diagnostics = () => {
     setError('');
   };
 
-<<<<<<< HEAD
-
-  const handleDemoConnect = async () => {
-    setPhase('checking');
-    setResult(null);
-    setError('');
-
-    try {
-      const response = await fetch('/api/network/pods');
-
-      if (!response.ok) {
-        throw new Error(`Backend connection failed (${response.status}).`);
-      }
-
-      const data = await response.json();
-      const names = new Set((data.pods || []).map((pod) => pod.name));
-
-      const missing = ['http-test-1', 'http-test-2'].filter(
-        (name) => !names.has(name)
-      );
-
-      if (missing.length > 0) {
-        throw new Error(`Missing demo pods: ${missing.join(', ')}`);
-      }
-
-      setResult({
-        ok: true,
-        host: 'Lab backend (demo connection)',
-        port: 8001,
-      });
-
-      setPhase('done');
-      setStep(2);
-    } catch (err) {
-      setError(err.message || 'Unable to connect to demo cluster.');
-      setPhase('done');
-    }
-  };
-
-  const handleRecordedDemo = () => {
-    setCaptureMode('recorded');
-    setSelected(['netshoot']);
-    setPhase('done');
-    setError('');
-    setResult({
-      ok: true,
-      recorded: true,
-      host: 'Recorded Kubernetes capture',
-      port: null,
-    });
-    setStep(2);
-  };
-
-
-=======
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
   const handleCheck = async () => {
     setPhase('checking');
     setResult(null);
@@ -299,118 +209,6 @@ const Diagnostics = () => {
         ))}
       </ol>
 
-<<<<<<< HEAD
-
-      {step === 1 && (
-        <>
-          <Step1Connect
-            host={host}
-            setHost={setHost}
-            phase={phase}
-            result={result}
-            error={error}
-            isChecking={isChecking}
-            onCheck={handleCheck}
-          />
-
-          <section className="section-narrow">
-            <div className="card">
-              <h3 className="card-title">Netshoot Demo Environment</h3>
-              <p className="card-subtitle">
-                Connect to the preconfigured Kubernetes test environment
-                to demonstrate automated network packet capture.
-              </p>
-              <div className="action-row">
-                {/*<button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleDemoConnect}
-                  disabled={isChecking}
-                >
-                  {isChecking
-                    ? 'Checking demo environment...'
-                    : 'Connect to Demo Environment'}
-                </button>*/}
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleRecordedDemo}
-                >
-                  Use Recorded Demo (Offline)
-                </button>
-              </div>
-            </div>
-          </section>
-        </>
-      )
-      }
-
-
-      {
-        step === 2 && (
-          <Step2Configure
-            selected={selected}
-            onToggleService={toggleService}
-            onBack={handleBackToConnect}
-            onContinue={() => setStep(3)}
-          />
-        )
-      }
-
-      {
-        step === 3 && (
-          <Step3Review
-            result={result}
-            selectedServices={selectedServices}
-            onEditConnection={() => setStep(1)}
-            onEditServices={() => setStep(2)}
-            onBack={() => setStep(2)}
-            onStart={() => {
-              if (
-                selected.length !== 1 ||
-                !['netshoot', 'container-logs'].includes(selected[0])
-              ) {
-                window.alert(
-                  'For this demo, please select either Netshoot or Container Log Collection by itself.'
-                );
-                return;
-              }
-
-              if (captureMode === 'recorded' && selected[0] !== 'netshoot') {
-                window.alert('Recorded demo mode supports Netshoot only.');
-                return;
-              }
-
-              setStep(4);
-
-              if (selected[0] === 'container-logs') {
-                startCollection();
-              }
-            }}
-          />
-        )
-      }
-
-      {
-        step === 4 && (
-          selected[0] === 'netshoot' ? (
-            captureMode === 'recorded' ? (
-              <Step4RecordedNetshoot onBack={() => setStep(3)} />
-            ) : (
-              <Step4Netshoot onBack={() => setStep(3)} />
-            )
-          ) : (
-            <Step4Collect
-              collect={collect}
-              collectError={collectError}
-              download={download}
-              onBack={() => setStep(3)}
-            />
-          )
-        )
-      }
-    </div >
-=======
       <div className="step-panel" key={step}>
       {step === 1 && (
         <Step1Connect
@@ -428,10 +226,6 @@ const Diagnostics = () => {
         <Step2Configure
           selected={selected}
           onToggleService={toggleService}
-          umfDomain={umfDomain}
-          setUmfDomain={setUmfDomain}
-          umfDuration={umfDuration}
-          setUmfDuration={setUmfDuration}
           onBack={handleBackToConnect}
           onContinue={() => setStep(3)}
         />
@@ -441,8 +235,6 @@ const Diagnostics = () => {
         <Step3Review
           result={result}
           selectedServices={selectedServices}
-          umfDomain={umfDomain}
-          umfDuration={umfDuration}
           onEditConnection={() => setStep(1)}
           onEditServices={() => setStep(2)}
           onBack={() => setStep(2)}
@@ -463,7 +255,6 @@ const Diagnostics = () => {
       )}
       </div>
     </div>
->>>>>>> 330af8665a8b336209bb6982de5a0421e7099edf
   );
 };
 
