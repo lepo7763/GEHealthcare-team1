@@ -1,8 +1,12 @@
+import { isConfigurable, summarizeToolParams } from './toolParams';
+
 const Step3Review = ({
   result,
   selectedServices,
+  toolParams,
   onEditConnection,
   onEditServices,
+  onEditToolParams,
   onBack,
   onStart,
 }) => {
@@ -11,6 +15,7 @@ const Step3Review = ({
       ? selectedServices.map((service) => service.name).join(', ')
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
+  const configuredTools = selectedServices.filter((service) => isConfigurable(service.id));
 
   return (
     <section className="section-narrow">
@@ -43,6 +48,23 @@ const Step3Review = ({
               Edit
             </button>
           </li>
+          {configuredTools.map((service) => (
+            <li key={service.id}>
+              <div>
+                <div className="check-title">{service.name} parameters</div>
+                <div className="check-detail">
+                  {summarizeToolParams(service.id, toolParams[service.id])}
+                </div>
+              </div>
+              <button
+                className="link-btn"
+                onClick={() => onEditToolParams(service.id)}
+                aria-label={`Edit ${service.name} parameters`}
+              >
+                Edit
+              </button>
+            </li>
+          ))}
           {umfSelected && (
             <li>
               <div>

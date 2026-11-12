@@ -249,7 +249,6 @@ def _collect_axone_logs(
     params: AxoneLogParams,
     selected: List[str],
 ) -> None:
-    """Export Axone logs as CSV into ``axone/`` in the package."""
     tracker.set_service_total(AXONE_LOGS_SERVICE_ID, 1, unit="files")
     tracker.set_service_current(AXONE_LOGS_SERVICE_ID, "Requesting CSV export")
     try:

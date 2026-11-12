@@ -1,7 +1,6 @@
 import { DateTimePicker } from '../../components/DateTimePicker';
 
-// Controlled form for the Axone Logs tool parameters. Logs are always exported
-// as CSV into the diagnostic package.
+// Controlled form for the Axone Logs tool parameters. 
 const AxoneLogParamsForm = ({ value, onChange, idPrefix = 'axone' }) => {
   const set = (patch) => onChange({ ...value, ...patch });
   const hintIds = `${idPrefix}-range-hint ${idPrefix}-time-hint`;

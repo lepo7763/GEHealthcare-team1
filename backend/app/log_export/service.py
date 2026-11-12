@@ -157,14 +157,13 @@ def fetch_export(
         raise ExportError(503, "The connection to the Axone log service was interrupted. Try again.") from exc
 
 
-# Diagnostic packages always export CSV (preferred over JSON for analysis).
 DIAGNOSTIC_EXPORT_FORMAT = "csv"
 
 
 def validate_axone_params(params) -> None:
     """Raise ExportError if ``AxoneLogParams`` can't produce a valid export.
 
-    Called before a diagnostic collection starts so bad filters fail fast
+    ** Called before a diagnostic collection starts so bad filters fail fast
     instead of after the other services have already run.
     """
     if not params.axone_start_timestamp or not params.axone_end_timestamp:

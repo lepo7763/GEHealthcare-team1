@@ -63,7 +63,6 @@ def download_diagnostics(
             detail="Select at least one diagnostic service.",
         )
     if "axone-logs" in services:
-        # Fail fast on bad Axone filters before any other service runs.
         try:
             validate_axone_params(axone_params)
         except ExportError as e:
