@@ -5,8 +5,8 @@ import LockScreen from './LockScreen';
 import useIdleLock from './useIdleLock';
 import { createPasswordVerifier, verifyPassword } from './lib/passwordVerifier';
 
-//const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-const IDLE_TIMEOUT_MS = 10 * 1000;
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+// const IDLE_TIMEOUT_MS = 5 * 1000;
 
 const AUTH_SESSION_KEY = 'iomt-analysis-auth-session';
 const LOCK_KEY = 'iomt-analysis-ui-locked';
