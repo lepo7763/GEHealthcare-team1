@@ -6,6 +6,7 @@ import Step1Connect from './diagnostics/Step1Connect';
 import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
+import { buildToolQuery, defaultToolParams } from './diagnostics/toolParams';
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -22,6 +23,10 @@ const Diagnostics = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(['container-logs']);
+  // Parameters for each configurable tool, keyed by tool id.
+  const [toolParams, setToolParams] = useState(defaultToolParams);
+  // Tool whose Edit dialog should open when returning to Configure from Review.
+  const [pendingEditId, setPendingEditId] = useState(null);
 
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
@@ -83,14 +88,17 @@ const Diagnostics = () => {
       return;
     }
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     const params = new URLSearchParams();
     selected.forEach((serviceId) => params.append('services', serviceId));
-    // TODO(frontend): when the UMF-RTI config UI lands, set umf_domain_id and
-    // umf_duration_seconds here. Until then the backend defaults (domain 13, 60s)
-    // are used. See src/pages/diagnostics/UMF_RTI_TODO.md.
+    try {
+      buildToolQuery(selected, toolParams).forEach((value, key) => params.append(key, value));
+    } catch (e) {
+      setCollectError(e.message);
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
       .then(async (res) => {
@@ -189,6 +197,7 @@ const Diagnostics = () => {
   };
 
   const handleBackToConnect = () => {
+    setPendingEditId(null);
     setStep(1);
     resetCheck();
   };
@@ -226,8 +235,16 @@ const Diagnostics = () => {
         <Step2Configure
           selected={selected}
           onToggleService={toggleService}
+          toolParams={toolParams}
+          onToolParamsChange={(toolId, params) =>
+            setToolParams((prev) => ({ ...prev, [toolId]: params }))
+          }
+          initialEditingId={pendingEditId}
           onBack={handleBackToConnect}
-          onContinue={() => setStep(3)}
+          onContinue={() => {
+            setPendingEditId(null);
+            setStep(3);
+          }}
         />
       )}
 
@@ -235,8 +252,13 @@ const Diagnostics = () => {
         <Step3Review
           result={result}
           selectedServices={selectedServices}
+          toolParams={toolParams}
           onEditConnection={() => setStep(1)}
           onEditServices={() => setStep(2)}
+          onEditToolParams={(toolId) => {
+            setPendingEditId(toolId);
+            setStep(2);
+          }}
           onBack={() => setStep(2)}
           onStart={() => {
             setStep(4);

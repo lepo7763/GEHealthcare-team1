@@ -384,26 +384,60 @@ code {
   animation: eds-fade-slide-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.service-option {
+/* A tool card: the toggle button plus (for configurable tools) an Edit footer,
+   sharing one bordered box. */
+.service-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
   width: 100%;
   height: 100%;
-  text-align: left;
   background: var(--eds-color-white);
   border: 1px solid var(--eds-color-gray-200);
   border-radius: var(--eds-radius-md);
-  padding: var(--eds-spacing-md);
-  font-family: var(--eds-font-family);
-  cursor: pointer;
   transition:
     border-color 0.2s ease,
     background-color 0.2s ease,
     box-shadow 0.2s ease,
     transform 0.2s ease;
+}
+
+.service-card:hover {
+  border-color: var(--eds-color-purple);
+  background: var(--eds-color-purple-faint);
+  box-shadow: var(--eds-shadow-sm);
+  transform: translateY(-1px);
+}
+
+.service-card.selected {
+  border-color: var(--eds-color-purple);
+  background: var(--eds-color-purple-subtle);
+}
+
+.service-card.needs-edit {
+  border-color: var(--eds-color-warning);
+  box-shadow: 0 0 0 1px var(--eds-color-warning);
+}
+
+.service-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 1;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--eds-radius-md);
+  padding: var(--eds-spacing-md);
+  font-family: var(--eds-font-family);
+  cursor: pointer;
+}
+
+.service-option:focus-visible {
+  outline: none;
+  box-shadow: var(--eds-focus-ring);
 }
 
 .service-option > div {
@@ -415,16 +449,27 @@ code {
   line-height: 1.35;
 }
 
-.service-option:hover {
-  border-color: var(--eds-color-purple);
-  background: var(--eds-color-purple-faint);
-  box-shadow: var(--eds-shadow-sm);
-  transform: translateY(-1px);
+.service-card-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--eds-spacing-sm);
+  padding: 0 var(--eds-spacing-md) var(--eds-spacing-md);
 }
 
-.service-option.selected {
-  border-color: var(--eds-color-purple);
-  background: var(--eds-color-purple-subtle);
+.btn.btn-sm {
+  height: 32px;
+  padding: 0 var(--eds-spacing-md);
+  font-size: var(--eds-font-size-sm);
+}
+
+.service-needs-edit {
+  font-size: var(--eds-font-size-sm);
+  font-weight: var(--eds-font-weight-semibold);
+  color: var(--eds-color-warning);
+}
+
+.configure-alert {
+  margin-bottom: 0;
 }
 
 .service-check {
@@ -443,29 +488,9 @@ code {
   justify-content: center;
 }
 
-.service-option.selected .service-check {
+.service-card.selected .service-check {
   background: var(--eds-color-purple);
   border-color: var(--eds-color-purple);
-}
-
-/* Per-service options (UMF RTI domain/duration) */
-.service-options {
-  margin-top: var(--eds-spacing-md);
-  padding: var(--eds-spacing-md);
-  border: 1px solid var(--eds-color-purple-subtle);
-  border-radius: var(--eds-radius-md);
-  background: var(--eds-color-purple-faint);
-  animation: eds-fade-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.service-options-title {
-  margin: 0;
-  font-size: var(--eds-font-size-md);
-  font-weight: var(--eds-font-weight-semibold);
-}
-
-.service-options .form-row {
-  margin-top: var(--eds-spacing-sm);
 }
 
 .field-error {
@@ -743,18 +768,78 @@ code {
   box-shadow: var(--eds-focus-ring);
 }
 
-.log-export-hint,
-.log-export-status {
+.log-export-hint {
   margin: var(--eds-spacing-xs) 0 0;
   font-size: var(--eds-font-size-sm);
   color: var(--eds-color-gray-700);
 }
 
-.log-export-status:empty { display: none; }
-.log-export-actions { margin-top: var(--eds-spacing-lg); }
-.log-export-fields:disabled { opacity: 0.7; }
-.log-export-fields:disabled .btn { cursor: wait; }
 
 @media (max-width: 640px) {
   .log-export-grid { grid-template-columns: 1fr; }
+}
+
+/* Tool parameter dialog (Configure step) */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(17, 17, 17, 0.45);
+  animation: dialog-fade-in 0.18s ease both;
+}
+
+.dialog-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 41;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+  background: var(--eds-color-white);
+  border-radius: var(--eds-radius-md);
+  box-shadow: var(--eds-shadow-md);
+  padding: var(--eds-spacing-lg);
+  font-family: var(--eds-font-family);
+  animation: dialog-pop-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dialog-content:focus { outline: none; }
+
+.dialog-title {
+  margin: 0;
+  font-size: var(--eds-font-size-lg);
+  font-weight: var(--eds-font-weight-semibold);
+}
+
+.dialog-description {
+  margin: var(--eds-spacing-xs) 0 0;
+  font-size: var(--eds-font-size-sm);
+  color: var(--eds-color-gray-700);
+}
+
+.dialog-body {
+  margin-top: var(--eds-spacing-md);
+}
+
+.dialog-issue {
+  margin: var(--eds-spacing-md) 0 0;
+  font-size: var(--eds-font-size-sm);
+  font-weight: var(--eds-font-weight-semibold);
+  color: var(--eds-color-warning);
+}
+
+.dialog-actions {
+  margin-top: var(--eds-spacing-md);
+}
+
+@keyframes dialog-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialog-pop-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
 }
