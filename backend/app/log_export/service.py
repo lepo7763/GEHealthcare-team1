@@ -155,3 +155,38 @@ def fetch_export(
         ) from exc
     except OSError as exc:
         raise ExportError(503, "The connection to the Axone log service was interrupted. Try again.") from exc
+
+
+# Diagnostic packages always export CSV (preferred over JSON for analysis).
+DIAGNOSTIC_EXPORT_FORMAT = "csv"
+
+
+def validate_axone_params(params) -> None:
+    """Raise ExportError if ``AxoneLogParams`` can't produce a valid export.
+
+    Called before a diagnostic collection starts so bad filters fail fast
+    instead of after the other services have already run.
+    """
+    if not params.axone_start_timestamp or not params.axone_end_timestamp:
+        raise ExportError(400, "Axone Logs requires a start and end time.")
+    validate_export(
+        scope=params.axone_scope,
+        format=DIAGNOSTIC_EXPORT_FORMAT,
+        start_timestamp=params.axone_start_timestamp,
+        end_timestamp=params.axone_end_timestamp,
+        device_uuid=params.axone_device_uuid,
+        event_category=params.axone_event_category,
+    )
+
+
+def fetch_axone_csv(params) -> bytes:
+    """Fetch the Axone CSV export described by ``AxoneLogParams``."""
+    validate_axone_params(params)
+    return fetch_export(
+        scope=params.axone_scope,
+        format=DIAGNOSTIC_EXPORT_FORMAT,
+        start_timestamp=params.axone_start_timestamp,
+        end_timestamp=params.axone_end_timestamp,
+        device_uuid=params.axone_device_uuid,
+        event_category=params.axone_event_category,
+    )
