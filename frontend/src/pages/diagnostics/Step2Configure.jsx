@@ -1,176 +1,108 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
+import { getToolIssue, isConfigurable } from './toolParams';
+import ToolParamsDialog from './ToolParamsDialog';
 
-// Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
-const MIN_DURATION = 10;
-const MAX_DURATION = 600;
-
-const validateDuration = (value) => {
-  const text = String(value ?? '').trim();
-  const number = Number(text);
-  return (
-    text !== '' && Number.isInteger(number) && number >= MIN_DURATION && number <= MAX_DURATION
-  );
-};
+const formatList = (names) =>
+  names.length <= 1
+    ? names.join('')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 
 const Step2Configure = ({
   selected,
   onToggleService,
-  umfDomain,
-  setUmfDomain,
-  umfDuration,
-  setUmfDuration,
-  umfDomainOptions,
+  toolParams,
+  onToolParamsChange,
+  initialEditingId = null,
   onBack,
   onContinue,
 }) => {
-  const domainOption = umfDomainOptions.find((option) => option.domain === Number(umfDomain));
-  const domainValid = Boolean(domainOption);
-  const durationValid = validateDuration(umfDuration);
+  // Review's per-tool Edit link returns here with that tool's dialog open.
+  const [editingId, setEditingId] = useState(initialEditingId);
+  const [attempted, setAttempted] = useState(false);
 
-  // Settings for each service that has any, keyed by service id. To give a new service
-  // (e.g. Netshoot) its own settings, add an entry here: whether its values are valid,
-  // a one-line summary shown while collapsed, and the fields shown while expanded.
-  const settingsPanels = {
-    'umf-rti': {
-      isValid: domainValid && durationValid,
-      summary: `Domain ${umfDomain}${domainOption ? ` · ${domainOption.label}` : ''} · ${String(umfDuration).trim() || '—'} s`,
-      fields: (
-        <>
-          <div className="form-row">
-            <label className="field grow">
-              <span>Domain</span>
-              <select
-                value={umfDomain}
-                onChange={(e) => setUmfDomain(Number(e.target.value))}
-                aria-invalid={!domainValid}
-              >
-                {umfDomainOptions.map((option) => (
-                  <option key={option.domain} value={option.domain}>
-                    {option.domain} · {option.label}
-                  </option>
-                ))}
-              </select>
-              <small>The DDS domain to record.</small>
-              {!domainValid && <small className="field-error">Choose a domain.</small>}
-            </label>
-            <label className="field grow">
-              <span>Capture duration (seconds)</span>
-              <input
-                type="number"
-                min={MIN_DURATION}
-                max={MAX_DURATION}
-                step="1"
-                value={umfDuration}
-                onChange={(e) => setUmfDuration(e.target.value)}
-                aria-invalid={!durationValid}
-              />
-              <small>
-                Between {MIN_DURATION} and {MAX_DURATION} seconds.
-              </small>
-              {!durationValid && (
-                <small className="field-error">
-                  Enter a whole number from {MIN_DURATION} to {MAX_DURATION}.
-                </small>
-              )}
-            </label>
-          </div>
-        </>
-      ),
-    },
-  };
-
-  // Only one service's settings are open at a time, so the boxes don't stack up.
-  // Start with the first selected service whose settings still need fixing, if any.
-  const [expandedId, setExpandedId] = useState(
-    () => selected.find((id) => settingsPanels[id] && !settingsPanels[id].isValid) ?? null,
+  const incomplete = SERVICES.filter(
+    (service) => selected.includes(service.id) && getToolIssue(service.id, toolParams[service.id]),
   );
+  const editingTool = SERVICES.find((service) => service.id === editingId);
 
-  const toggleService = (id) => {
-    const wasSelected = selected.includes(id);
-    onToggleService(id);
-    if (!wasSelected && settingsPanels[id]) {
-      // Just picked a service that needs settings: open them (closes any other).
-      setExpandedId(id);
-    } else if (wasSelected && expandedId === id) {
-      setExpandedId(null);
+  const handleContinue = () => {
+    if (incomplete.length > 0) {
+      setAttempted(true);
+      return;
     }
+    onContinue();
   };
-
-  const allSettingsValid = selected.every((id) => !settingsPanels[id] || settingsPanels[id].isValid);
 
   return (
     <section className="section-narrow">
       <div className="card">
-        <h3 className="card-title">Collection services</h3>
+        <h3 className="card-title">Collection tools</h3>
         <p className="card-subtitle">
-          Select and configure the services to include in this diagnostic session.
+          Select the tools to include in this diagnostic session. Use Edit to set a tool's
+          parameters.
         </p>
 
-        <ul className="service-list service-list-stacked">
+        <ul className="service-list">
           {SERVICES.map((service) => {
             const isSelected = selected.includes(service.id);
-            const panel = isSelected ? settingsPanels[service.id] : null;
-            const isExpanded = panel && expandedId === service.id;
-            const panelId = `settings-${service.id}`;
-
+            const configurable = isConfigurable(service.id);
+            const needsEdit = incomplete.includes(service);
+            const cardClass = [
+              'service-card',
+              isSelected && 'selected',
+              needsEdit && attempted && 'needs-edit',
+            ]
+              .filter(Boolean)
+              .join(' ');
             return (
-              <li key={service.id} className={panel ? 'has-settings' : ''}>
-                <button
-                  type="button"
-                  className={`service-option ${isSelected ? 'selected' : ''}`}
-                  aria-pressed={isSelected}
-                  onClick={() => toggleService(service.id)}
-                >
-                  <div>
-                    <div className="check-title">{service.name}</div>
-                    <div className="check-detail">{service.description}</div>
-                  </div>
-                  <span className="service-check" aria-hidden="true">
-                    {isSelected ? '✓' : ''}
-                  </span>
-                </button>
-
-                {panel && !isExpanded && (
+              <li key={service.id}>
+                <div className={cardClass}>
                   <button
                     type="button"
-                    className={`service-settings-summary ${panel.isValid ? '' : 'invalid'}`}
-                    aria-expanded="false"
-                    aria-controls={panelId}
-                    onClick={() => setExpandedId(service.id)}
+                    className="service-option"
+                    aria-pressed={isSelected}
+                    onClick={() => onToggleService(service.id)}
                   >
-                    <span>
-                      {panel.isValid ? panel.summary : 'Settings need attention'}
+                    <div>
+                      <div className="check-title">{service.name}</div>
+                      <div className="check-detail">{service.description}</div>
+                    </div>
+                    <span className="service-check" aria-hidden="true">
+                      {isSelected ? '✓' : ''}
                     </span>
-                    <span className="service-settings-edit">Edit settings ▾</span>
                   </button>
-                )}
 
-                {isExpanded && (
-                  <div
-                    id={panelId}
-                    className="service-options"
-                    role="region"
-                    aria-label={`${service.name} settings`}
-                  >
-                    <h4 className="service-options-title">{service.name} settings</h4>
-                    {panel.fields}
-                    <div className="action-row">
+                  {configurable && (
+                    <div className="service-card-footer">
                       <button
                         type="button"
-                        className="btn btn-primary"
-                        onClick={() => setExpandedId(null)}
-                        disabled={!panel.isValid}
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setEditingId(service.id)}
+                        aria-label={`Edit ${service.name} parameters`}
                       >
-                        Done
+                        Edit
                       </button>
+                      {needsEdit && (
+                        <span className="service-needs-edit">Needs editing</span>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </li>
             );
           })}
         </ul>
+
+        {attempted && incomplete.length > 0 && (
+          <div className="alert alert-warning configure-alert" role="alert">
+            <strong>
+              {formatList(incomplete.map((service) => service.name))}{' '}
+              {incomplete.length === 1 ? 'requires' : 'require'} completion
+            </strong>
+            <span>Click Edit to fill in the required parameters before continuing.</span>
+          </div>
+        )}
 
         <div className="action-row">
           <button className="btn btn-secondary" onClick={onBack}>
@@ -178,8 +110,8 @@ const Step2Configure = ({
           </button>
           <button
             className="btn btn-primary"
-            onClick={onContinue}
-            disabled={selected.length === 0 || !allSettingsValid}
+            onClick={handleContinue}
+            disabled={selected.length === 0}
           >
             Continue to review
           </button>
@@ -191,9 +123,21 @@ const Step2Configure = ({
           className="future-note future-note-error"
           style={{ visibility: selected.length === 0 ? 'visible' : 'hidden' }}
         >
-          Select at least one service to continue.
+          Select at least one tool to continue.
         </p>
       </div>
+
+      {editingTool && (
+        <ToolParamsDialog
+          tool={editingTool}
+          params={toolParams[editingTool.id]}
+          onSave={(params) => {
+            onToolParamsChange(editingTool.id, params);
+            setEditingId(null);
+          }}
+          onClose={() => setEditingId(null)}
+        />
+      )}
     </section>
   );
 };

@@ -14,9 +14,10 @@ function localTimestamp(value, label) {
   return { timestamp, milliseconds };
 }
 
-export function buildLogExportQuery({ scope, format, deviceuuid, eventCategory, startTimestamp, endTimestamp }) {
-  if (!['device', 'all'].includes(scope) || !['csv', 'json'].includes(format)) {
-    throw new Error('Choose a valid device scope and file format.');
+
+export function buildAxoneLogParams({ scope, deviceuuid, eventCategory, startTimestamp, endTimestamp }) {
+  if (!['device', 'all'].includes(scope)) {
+    throw new Error('Choose a valid device scope.');
   }
 
   const start = localTimestamp(startTimestamp, 'start');
@@ -31,46 +32,22 @@ export function buildLogExportQuery({ scope, format, deviceuuid, eventCategory, 
   }
 
   const params = new URLSearchParams({
-    scope,
-    format,
-    startTimestamp: start.timestamp,
-    endTimestamp: end.timestamp,
+    axone_scope: scope,
+    axone_start_timestamp: start.timestamp,
+    axone_end_timestamp: end.timestamp,
   });
   if (scope === 'device') {
-    const uuid = deviceuuid.trim();
+    const uuid = (deviceuuid || '').trim();
     if (!UUID_PATTERN.test(uuid)) throw new Error('Enter a valid device UUID.');
-    params.set('deviceuuid', uuid);
+    params.set('axone_device_uuid', uuid);
   }
 
-  const category = eventCategory.trim();
+  const category = (eventCategory || '').trim();
   if (category !== '') {
     if (!/^[+-]?\d+$/.test(category) || !Number.isSafeInteger(Number(category))) {
       throw new Error('Enter a whole-number event category code, or leave it blank for all events.');
     }
-    params.set('eventCategory', String(Number(category)));
+    params.set('axone_event_category', String(Number(category)));
   }
   return params;
-}
-
-export async function downloadLogs(url, fallbackFilename) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    const details = await response.json().catch(() => null);
-    const detail = details?.detail ?? details;
-    const message = Array.isArray(detail)
-      ? detail.map((entry) => typeof entry === 'string' ? entry : entry.msg).filter(Boolean).join(' ')
-      : typeof detail === 'string' ? detail : '';
-    throw new Error(message || 'Could not export logs. Check that the backend is running and try again.');
-  }
-
-  const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = objectUrl;
-  link.download = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
-    || fallbackFilename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }

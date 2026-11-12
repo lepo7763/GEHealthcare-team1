@@ -14,6 +14,11 @@ export const SERVICES = [
     description:
       'Captures UMF RTI discovery and QoS data from the live platform. No sample values are read.',
   },
+  {
+    id: 'axone-logs',
+    name: 'Axone Logs',
+    description: 'Exports stored Axone device and system events as CSV.',
+  },
 ];
 
 export const STEP_INFO = {
@@ -23,7 +28,7 @@ export const STEP_INFO = {
   },
   2: {
     title: 'Configure collection',
-    subtitle: 'Choose which services to include in this diagnostic session.',
+    subtitle: 'Choose which tools to include and set their parameters.',
   },
   3: {
     title: 'Review & deploy',

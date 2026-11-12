@@ -6,6 +6,7 @@ import Step1Connect from './diagnostics/Step1Connect';
 import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
+import { buildToolQuery, defaultToolParams } from './diagnostics/toolParams';
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -27,12 +28,6 @@ const formatErrorDetail = (detail) => {
     .join('; ');
 };
 
-const FALLBACK_UMF_DOMAINS = [
-  { domain: 13, label: 'Viewer — live vitals (viewpod)' },
-  { domain: 12, label: 'Source — from Hub (sourcepod)' },
-  { domain: 7, label: 'Logger' },
-];
-
 const Diagnostics = () => {
   const [host, setHost] = useState('192.168.0.3');
   const [step, setStep] = useState(1);
@@ -41,12 +36,10 @@ const Diagnostics = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(['container-logs']);
-
-  // UMF RTI capture settings (Step 2). Domain options come from the backend so they
-  // stay in sync with the domains it accepts; the fallback mirrors its defaults.
-  const [umfDomain, setUmfDomain] = useState(13);
-  const [umfDuration, setUmfDuration] = useState('60');
-  const [umfDomainOptions, setUmfDomainOptions] = useState(FALLBACK_UMF_DOMAINS);
+  // Parameters for each configurable tool, keyed by tool id.
+  const [toolParams, setToolParams] = useState(defaultToolParams);
+  // Tool whose Edit dialog should open when returning to Configure from Review.
+  const [pendingEditId, setPendingEditId] = useState(null);
 
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
@@ -108,15 +101,17 @@ const Diagnostics = () => {
       return;
     }
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     const params = new URLSearchParams();
     selected.forEach((serviceId) => params.append('services', serviceId));
-    if (selected.includes('umf-rti')) {
-      params.set('umf_domain_id', String(umfDomain));
-      params.set('umf_duration_seconds', String(umfDuration).trim());
+    try {
+      buildToolQuery(selected, toolParams).forEach((value, key) => params.append(key, value));
+    } catch (e) {
+      setCollectError(e.message);
+      return;
     }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
       .then(async (res) => {
@@ -150,20 +145,6 @@ const Diagnostics = () => {
 
     startPolling();
   };
-
-  // Load the UMF RTI domain options once.
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch('/api/umf-rti/domains', { signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((options) => {
-        if (Array.isArray(options) && options.length > 0) setUmfDomainOptions(options);
-      })
-      .catch(() => {
-        /* keep the fallback list */
-      });
-    return () => controller.abort();
-  }, []);
 
   // Stop polling and abort any in-flight request if the page is left.
   useEffect(() => {
@@ -229,6 +210,7 @@ const Diagnostics = () => {
   };
 
   const handleBackToConnect = () => {
+    setPendingEditId(null);
     setStep(1);
     resetCheck();
   };
@@ -266,13 +248,16 @@ const Diagnostics = () => {
         <Step2Configure
           selected={selected}
           onToggleService={toggleService}
-          umfDomain={umfDomain}
-          setUmfDomain={setUmfDomain}
-          umfDuration={umfDuration}
-          setUmfDuration={setUmfDuration}
-          umfDomainOptions={umfDomainOptions}
+          toolParams={toolParams}
+          onToolParamsChange={(toolId, params) =>
+            setToolParams((prev) => ({ ...prev, [toolId]: params }))
+          }
+          initialEditingId={pendingEditId}
           onBack={handleBackToConnect}
-          onContinue={() => setStep(3)}
+          onContinue={() => {
+            setPendingEditId(null);
+            setStep(3);
+          }}
         />
       )}
 
@@ -280,10 +265,13 @@ const Diagnostics = () => {
         <Step3Review
           result={result}
           selectedServices={selectedServices}
-          umfDomain={umfDomain}
-          umfDuration={umfDuration}
+          toolParams={toolParams}
           onEditConnection={() => setStep(1)}
           onEditServices={() => setStep(2)}
+          onEditToolParams={(toolId) => {
+            setPendingEditId(toolId);
+            setStep(2);
+          }}
           onBack={() => setStep(2)}
           onStart={() => {
             setStep(4);
