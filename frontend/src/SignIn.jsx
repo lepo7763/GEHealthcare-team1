@@ -8,7 +8,7 @@ const SignIn = ({ onSignIn }) => {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setError('Please provide your workstation credentials.');
@@ -17,7 +17,7 @@ const SignIn = ({ onSignIn }) => {
 
     if (onSignIn) {
       try {
-        onSignIn({ email: email.trim(), password }, rememberMe);
+        await onSignIn({ email: email.trim(), password }, rememberMe);
       } catch {
         setError('Could not save your sign-in session. Check browser storage settings and try again.');
       }
