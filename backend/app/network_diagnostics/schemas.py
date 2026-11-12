@@ -41,5 +41,18 @@ class NetshootCaptureStartRequest(BaseModel):
         strict=True,
     )
 
+class ScheduledNetshootJob(BaseModel):
+    """Information about a Netshoot Job created on one node."""
+
+    job_name: str
+    targets: list[CaptureTargetInfo]
+
+
+class NetshootCaptureStartResponse(BaseModel):
+    """Response returned after Netshoot Jobs are scheduled."""
+
+    duration_seconds: int
+    jobs_by_node: dict[str, ScheduledNetshootJob]
+
 
     

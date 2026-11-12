@@ -1,5 +1,6 @@
 import json
 import subprocess
+import logging
 
 from kubernetes import client
 from app.network_diagnostics.runtime_discovery import (
@@ -7,11 +8,25 @@ from app.network_diagnostics.runtime_discovery import (
     extract_sandbox_pid,
     resolve_pod_pid,
 )
+from kubernetes.client.exceptions import ApiException
 
 
 DIAGNOSTICS_NAMESPACE = "iomt-integration"
 NETSHOOT_IMAGE = "iomt-netshoot-worker:dev"
 CRI_SOCKET_PATH = "/run/k3s/containerd/containerd.sock"
+
+logger = logging.getLogger(__name__)
+
+
+class CaptureSchedulingCleanupError(RuntimeError):
+    """Raised when Job scheduling and subsequent cleanup both fail."""
+
+    def __init__(self, job_names: list[str]):
+        self.job_names = job_names
+        super().__init__(
+            "Unable to request cleanup for Jobs: "
+            + ", ".join(job_names)
+        )
 
 def build_netshoot_job(
     node_name: str,
@@ -239,7 +254,7 @@ def schedule_capture_jobs(
     namespaces: list[str],
     duration_seconds: int = 60,
 ) -> dict:
-    """Discover target Pods and schedule one Netshoot Job per node."""
+    """Schedule one Job per node, rolling back on partial failure."""
 
     targets_by_node = discover_targets_across_namespaces(
         core_api,
@@ -247,19 +262,59 @@ def schedule_capture_jobs(
     )
 
     scheduled_jobs = {}
+    created_job_names = []
 
-    for node_name, targets in targets_by_node.items():
-        job_name = submit_netshoot_job(
-            batch_api=batch_api,
-            node_name=node_name,
-            targets=targets,
-            duration_seconds=duration_seconds,
-        )
+    try:
+        for node_name, targets in targets_by_node.items():
+            job_name = submit_netshoot_job(
+                batch_api=batch_api,
+                node_name=node_name,
+                targets=targets,
+                duration_seconds=duration_seconds,
+            )
 
-        scheduled_jobs[node_name] = {
-            "job_name": job_name,
-            "targets": targets,
-        }
+            created_job_names.append(job_name)
+
+            scheduled_jobs[node_name] = {
+                "job_name": job_name,
+                "targets": targets,
+            }
+
+    except Exception:
+        cleanup_failures = []
+
+        # Reverse order: clean up the most recently created Jobs first.
+        for job_name in reversed(created_job_names):
+            try:
+                batch_api.delete_namespaced_job(
+                    name=job_name,
+                    namespace=DIAGNOSTICS_NAMESPACE,
+                    propagation_policy="Foreground",
+                    _request_timeout=10,
+                )
+
+            except ApiException as exc:
+                if exc.status != 404:
+                    logger.exception(
+                        "Could not delete Netshoot Job %s",
+                        job_name,
+                    )
+                    cleanup_failures.append(job_name)
+
+            except Exception:
+                logger.exception(
+                    "Could not delete Netshoot Job %s",
+                    job_name,
+                )
+                cleanup_failures.append(job_name)
+
+        if cleanup_failures:
+            raise CaptureSchedulingCleanupError(
+                cleanup_failures
+            )
+
+        # Preserve the original scheduling exception.
+        raise
 
     return scheduled_jobs
 

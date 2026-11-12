@@ -1,22 +1,11 @@
-from app.network_diagnostics.job_service import build_netshoot_job
-from app.network_diagnostics.job_service import submit_netshoot_job
-from app.network_diagnostics.job_service import get_netshoot_job_status
-from app.network_diagnostics.job_service import discover_capture_targets
-from app.network_diagnostics.job_service import schedule_capture_jobs
-from app.network_diagnostics.job_service import (discover_targets_across_namespaces,)
-from app.network_diagnostics.job_service import find_ready_sandbox_id
-from app.network_diagnostics.job_service import extract_sandbox_pid
-from app.network_diagnostics.job_service import resolve_pod_pid
-from app.network_diagnostics.job_service import CRI_SOCKET_PATH
+from app.network_diagnostics.job_service import (discover_targets_across_namespaces, build_netshoot_job, submit_netshoot_job, get_netshoot_job_status, 
+                                                 discover_capture_targets,schedule_capture_jobs, find_ready_sandbox_id, extract_sandbox_pid, resolve_pod_pid,
+                                                 CRI_SOCKET_PATH, CaptureSchedulingCleanupError)
 
-from app.network_diagnostics.capture_worker import load_capture_targets
-from app.network_diagnostics.capture_worker import resolve_capture_targets
-from app.network_diagnostics.capture_worker import build_tcpdump_command
-from app.network_diagnostics.capture_worker import start_capture_processes
-from app.network_diagnostics.capture_worker import finish_capture_processes
-from app.network_diagnostics.capture_worker import inspect_pcap_file
-from app.network_diagnostics.capture_worker import summarize_capture_results
-from app.network_diagnostics.capture_worker import run_capture_session
+
+from app.network_diagnostics.capture_worker import (load_capture_targets, resolve_capture_targets, build_tcpdump_command, start_capture_processes, 
+                                                    finish_capture_processes, inspect_pcap_file, summarize_capture_results, run_capture_session)
+
 
 from app.network_diagnostics import worker_main
 
@@ -28,12 +17,14 @@ from app.network_diagnostics.artifact_upload import (upload_capture_archive,)
 
 from app.network_diagnostics.artifact_receiver import artifact_router
 
+from kubernetes.client.exceptions import ApiException
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import json
 import pytest
@@ -1285,3 +1276,96 @@ def test_schedule_capture_jobs_forwards_duration():
     env = {item.name: item.value for item in container.env}
 
     assert env["CAPTURE_DURATION_SECONDS"] == "120"
+
+def test_schedule_capture_jobs_rolls_back_on_failure():
+    """Previously created Jobs are deleted if later scheduling fails."""
+
+    mock_core = Mock()
+    mock_batch = Mock()
+
+    def make_pod(name, node):
+        return SimpleNamespace(
+            metadata=SimpleNamespace(
+                name=name,
+                uid=f"uid-{name}",
+                deletion_timestamp=None,
+            ),
+            spec=SimpleNamespace(
+                node_name=node,
+                host_network=False,
+            ),
+            status=SimpleNamespace(
+                phase="Running",
+                pod_ip="10.0.0.1",
+            ),
+        )
+
+    mock_core.list_namespaced_pod.return_value = SimpleNamespace(
+        items=[
+            make_pod("pod-a", "node-A"),
+            make_pod("pod-b", "node-B"),
+        ]
+    )
+
+    mock_batch.create_namespaced_job.side_effect = [
+        SimpleNamespace(
+            metadata=SimpleNamespace(name="job-A")
+        ),
+        ApiException(status=503, reason="Scheduling failed"),
+    ]
+
+    with pytest.raises(ApiException) as exc:
+        schedule_capture_jobs(
+            core_api=mock_core,
+            batch_api=mock_batch,
+            namespaces=["iomt-dev-1"],
+            duration_seconds=30,
+        )
+
+    assert exc.value.status == 503
+
+    mock_batch.delete_namespaced_job.assert_called_once_with(
+        name="job-A",
+        namespace="iomt-integration",
+        propagation_policy="Foreground",
+        _request_timeout=10,
+    )
+
+def test_schedule_capture_jobs_reports_failed_rollback():
+    """Report Job names when rollback cannot remove created Jobs."""
+
+    mock_core = Mock()
+    mock_batch = Mock()
+
+    # Simulate Kubernetes refusing to delete the first Job.
+    mock_batch.delete_namespaced_job.side_effect = ApiException(
+        status=403,
+        reason="Forbidden",
+    )
+
+    targets = {
+        "node-A": [{"name": "pod-a"}],
+        "node-B": [{"name": "pod-b"}],
+    }
+
+    with patch(
+        "app.network_diagnostics.job_service.discover_targets_across_namespaces",
+        return_value=targets,
+    ), patch(
+        "app.network_diagnostics.job_service.submit_netshoot_job",
+        side_effect=[
+            "job-A",
+            ApiException(status=503, reason="Scheduling failed"),
+        ],
+    ):
+        with pytest.raises(CaptureSchedulingCleanupError) as exc:
+            schedule_capture_jobs(
+                core_api=mock_core,
+                batch_api=mock_batch,
+                namespaces=["iomt-dev-1"],
+                duration_seconds=30,
+            )
+
+    assert exc.value.job_names == ["job-A"]
+
+    mock_batch.delete_namespaced_job.assert_called_once()
