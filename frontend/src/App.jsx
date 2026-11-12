@@ -1,14 +1,16 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import SignIn from './SignIn';
 import Dashboard from './Dashboard';
 import LockScreen from './LockScreen';
 import useIdleLock from './useIdleLock';
+import { createPasswordVerifier, verifyPassword } from './lib/passwordVerifier';
 
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-//const IDLE_TIMEOUT_MS = 10 * 1000;
+//const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 10 * 1000;
 
 const AUTH_SESSION_KEY = 'iomt-analysis-auth-session';
 const LOCK_KEY = 'iomt-analysis-ui-locked';
+const VERIFIER_KEY = 'iomt-analysis-unlock-verifier';
 
 const restoreUser = () => {
   for (const storage of [window.localStorage, window.sessionStorage]) {
@@ -51,54 +53,86 @@ const writeLocked = (locked) => {
   }
 };
 
+// Salted hash of the sign-in password, stored next to the session (never the
+// password itself) so the lock screen can still verify it after a reload.
+const readVerifier = () => {
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    try {
+      const raw = storage.getItem(VERIFIER_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {
+      // Ignore unreadable storage or corrupt JSON and treat it as missing.
+    }
+  }
+  return null;
+};
+
+const clearAuthStorage = () => {
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    storage.removeItem(AUTH_SESSION_KEY);
+    storage.removeItem(VERIFIER_KEY);
+  }
+  writeLocked(false);
+};
+
+// A reload while locked stays locked if there is a verifier to check the
+// password against; otherwise the session cannot be unlocked safely, so it ends.
+const restoreSession = () => {
+  const user = restoreUser();
+  if (user && readLocked() && !readVerifier()) {
+    clearAuthStorage();
+    return { user: null, locked: false };
+  }
+  return { user, locked: Boolean(user) && readLocked() };
+};
+
 function App() {
-  const [currentUser, setCurrentUser] = useState(restoreUser);
-  const [isLocked, setIsLockedState] = useState(readLocked);
-  // Kept in memory only so the lock screen can re-check it. It is empty after a
-  // reload with "Remember me", because the password is never saved to storage.
-  const passwordRef = useRef('');
+  const [initialSession] = useState(restoreSession);
+  const [currentUser, setCurrentUser] = useState(initialSession.user);
+  const [isLocked, setIsLockedState] = useState(initialSession.locked);
 
   const setIsLocked = (locked) => {
     writeLocked(locked);
     setIsLockedState(locked);
   };
 
+  const handleSignOut = () => {
+    clearAuthStorage();
+    setIsLockedState(false);
+    setCurrentUser(null);
+  };
+
   useIdleLock({
     timeoutMs: IDLE_TIMEOUT_MS,
     enabled: Boolean(currentUser) && !isLocked,
-    onIdle: () => setIsLocked(true),
+    // Without a verifier the lock screen could never check the password.
+    onIdle: () => (readVerifier() ? setIsLocked(true) : handleSignOut()),
   });
 
   // TODO: Integrate with backend API
-  const handleSignIn = (credentials, rememberMe) => {
+  const handleSignIn = async (credentials, rememberMe) => {
     const user = {
       id: credentials.email || '12345',
       role: 'Clinical IoMT Specialist',
     };
     const storage = rememberMe ? window.localStorage : window.sessionStorage;
-    const otherStorage = rememberMe ? window.sessionStorage : window.localStorage;
 
+    let verifier = null;
+    try {
+      verifier = await createPasswordVerifier(credentials.password);
+    } catch (error) {
+      console.error('Could not create the unlock verifier; the session cannot be locked.', error);
+    }
+
+    clearAuthStorage();
     storage.setItem(AUTH_SESSION_KEY, JSON.stringify({ user }));
-    otherStorage.removeItem(AUTH_SESSION_KEY);
-    passwordRef.current = credentials.password;
+    if (verifier) storage.setItem(VERIFIER_KEY, JSON.stringify(verifier));
     setIsLocked(false);
     setCurrentUser(user);
   };
-  const handleSignOut = () => {
-    window.localStorage.removeItem(AUTH_SESSION_KEY);
-    window.sessionStorage.removeItem(AUTH_SESSION_KEY);
-    passwordRef.current = '';
-    setIsLocked(false);
-    setCurrentUser(null);
-  };
-  // TODO: Verify the password with the backend instead of the sign-in value
-  const handleUnlock = (password) => {
-    // After a reload there is no remembered password to compare with, so fall
-    // back to the same non-empty check that sign-in uses today.
-    const matches = passwordRef.current
-      ? password === passwordRef.current
-      : password.trim() !== '';
-    if (!matches) return false;
+  // TODO: Verify the password with the backend instead of the stored verifier
+  const handleUnlock = async (password) => {
+    if (!(await verifyPassword(password, readVerifier()))) return false;
     setIsLocked(false);
     return true;
   };
