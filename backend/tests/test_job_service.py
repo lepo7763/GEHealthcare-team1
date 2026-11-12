@@ -1243,3 +1243,45 @@ def test_receive_archive_unauthorized(tmp_path, monkeypatch):
 
     assert response.status_code == 401
     assert not (tmp_path / "session-1" / "job-1.zip").exists()
+
+def test_schedule_capture_jobs_forwards_duration():
+    """Verify requested duration reaches the Kubernetes Job."""
+
+    mock_core = Mock()
+    mock_batch = Mock()
+
+    mock_core.list_namespaced_pod.return_value = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                metadata=SimpleNamespace(
+                    name="http-test-1",
+                    uid="uid-1",
+                    deletion_timestamp=None,
+                ),
+                spec=SimpleNamespace(
+                    node_name="test-node",
+                    host_network=False,
+                ),
+                status=SimpleNamespace(
+                    phase="Running",
+                    pod_ip="10.0.0.1",
+                ),
+            )
+        ]
+    )
+
+    mock_batch.create_namespaced_job.return_value.metadata.name = "test-job"
+
+    schedule_capture_jobs(
+        core_api=mock_core,
+        batch_api=mock_batch,
+        namespaces=["iomt-dev-1"],
+        duration_seconds=120,
+    )
+
+    job = mock_batch.create_namespaced_job.call_args.kwargs["body"]
+    container = job.spec.template.spec.containers[0]
+
+    env = {item.name: item.value for item in container.env}
+
+    assert env["CAPTURE_DURATION_SECONDS"] == "120"

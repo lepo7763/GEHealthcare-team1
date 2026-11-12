@@ -115,13 +115,15 @@ def submit_netshoot_job(
     batch_api: client.BatchV1Api,
     node_name: str,
     targets: list[dict] | None = None,
+    duration_seconds: int = 60,
 ) -> str:
-    """
-    Submit a Netshoot Job to Kubernetes and return
-    its generated name.
-    """
+    """Create one Netshoot Job with the requested capture duration."""
 
-    job = build_netshoot_job(node_name, targets)
+    job = build_netshoot_job(
+        node_name=node_name,
+        targets=targets,
+        duration_seconds=duration_seconds,
+    )
 
     created_job = batch_api.create_namespaced_job(
         namespace=DIAGNOSTICS_NAMESPACE,
@@ -235,11 +237,9 @@ def schedule_capture_jobs(
     core_api: client.CoreV1Api,
     batch_api: client.BatchV1Api,
     namespaces: list[str],
+    duration_seconds: int = 60,
 ) -> dict:
-    """
-    Discover targets across approved namespaces and
-    schedule one diagnostic Job per node.
-    """
+    """Discover target Pods and schedule one Netshoot Job per node."""
 
     targets_by_node = discover_targets_across_namespaces(
         core_api,
@@ -253,6 +253,7 @@ def schedule_capture_jobs(
             batch_api=batch_api,
             node_name=node_name,
             targets=targets,
+            duration_seconds=duration_seconds,
         )
 
         scheduled_jobs[node_name] = {

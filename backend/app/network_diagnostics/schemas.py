@@ -26,5 +26,20 @@ class CaptureTargetsResponse(BaseModel):
     namespace: str
     targets_by_node: dict[str, list[CaptureTargetInfo]]
 
+class NetshootCaptureStartRequest(BaseModel):
+    """Configuration supplied by an engineer to start Pod-level capture."""
+
+    namespaces: list[str] = Field(
+        default_factory=lambda: ["iomt-dev-1"],
+        min_length=1,
+    )
+
+    duration_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=600,
+        strict=True,
+    )
+
 
     
