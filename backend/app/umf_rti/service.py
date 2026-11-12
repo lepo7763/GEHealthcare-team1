@@ -9,7 +9,7 @@ import time
 import uuid
 import zipfile
 
-from app.log_collection.progress import UMF_RTI_LABEL, UMF_RTI_SERVICE_ID
+from app.log_collection.progress import UMF_RTI_LABEL, UMF_RTI_SERVICE_ID, tracker
 from app.log_collection.schemas import CollectedService, LogCollectionManifest
 from kubernetes.client.exceptions import ApiException
 from kubernetes.stream import stream
@@ -341,10 +341,20 @@ def _wait_for_done(
     the signal that the files are safe to collect. Raises on pod death/timeout.
     """
     probe = f"test -f {config.output_dir}/.done && echo {_DONE_MARKER}"
-    deadline = (
-        time.monotonic() + params.umf_duration_seconds + config.collect_grace_seconds
+    started = time.monotonic()
+    deadline = started + params.umf_duration_seconds + config.collect_grace_seconds
+    # Recording is now underway: progress is elapsed seconds out of the duration.
+    tracker.set_service_total(
+        UMF_RTI_SERVICE_ID, params.umf_duration_seconds, unit="seconds"
     )
     while time.monotonic() < deadline:
+        # Cap below 100% of the duration so the bar only completes when .done lands.
+        elapsed = int(time.monotonic() - started)
+        tracker.set_service_completed(
+            UMF_RTI_SERVICE_ID,
+            min(elapsed, max(params.umf_duration_seconds - 1, 0)),
+            current="Recording DDS traffic",
+        )
         try:
             pod = core.read_namespaced_pod(name=pod_name, namespace=config.namespace)
             phase = pod.status.phase if pod.status else None
@@ -443,11 +453,19 @@ def capture_umf_rti(
     The returned result carries `recording_dir` (a local temp dir); the caller
     must delete it once the files have been zipped.
     """
+    # Show an indeterminate bar while the Job/pod starts up.
+    tracker.set_service_total(UMF_RTI_SERVICE_ID, 0, unit="seconds")
+    tracker.set_service_current(UMF_RTI_SERVICE_ID, "Starting capture pod")
     job = build_job_manifest(params, config)
     job_name = _create_job(batch, job, config)
     try:
         pod_name = _wait_for_pod_running(core, job_name, config)
         _wait_for_done(core, pod_name, params, config)
+        tracker.set_service_completed(
+            UMF_RTI_SERVICE_ID,
+            params.umf_duration_seconds,
+            current="Copying recording from pod",
+        )
         recording_dir = _collect_recording(core, pod_name, config)
     finally:
         _delete_job(batch, job_name, config)

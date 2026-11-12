@@ -6,19 +6,31 @@ describes what a recording produced and is serialized into the zip as
 `summary.json`.
 """
 
-from typing import Dict, List, Literal, Optional
+from enum import IntEnum
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+
+class UmfDomain(IntEnum):
+    """Domains the image's built-in Test certs authorize (7/12/13).
+
+    Others (e.g. 32 trunk, 34 persistence) aren't in that cert scope and would
+    fail the DDS security handshake, so they're rejected (422), not offered.
+    An IntEnum (not Literal[7, 12, 13]) so the query-string value "13" is
+    accepted. Must stay in sync with the domain labels in config.py.
+    """
+
+    VIEWER = 13
+    SOURCE = 12
+    LOGGER = 7
 
 
 class UmfRtiParams(BaseModel):
     """What the end user picks: which domain to record and for how long."""
 
-    # Only the domains the image's built-in Test certs authorize (7/12/13).
-    # Others (e.g. 32 trunk, 34 persistence) aren't in that cert scope and would
-    # fail the DDS security handshake, so they're rejected here (422), not offered.
-    umf_domain_id: Literal[7, 12, 13] = Field(
-        default=13,
+    umf_domain_id: UmfDomain = Field(
+        default=UmfDomain.VIEWER,
         description="DDS domain to record (13 = viewpod / live vitals, 12 = sourcepod, 7 = logger)",
     )
     umf_duration_seconds: int = Field(
