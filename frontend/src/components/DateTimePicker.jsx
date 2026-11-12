@@ -37,9 +37,13 @@ export function DateTimePicker({ id, label, value, onChange, disabled = false, d
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-[320px] max-w-[calc(100vw-24px)] p-0"
+            className="w-[320px] max-w-[calc(100vw-24px)] max-h-(--radix-popover-content-available-height) overflow-y-auto overscroll-contain p-0"
             align="start"
             collisionPadding={12}
+            // Inside a modal dialog the dialog's scroll lock swallows wheel/touch
+            // scrolling outside it; keep those events local so the popover scrolls.
+            onWheel={(event) => event.stopPropagation()}
+            onTouchMove={(event) => event.stopPropagation()}
             aria-labelledby={`${id}-popover-title`}
           >
             <div className="border-b border-border p-3">
