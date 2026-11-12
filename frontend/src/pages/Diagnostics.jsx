@@ -15,6 +15,19 @@ import { buildToolQuery, defaultToolParams } from './diagnostics/toolParams';
 // - "Cool Gray" (Pantone Cool Gray 1 C, RGB 228/228/228, CMYK 0/0/0/10)
 // Font requirement: "Inter" system-ui, Avenir, Helvetica, Arial, sans-serif
 
+// FastAPI sends `detail` as a string for our own errors, but as a list of
+// { loc, msg } objects for request validation errors (422).
+const formatErrorDetail = (detail) => {
+  if (!Array.isArray(detail)) return String(detail);
+  return detail
+    .map((item) => {
+      const field = Array.isArray(item?.loc) ? item.loc[item.loc.length - 1] : '';
+      const message = item?.msg || 'Invalid value';
+      return field ? `${field}: ${message}` : message;
+    })
+    .join('; ');
+};
+
 const Diagnostics = () => {
   const [host, setHost] = useState('192.168.0.3');
   const [step, setStep] = useState(1);
@@ -106,7 +119,7 @@ const Diagnostics = () => {
           let detail = `Collection failed (${res.status}).`;
           try {
             const body = await res.json();
-            if (body?.detail) detail = body.detail;
+            if (body?.detail) detail = formatErrorDetail(body.detail);
           } catch {
             /* non-JSON error body */
           }

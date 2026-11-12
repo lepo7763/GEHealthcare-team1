@@ -33,7 +33,7 @@ const UmfRtiParamsForm = ({ value, onChange }) => {
           >
             {domains.map((option) => (
               <option key={option.domain} value={option.domain}>
-                {option.label}
+                {option.domain} · {option.label}
               </option>
             ))}
           </select>

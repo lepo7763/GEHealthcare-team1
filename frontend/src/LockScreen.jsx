@@ -10,10 +10,15 @@ const LockScreen = ({ user, onUnlock, onSignOut }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [failedAttempts, setFailedAttempts] = useState(0);
+  const [checking, setChecking] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (onUnlock(password)) return;
+    if (checking) return;
+    setChecking(true);
+    const unlocked = await onUnlock(password);
+    setChecking(false);
+    if (unlocked) return;
 
     const attempts = failedAttempts + 1;
     if (attempts >= MAX_FAILED_ATTEMPTS) {
@@ -57,7 +62,9 @@ const LockScreen = ({ user, onUnlock, onSignOut }) => {
               required
             />
           </div>
-          <button type="submit" className="signin-button-light">Unlock</button>
+          <button type="submit" className="signin-button-light" disabled={checking}>
+            {checking ? 'Checking…' : 'Unlock'}
+          </button>
           <button type="button" className="lock-signout" onClick={onSignOut}>
             Sign out instead
           </button>

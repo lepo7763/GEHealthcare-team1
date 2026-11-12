@@ -10,9 +10,9 @@ export const DEFAULT_UMF_PARAMS = {
 
 // Used if GET /api/umf-rti/domains can't be reached.
 export const FALLBACK_UMF_DOMAINS = [
-  { domain: 13, label: 'Domain 13' },
-  { domain: 12, label: 'Domain 12' },
-  { domain: 7, label: 'Domain 7' },
+  { domain: 13, label: 'Viewer — live vitals (viewpod)' },
+  { domain: 12, label: 'Source — from Hub (sourcepod)' },
+  { domain: 7, label: 'Logger' },
 ];
 
 // Converts the UMF RTI form value into /api/logs/zip query params. Throws an
