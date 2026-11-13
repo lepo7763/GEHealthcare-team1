@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Log Analysis</title>
+  <!-- Prototype for the "Analyze Package" step. No external libraries or CDNs on purpose:
+       the lab network has no internet access. -->
+  <style>
+    :root {
+      --bg: #f6f6f9; --card: #fff; --text: #1d1d2b; --muted: #6b6b80; --line: #e4e4ec;
+      --accent: #6f3cc4; --error: #c62828; --error-bg: #fdecec; --warn: #b26a00; --warn-bg: #fff4e0;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+    header { background: var(--accent); color: #fff; padding: 16px 24px; }
+    header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+    header p { margin: 2px 0 0; opacity: .85; font-size: 13px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
+    h2 { font-size: 16px; margin: 0 0 12px; }
+    .muted { color: var(--muted); font-size: 13px; }
+
+    #drop { border: 2px dashed var(--line); border-radius: 10px; padding: 28px; text-align: center; cursor: pointer; }
+    #drop.over { border-color: var(--accent); background: #f3eefc; }
+    #drop strong { color: var(--accent); }
+    button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 9px 18px; font-size: 14px; cursor: pointer; margin-top: 12px; }
+    button:disabled { opacity: .5; cursor: default; }
+
+    #message { display: none; padding: 12px 16px; border-radius: 8px; margin-bottom: 18px; }
+    #message.error { display: block; background: var(--error-bg); color: var(--error); }
+    #message.info { display: block; background: #eef2fb; color: #2b4a8a; }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+    .stat .num { font-size: 28px; font-weight: 650; }
+    .stat .label { color: var(--muted); font-size: 13px; }
+    .stat.error .num { color: var(--error); }
+    .stat.warn .num { color: var(--warn); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; font-size: 13px; }
+    td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    code { font: 12.5px ui-monospace, Menlo, monospace; word-break: break-word; }
+    .bar { height: 8px; border-radius: 4px; background: var(--error); min-width: 2px; }
+    .bar.warn { background: var(--warn); }
+    .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 9px; background: var(--error-bg); color: var(--error); margin-left: 6px; }
+    .scroll { overflow-x: auto; }
+    #results { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>IoMT Analysis Tool · Log Analysis</h1>
+    <p>Upload the zip from "Collect Diagnostics" to see which containers need attention.</p>
+  </header>
+
+  <main>
+    <div class="card">
+      <div id="drop">
+        <div><strong>Choose a log zip</strong> or drag it here</div>
+        <div class="muted" id="fileName">The file from GET /api/logs/zip</div>
+        <input type="file" id="fileInput" hidden />
+      </div>
+      <button id="analyzeBtn" disabled>Analyze</button>
+    </div>
+
+    <div id="message"></div>
+
+    <div id="results">
+      <div class="stats" id="stats"></div>
+      <div class="card" style="margin-top:18px">
+        <h2>Most frequent errors</h2>
+        <div class="muted" style="margin-bottom:8px">Lines that differ only by time, IDs, IPs or numbers are counted together.</div>
+        <div class="scroll"><table id="topErrors"></table></div>
+      </div>
+      <div class="card">
+        <h2>Containers <span class="muted">(most errors first)</span></h2>
+        <div class="scroll"><table id="containers"></table></div>
+      </div>
+      <div class="card" id="problemsCard">
+        <h2>Could not collect / skipped</h2>
+        <div class="scroll"><table id="problems"></table></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const drop = document.getElementById("drop");
+    const fileInput = document.getElementById("fileInput");
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const message = document.getElementById("message");
+    let selectedFile = null;
+
+    // --- Picking a file (click or drag and drop) ---
+    drop.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => selectFile(fileInput.files[0]));
+    drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+    drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+    drop.addEventListener("drop", (e) => {
+      e.preventDefault();
+      drop.classList.remove("over");
+      selectFile(e.dataTransfer.files[0]);
+    });
+
+    function selectFile(file) {
+      if (!file) return;
+      selectedFile = file;
+      document.getElementById("fileName").textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+      analyzeBtn.disabled = false;
+    }
+
+    // --- Calling the backend ---
+    analyzeBtn.addEventListener("click", async () => {
+      analyzeBtn.disabled = true;
+      showMessage("info", "Analyzing…");
+      document.getElementById("results").style.display = "none";
+
+      // Same field name ("file") as the UploadFile parameter in router.py
+      const form = new FormData();
+      form.append("file", selectedFile);
+
+      try {
+        // Relative URL: this page is served by the same FastAPI app, so no CORS setup is needed
+        const response = await fetch("/api/analysis/zip", { method: "POST", body: form });
+        const body = await response.json();
+        if (!response.ok) {
+          // 400 from our own checks has a string detail; 422 from FastAPI validation has a list
+          const detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+          showMessage("error", `Error ${response.status}: ${detail}`);
+          return;
+        }
+        showMessage("", "");
+        render(body);
+      } catch (err) {
+        showMessage("error", `Could not reach the backend: ${err.message}`);
+      } finally {
+        analyzeBtn.disabled = false;
+      }
+    });
+
+    function showMessage(kind, text) {
+      message.className = kind;
+      message.textContent = text;
+    }
+
+    // --- Rendering the report ---
+    // Log lines come from the cluster, so everything is inserted with textContent / escape()
+    // and never as raw HTML.
+    function escape(text) {
+      const div = document.createElement("div");
+      div.textContent = text ?? "";
+      return div.innerHTML;
+    }
+
+    function render(report) {
+      const crashed = new Set(report.crashed_containers);
+      document.getElementById("stats").innerHTML = [
+        stat(report.files_analyzed, "log files"),
+        stat(report.total_lines, "lines"),
+        stat(report.error_lines, "error lines", "error"),
+        stat(report.warning_lines, "warning lines", "warn"),
+        stat(report.crashed_containers.length, "crashed containers", "error"),
+      ].join("");
+
+      const maxCount = Math.max(1, ...report.top_errors.map((p) => p.count));
+      document.getElementById("topErrors").innerHTML =
+        "<tr><th>Count</th><th style='width:120px'></th><th>Example</th><th>Where</th></tr>" +
+        (report.top_errors.map((p) => `
+          <tr>
+            <td class="num">${p.count}</td>
+            <td><div class="bar" style="width:${(p.count / maxCount) * 100}%"></div></td>
+            <td><code>${escape(p.example)}</code></td>
+            <td>${p.containers.map(escape).join("<br>")}</td>
+          </tr>`).join("") || "<tr><td colspan='4' class='muted'>No errors found</td></tr>");
+
+      const maxLines = Math.max(1, ...report.containers.map((c) => c.error_lines + c.warning_lines));
+      document.getElementById("containers").innerHTML =
+        "<tr><th>Container</th><th>Errors</th><th>Warnings</th><th style='width:140px'></th><th>First error</th></tr>" +
+        report.containers.map((c) => {
+          const label = `${c.namespace}/${c.pod}/${c.container}`;
+          return `
+          <tr>
+            <td>${escape(label)}${c.is_previous ? "<span class='tag'>before crash</span>" : ""}
+                ${!c.is_previous && crashed.has(label) ? "<span class='tag'>restarted</span>" : ""}</td>
+            <td class="num">${c.error_lines}</td>
+            <td class="num">${c.warning_lines}</td>
+            <td>
+              <div class="bar" style="width:${(c.error_lines / maxLines) * 100}%"></div>
+              <div class="bar warn" style="width:${(c.warning_lines / maxLines) * 100}%;margin-top:3px"></div>
+            </td>
+            <td><code>${escape(c.first_error) || "<span class='muted'>—</span>"}</code></td>
+          </tr>`;
+        }).join("");
+
+      const problems = [
+        ...report.collection_errors.map((e) =>
+          `<tr><td>${escape(`${e.namespace}/${e.pod}/${e.container}`)}</td><td>Not collected: ${escape(e.reason)}${e.status ? ` (${e.status})` : ""}</td></tr>`),
+        ...report.skipped_files.map((f) => `<tr><td colspan="2">Skipped: ${escape(f)}</td></tr>`),
+      ];
+      document.getElementById("problemsCard").style.display = problems.length ? "block" : "none";
+      document.getElementById("problems").innerHTML = problems.join("");
+
+      document.getElementById("results").style.display = "block";
+    }
+
+    function stat(value, label, kind = "") {
+      return `<div class="stat ${kind}"><div class="num">${value}</div><div class="label">${label}</div></div>`;
+    }
+  </script>
+</body>
+</html>
