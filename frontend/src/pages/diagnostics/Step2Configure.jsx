@@ -1,16 +1,20 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
 
-// Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
-const MIN_DURATION = 10;
+const MIN_DURATION = 30;
 const MAX_DURATION = 600;
+const MAX_TSHARK_DURATION = 300;
+
+const validateDomain = (value) => {
+  const text = String(value ?? '').trim();
+  const number = Number(text);
+  return text !== '' && Number.isInteger(number) && number >= 0 && number <= 100;
+};
 
 const validateDuration = (value) => {
   const text = String(value ?? '').trim();
   const number = Number(text);
-  return (
-    text !== '' && Number.isInteger(number) && number >= MIN_DURATION && number <= MAX_DURATION
-  );
+  return text !== '' && Number.isInteger(number) && number >= MIN_DURATION && number <= MAX_DURATION;
 };
 
 const Step2Configure = ({
@@ -20,17 +24,24 @@ const Step2Configure = ({
   setUmfDomain,
   umfDuration,
   setUmfDuration,
-  umfDomainOptions,
+  tsharkDuration,
+  setTsharkDuration,
+  umfDomainOptions = [],
   onBack,
   onContinue,
 }) => {
-  const domainOption = umfDomainOptions.find((option) => option.domain === Number(umfDomain));
-  const domainValid = Boolean(domainOption);
+  const domainOption = umfDomainOptions?.find((option) => option.domain === Number(umfDomain));
+  const domainValid = validateDomain(umfDomain);
   const durationValid = validateDuration(umfDuration);
+  const tsharkDurationText = String(tsharkDuration ?? '').trim();
+  const tsharkDurationValue = Number(tsharkDurationText);
+  const tsharkDurationValid =
+    tsharkDurationText !== '' &&
+    Number.isInteger(tsharkDurationValue) &&
+    tsharkDurationValue >= 1 &&
+    tsharkDurationValue <= MAX_TSHARK_DURATION;
 
-  // Settings for each service that has any, keyed by service id. To give a new service
-  // (e.g. Netshoot) its own settings, add an entry here: whether its values are valid,
-  // a one-line summary shown while collapsed, and the fields shown while expanded.
+  // Settings for each service that has any, keyed by service id.
   const settingsPanels = {
     'umf-rti': {
       isValid: domainValid && durationValid,
@@ -39,20 +50,23 @@ const Step2Configure = ({
         <>
           <div className="form-row">
             <label className="field grow">
-              <span>Domain</span>
-              <select
+              <span>Domain ID</span>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
                 value={umfDomain}
-                onChange={(e) => setUmfDomain(Number(e.target.value))}
+                onChange={(e) => setUmfDomain(e.target.value)}
                 aria-invalid={!domainValid}
-              >
-                {umfDomainOptions.map((option) => (
-                  <option key={option.domain} value={option.domain}>
-                    {option.domain} · {option.label}
-                  </option>
-                ))}
-              </select>
-              <small>The DDS domain to record.</small>
-              {!domainValid && <small className="field-error">Choose a domain.</small>}
+              />
+              <small>
+                Domain 32 is the live UMF domain in this lab. Domain 12 requires a
+                dedicated identity permitted on that domain.
+              </small>
+              {!domainValid && (
+                <small className="field-error">Enter a whole number from 0 to 100.</small>
+              )}
             </label>
             <label className="field grow">
               <span>Capture duration (seconds)</span>
@@ -65,9 +79,7 @@ const Step2Configure = ({
                 onChange={(e) => setUmfDuration(e.target.value)}
                 aria-invalid={!durationValid}
               />
-              <small>
-                Between {MIN_DURATION} and {MAX_DURATION} seconds.
-              </small>
+              <small>Between {MIN_DURATION} and {MAX_DURATION} seconds.</small>
               {!durationValid && (
                 <small className="field-error">
                   Enter a whole number from {MIN_DURATION} to {MAX_DURATION}.
@@ -75,7 +87,70 @@ const Step2Configure = ({
               )}
             </label>
           </div>
+
+          {umfDomainOptions && umfDomainOptions.length > 0 && (
+            <div style={{ marginTop: '0.25rem', marginBottom: '0.75rem' }}>
+              <span
+                style={{
+                  fontSize: 'var(--eds-font-size-xs)',
+                  color: 'var(--eds-color-gray-500)',
+                  marginRight: '6px',
+                }}
+              >
+                Presets:
+              </span>
+              {umfDomainOptions.map((opt) => (
+                <button
+                  key={opt.domain}
+                  type="button"
+                  className={`badge ${
+                    Number(umfDomain) === opt.domain ? 'badge-purple' : 'badge-neutral'
+                  }`}
+                  style={{ cursor: 'pointer', border: 'none', marginRight: '6px' }}
+                  onClick={() => setUmfDomain(opt.domain)}
+                >
+                  Domain {opt.domain} ({opt.label.split('—')[0].trim()})
+                </button>
+              ))}
+            </div>
+          )}
+
+          <p className="future-note">
+            UMF RTI captures discovery and QoS metadata only. No sample values or
+            patient data are read.
+          </p>
         </>
+      ),
+    },
+    'wireshark-tshark': {
+      isValid: tsharkDurationValid,
+      summary: `Live packet capture · ${tsharkDurationText || '—'} s`,
+      fields: (
+        <div>
+          <label className="field">
+            <span>Capture duration (seconds)</span>
+            <input
+              type="number"
+              min="1"
+              max={MAX_TSHARK_DURATION}
+              step="1"
+              value={tsharkDuration}
+              onChange={(e) => setTsharkDuration(e.target.value)}
+              aria-invalid={!tsharkDurationValid}
+            />
+            <small>Enter 1 to {MAX_TSHARK_DURATION} seconds (maximum 5 minutes).</small>
+            {!tsharkDurationValid && (
+              <small className="field-error">
+                Enter a whole number from 1 to {MAX_TSHARK_DURATION}.
+              </small>
+            )}
+          </label>
+          <p className="future-note" style={{ marginTop: 0 }}>
+            Captures traffic visible to a temporary workload and analyzes packet
+            metrics (TCP resets, retransmissions, and DNS failures) during the
+            Collect step. It does not capture cluster-wide traffic.
+          </p>
+        </div>
       ),
     },
   };
@@ -90,14 +165,16 @@ const Step2Configure = ({
     const wasSelected = selected.includes(id);
     onToggleService(id);
     if (!wasSelected && settingsPanels[id]) {
-      // Just picked a service that needs settings: open them (closes any other).
+      // Just picked a service that has settings: open them (closes any other).
       setExpandedId(id);
     } else if (wasSelected && expandedId === id) {
       setExpandedId(null);
     }
   };
 
-  const allSettingsValid = selected.every((id) => !settingsPanels[id] || settingsPanels[id].isValid);
+  const allSettingsValid = selected.every(
+    (id) => !settingsPanels[id] || settingsPanels[id].isValid,
+  );
 
   return (
     <section className="section-narrow">
@@ -134,7 +211,9 @@ const Step2Configure = ({
                 {panel && !isExpanded && (
                   <button
                     type="button"
-                    className={`service-settings-summary ${panel.isValid ? '' : 'invalid'}`}
+                    className={`service-settings-summary ${
+                      panel.isValid ? '' : 'invalid'
+                    }`}
                     aria-expanded="false"
                     aria-controls={panelId}
                     onClick={() => setExpandedId(service.id)}
@@ -153,7 +232,7 @@ const Step2Configure = ({
                     role="region"
                     aria-label={`${service.name} settings`}
                   >
-                    <h4 className="service-options-title">{service.name} settings</h4>
+                    <h4 className="service-options-title">{service.name} options</h4>
                     {panel.fields}
                     <div className="action-row">
                       <button

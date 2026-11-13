@@ -103,6 +103,7 @@ const ALL_PAGES = [
 const Dashboard = ({ user, onSignOut }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const renderActivePage = () => {
     switch (activeTab) {
@@ -117,7 +118,12 @@ const Dashboard = ({ user, onSignOut }) => {
       case 'audit_log':
         return <AuditLog />;
       case 'settings':
-        return <Settings />;
+        return (
+          <>
+            <Overview onNavigate={setActiveTab} />
+            <Settings onClose={() => setActiveTab('overview')} />
+          </>
+        );
       case 'help':
         return <Help />;
       default:
@@ -218,12 +224,18 @@ const Dashboard = ({ user, onSignOut }) => {
             </div>
             <div className="eds-topbar-corner-actions" aria-label="Utility navigation">
               {CORNER_ITEMS.map((item) => {
-                const isActive = activeTab === item.id;
+                const isActive = item.id === 'settings' ? isSettingsOpen : activeTab === item.id;
                 return (
                   <button
                     key={item.id}
                     className={`eds-corner-icon-btn ${isActive ? 'active' : ''}`}
-                    onClick={() => setActiveTab(item.id)}
+                    onClick={() => {
+                      if (item.id === 'settings') {
+                        setIsSettingsOpen((prev) => !prev);
+                      } else {
+                        setActiveTab(item.id);
+                      }
+                    }}
                     title={item.label}
                     aria-label={item.label}
                     aria-current={isActive ? 'page' : undefined}
@@ -240,6 +252,11 @@ const Dashboard = ({ user, onSignOut }) => {
           {renderActivePage()}
         </div>
       </main>
+
+      {/* FLOATING SETTINGS CARD */}
+      {isSettingsOpen && (
+        <Settings onClose={() => setIsSettingsOpen(false)} />
+      )}
     </div>
   );
 };

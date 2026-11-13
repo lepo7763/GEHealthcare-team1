@@ -1,4 +1,4 @@
-import { SERVICE_STATUS_LABEL, STATUS_LABEL } from './constants';
+import { CAPTURE_STATE_LABEL, SERVICE_STATUS_LABEL, STATUS_LABEL } from './constants';
 
 const ServiceProgressCard = ({ service }) => {
   const status = service.status || 'pending';
@@ -20,7 +20,7 @@ const ServiceProgressCard = ({ service }) => {
         <div>
           <div className="check-title">{service.label}</div>
           <div className="check-detail">
-            {SERVICE_STATUS_LABEL[status] || status}
+            {CAPTURE_STATE_LABEL[service.state] || SERVICE_STATUS_LABEL[status] || status}
             {total > 0 ? ` · ${completed} of ${total} ${unit}` : ''}
           </div>
         </div>

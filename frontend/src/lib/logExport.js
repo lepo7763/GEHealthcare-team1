@@ -1,3 +1,5 @@
+import { saveBlobFile } from './settings.js';
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function localTimestamp(value, label) {
@@ -64,13 +66,7 @@ export async function downloadLogs(url, fallbackFilename) {
   }
 
   const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = objectUrl;
-  link.download = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
+  const filename = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
     || fallbackFilename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  await saveBlobFile(blob, filename);
 }

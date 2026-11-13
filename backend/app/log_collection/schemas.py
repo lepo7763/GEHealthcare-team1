@@ -57,6 +57,7 @@ class ServiceProgressResponse(BaseModel):
     completed: int = 0
     total: int = 0
     unit: str = "items"
+    state: Optional[str] = None
     current: Optional[str] = None
     errors: int = 0
     error: Optional[str] = None

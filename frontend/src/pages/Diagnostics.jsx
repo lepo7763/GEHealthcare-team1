@@ -47,6 +47,7 @@ const Diagnostics = () => {
   const [umfDomain, setUmfDomain] = useState(13);
   const [umfDuration, setUmfDuration] = useState('60');
   const [umfDomainOptions, setUmfDomainOptions] = useState(FALLBACK_UMF_DOMAINS);
+  const [tsharkDuration, setTsharkDuration] = useState('30');
 
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
@@ -116,6 +117,9 @@ const Diagnostics = () => {
     if (selected.includes('umf-rti')) {
       params.set('umf_domain_id', String(umfDomain));
       params.set('umf_duration_seconds', String(umfDuration).trim());
+    }
+    if (selected.includes('wireshark-tshark')) {
+      params.set('tshark_duration_seconds', String(tsharkDuration).trim());
     }
 
     fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
@@ -270,6 +274,8 @@ const Diagnostics = () => {
           setUmfDomain={setUmfDomain}
           umfDuration={umfDuration}
           setUmfDuration={setUmfDuration}
+          tsharkDuration={tsharkDuration}
+          setTsharkDuration={setTsharkDuration}
           umfDomainOptions={umfDomainOptions}
           onBack={handleBackToConnect}
           onContinue={() => setStep(3)}
@@ -282,6 +288,7 @@ const Diagnostics = () => {
           selectedServices={selectedServices}
           umfDomain={umfDomain}
           umfDuration={umfDuration}
+          tsharkDuration={tsharkDuration}
           onEditConnection={() => setStep(1)}
           onEditServices={() => setStep(2)}
           onBack={() => setStep(2)}

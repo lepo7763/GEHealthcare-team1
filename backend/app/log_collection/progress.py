@@ -6,9 +6,11 @@ from typing import List, Optional
 # Service identifiers shared by the collector, orchestrator and UI.
 CONTAINER_LOGS_SERVICE_ID = "container-logs"
 UMF_RTI_SERVICE_ID = "umf-rti"
+TSHARK_SERVICE_ID = "wireshark-tshark"
 
 CONTAINER_LOGS_LABEL = "Container Log Collection"
 UMF_RTI_LABEL = "UMF RTI"
+TSHARK_LABEL = "TShark Capture"
 
 # Statuses that mean a collection is actively running.
 RUNNING_STATUSES = frozenset({"listing", "collecting", "packaging"})
@@ -33,6 +35,7 @@ class ServiceProgress:
     completed: int = 0
     total: int = 0
     unit: str = "items"
+    state: Optional[str] = None
     current: Optional[str] = None
     errors: int = 0
     error: Optional[str] = None
@@ -147,6 +150,12 @@ class ProgressTracker:
             service = _find_service(self._state, service_id)
             if service:
                 service.current = current
+
+    def set_service_state(self, service_id: str, state: str) -> None:
+        with self._lock:
+            service = _find_service(self._state, service_id)
+            if service:
+                service.state = state
 
     def record_error(
         self, service_id: str, message: str, increment: bool = True

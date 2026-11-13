@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getDownloadPath, saveBlobFile } from '../lib/settings';
 import './pages.css';
 
 // # GEHealthcare-team1
@@ -132,17 +133,14 @@ const DiagnosticPackages = () => {
       }
 
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
       const filename = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
         || 'iomt_diagnostics.zip';
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setSuccess(`Export completed: ${filename} downloaded.`);
+      const saveResult = await saveBlobFile(blob, filename);
+      if (saveResult.aborted) {
+        setIsExporting(false);
+        return;
+      }
+      setSuccess(`Export completed: ${filename} saved to ${getDownloadPath()}.`);
     } catch (error) {
       setError(error instanceof TypeError
         ? 'Could not reach the backend. Make sure it is running and try again.'
@@ -172,17 +170,14 @@ const DiagnosticPackages = () => {
       }
 
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
       const filename = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
         || `${selectedPackage.id.toLowerCase()}-diagnostic-package.zip`;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setPackageDownloadSuccess(`Downloaded ${filename}. This archive contains simulated package data.`);
+      const saveResult = await saveBlobFile(blob, filename);
+      if (saveResult.aborted) {
+        setIsPackageDownloading(false);
+        return;
+      }
+      setPackageDownloadSuccess(`Downloaded ${filename} to ${getDownloadPath()}. This archive contains simulated package data.`);
     } catch (downloadError) {
       setPackageDownloadError(downloadError instanceof TypeError
         ? 'Could not reach the backend. Make sure it is running and try again.'

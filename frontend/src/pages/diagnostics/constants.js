@@ -14,6 +14,12 @@ export const SERVICES = [
     description:
       'Captures UMF RTI discovery and QoS data from the live platform. No sample values are read.',
   },
+  {
+    id: 'wireshark-tshark',
+    name: 'TShark Capture',
+    description:
+      'Runs TShark in a temporary Kubernetes workload to analyze TCP resets, retransmissions, and DNS failures.',
+  },
 ];
 
 export const STEP_INFO = {
@@ -52,6 +58,16 @@ export const SERVICE_STATUS_LABEL = {
   collecting: 'Collecting',
   done: 'Complete',
   error: 'Failed',
+};
+
+export const CAPTURE_STATE_LABEL = {
+  pending: 'Waiting to start',
+  deploying: 'Preparing capture workload',
+  capturing: 'Capturing packets',
+  processing: 'Analyzing and packaging',
+  completed: 'Capture complete',
+  failed: 'Capture failed',
+  cancelled: 'Capture cancelled',
 };
 
 export const parseFilename = (disposition) => {

@@ -3,6 +3,7 @@ const Step3Review = ({
   selectedServices,
   umfDomain,
   umfDuration,
+  tsharkDuration,
   onEditConnection,
   onEditServices,
   onBack,
@@ -13,6 +14,10 @@ const Step3Review = ({
       ? selectedServices.map((service) => service.name).join(', ')
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
+  // TShark capture is selected if the user has selected the TShark service, regardless of the duration value.
+  const tsharkSelected = selectedServices.some(
+    (service) => service.id === 'wireshark-tshark',
+  );
 
   return (
     <section className="section-narrow">
@@ -55,6 +60,16 @@ const Step3Review = ({
                 <div className="check-detail">
                   Captures live RTI telemetry in a short-lived Kubernetes Job (deleted
                   afterwards) and bundles it into the diagnostic zip.
+                </div>
+              </div>
+            </li>
+          )}
+          {tsharkSelected && (
+            <li>
+              <div>
+                <div className="check-title">TShark capture</div>
+                <div className="check-detail">
+                  {String(tsharkDuration).trim()} seconds (maximum 5 minutes)
                 </div>
               </div>
             </li>

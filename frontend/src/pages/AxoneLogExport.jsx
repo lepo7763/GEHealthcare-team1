@@ -3,6 +3,7 @@ import { DateTimePicker } from '../components/DateTimePicker';
 import { toLocalDateTime } from '../lib/dateTime';
 import { normalizeTime } from '../lib/time';
 import { buildLogExportQuery, downloadLogs } from '../lib/logExport';
+import { getDownloadPath } from '../lib/settings';
 
 const AxoneLogExport = () => {
   const [scope, setScope] = useState('device');
@@ -31,7 +32,7 @@ const AxoneLogExport = () => {
       });
       setIsExporting(true);
       await downloadLogs(`/api/logs/export?${query}`, `axone_logs.${format}`);
-      setStatus(`${format.toUpperCase()} download started.`);
+      setStatus(`${format.toUpperCase()} download started (saving to ${getDownloadPath()}).`);
     } catch (error) {
       setError(error instanceof TypeError
         ? 'Could not reach the backend. Make sure it is running and try again.'

@@ -8,8 +8,10 @@ from app.diagnostics.service import CollectionInProgressError, collect_diagnosti
 from app.log_collection.progress import tracker
 from app.log_collection.schemas import CollectionProgressResponse, LogCollectionParams
 from app.log_collection.service import ClusterUnreachableError
+from app.tshark.config import TSHARK_MAX_DURATION
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import UmfRtiPrerequisiteError
+from app.tshark.service import TSharkCaptureError
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
 
@@ -34,15 +36,21 @@ def get_collection_progress() -> dict:
 
 @router.get("/zip")
 def download_diagnostics(
-    services: List[Literal["container-logs", "umf-rti"]] = Query(
+    services: List[Literal["container-logs", "umf-rti", "wireshark-tshark"]] = Query(
         default=["container-logs"],
         description=(
-            "Repeat for each service: services=container-logs&services=umf-rti. "
+            "Repeat for each service: services=container-logs&services=umf-rti&services=wireshark-tshark. "
             "At least one service is required."
         ),
     ),
     log_params: LogCollectionParams = Depends(),
     umf_params: UmfRtiParams = Depends(),
+    tshark_duration_seconds: int | None = Query(
+        default=None,
+        ge=1,
+        le=TSHARK_MAX_DURATION,
+        description="TShark capture duration in seconds (maximum 5 minutes)",
+    ),
     core: client.CoreV1Api = Depends(get_core_v1_api),
     batch: client.BatchV1Api = Depends(get_batch_v1_api),
 ):
@@ -64,6 +72,7 @@ def download_diagnostics(
             services=list(services),
             log_params=log_params,
             umf_params=umf_params,
+            tshark_duration=tshark_duration_seconds,
         )
     except CollectionInProgressError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -71,6 +80,8 @@ def download_diagnostics(
         raise HTTPException(status_code=503, detail=str(e))
     except UmfRtiPrerequisiteError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except TSharkCaptureError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
