@@ -46,6 +46,11 @@ spec:
         - name: backend
           image: us-artifactory.apps.ge-healthcare.net/docker-axone-all/iomt-backend:dev
           imagePullPolicy: Never
+          env:
+            - name: TSHARK_DIAGNOSTICS_NAMESPACE
+              value: iomt-integration
+            - name: TSHARK_IMAGE
+              value: nicolaka/netshoot:v0.16
           ports:
             - name: http
               containerPort: 8000
@@ -66,4 +71,3 @@ spec:
               port: http
             initialDelaySeconds: 3
             periodSeconds: 10
-

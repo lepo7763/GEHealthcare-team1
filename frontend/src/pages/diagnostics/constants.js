@@ -16,9 +16,9 @@ export const SERVICES = [
   },
   {
     id: 'wireshark-tshark',
-    name: 'Wireshark / tshark',
+    name: 'TShark Capture',
     description:
-      'Captures live network packets and analyzes TCP resets, retransmissions, and DNS failures.',
+      'Runs TShark in a temporary Kubernetes workload to analyze TCP resets, retransmissions, and DNS failures.',
   },
 ];
 
@@ -58,6 +58,16 @@ export const SERVICE_STATUS_LABEL = {
   collecting: 'Collecting',
   done: 'Complete',
   error: 'Failed',
+};
+
+export const CAPTURE_STATE_LABEL = {
+  pending: 'Waiting to start',
+  deploying: 'Preparing capture workload',
+  capturing: 'Capturing packets',
+  processing: 'Analyzing and packaging',
+  completed: 'Capture complete',
+  failed: 'Capture failed',
+  cancelled: 'Capture cancelled',
 };
 
 export const parseFilename = (disposition) => {

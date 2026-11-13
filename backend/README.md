@@ -52,6 +52,30 @@ and returned a zip with `manifest.json` and `logs/<namespace>/<pod>/<container>.
 That behavior is preserved. `include_previous=true` also fetches the previous
 instance log for containers whose restart count is greater than zero.
 
+## TShark capture workloads
+
+Selecting the Tshark service in Diagnostics creates a temporary Kubernetes Job
+in `TSHARK_DIAGNOSTICS_NAMESPACE` (default: `iomt-integration`). The Job uses
+`TSHARK_IMAGE` (default: `nicolaka/netshoot:v0.16`) and captures on its own
+`TSHARK_INTERFACE` (default: `eth0`). Override `TSHARK_IMAGE` with an approved
+standalone TShark image if needed; the image must provide `/bin/sh`, `tshark`,
+and `base64`.
+
+The capture is intentionally limited to the Job Pod's network interface: it
+does not use host networking, host PID access, or privileged mode, and it does
+not imply visibility into other Pods or the whole cluster. A zero-packet result
+is reported as a visibility failure rather than a successful diagnostic. The
+diagnostic ZIP includes `network/tshark-analysis.json` and
+`network/tshark-capture.pcapng`. Captures are limited to 120 seconds, 10,000
+packets, and 6 MiB; completed Jobs are removed after the ZIP is generated.
+
+Apply `kubernetes/network-diagnostics-rbac.yaml` for the backend ServiceAccount
+permissions in the diagnostics namespace. If `TSHARK_DIAGNOSTICS_NAMESPACE` is
+changed, apply equivalent namespaced Job, Pod-list, and Pod-log permissions
+there as well. The Kubernetes client uses the backend's in-cluster
+ServiceAccount or kubeconfig; the Connect screen's host reachability check does
+not select the cluster.
+
 ## Directory Structure
 
 This repository groups all parts of a certain feature under folders titled with

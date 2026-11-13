@@ -1,14 +1,18 @@
-
-"""Configuration for TShark network diagnostics."""
+"""Configuration for temporary Kubernetes TShark capture Jobs."""
 
 import os
 
-TSHARK_NAMESPACE = os.getenv("TSHARK_NAMESPACE", "iomt-dev-2")
-TSHARK_POD = os.getenv("TSHARK_POD", "tshark-test")
-TSHARK_CONTAINER = os.getenv("TSHARK_CONTAINER", "tshark-test")
+TSHARK_DIAGNOSTICS_NAMESPACE = os.getenv(
+    "TSHARK_DIAGNOSTICS_NAMESPACE", "iomt-integration"
+)
+TSHARK_IMAGE = os.getenv("TSHARK_IMAGE", "nicolaka/netshoot:v0.16")
 TSHARK_INTERFACE = os.getenv("TSHARK_INTERFACE", "eth0")
-
 TSHARK_DURATION = int(os.getenv("TSHARK_DURATION", "30"))
-TSHARK_MAX_DURATION = 120
+TSHARK_MAX_DURATION = 300
 TSHARK_MAX_PACKETS = 10000
-TSHARK_REQUEST_TIMEOUT = TSHARK_MAX_DURATION + 20
+TSHARK_MAX_CAPTURE_BYTES = 6 * 1024 * 1024
+TSHARK_MAX_CAPTURE_SIZE_KB = TSHARK_MAX_CAPTURE_BYTES // 1024
+TSHARK_POLL_INTERVAL = 1
+TSHARK_REQUEST_TIMEOUT = 20
+TSHARK_CAPTURE_CONTAINER = "tshark"
+TSHARK_CAPTURE_VOLUME = "capture-data"

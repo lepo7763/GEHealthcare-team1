@@ -27,3 +27,38 @@ roleRef:
   kind: Role
   name: network-pod-reader
   apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tshark-capture-job-manager
+  namespace: iomt-integration
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs/status"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tshark-capture-job-manager
+  namespace: iomt-integration
+subjects:
+  - kind: ServiceAccount
+    name: iomt-network-backend
+    namespace: iomt-integration
+roleRef:
+  kind: Role
+  name: tshark-capture-job-manager
+  apiGroup: rbac.authorization.k8s.io

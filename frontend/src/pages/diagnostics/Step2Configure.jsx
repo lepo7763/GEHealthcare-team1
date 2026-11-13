@@ -3,6 +3,7 @@ import { SERVICES } from './constants';
 
 const MIN_DURATION = 30;
 const MAX_DURATION = 600;
+const MAX_TSHARK_DURATION = 300;
 
 const validateDomain = (value) => {
   const text = String(value ?? '').trim();
@@ -23,6 +24,8 @@ const Step2Configure = ({
   setUmfDomain,
   umfDuration,
   setUmfDuration,
+  tsharkDuration,
+  setTsharkDuration,
   umfDomainOptions = [],
   onBack,
   onContinue,
@@ -30,6 +33,13 @@ const Step2Configure = ({
   const domainOption = umfDomainOptions?.find((option) => option.domain === Number(umfDomain));
   const domainValid = validateDomain(umfDomain);
   const durationValid = validateDuration(umfDuration);
+  const tsharkDurationText = String(tsharkDuration ?? '').trim();
+  const tsharkDurationValue = Number(tsharkDurationText);
+  const tsharkDurationValid =
+    tsharkDurationText !== '' &&
+    Number.isInteger(tsharkDurationValue) &&
+    tsharkDurationValue >= 1 &&
+    tsharkDurationValue <= MAX_TSHARK_DURATION;
 
   // Settings for each service that has any, keyed by service id.
   const settingsPanels = {
@@ -113,13 +123,32 @@ const Step2Configure = ({
       ),
     },
     'wireshark-tshark': {
-      isValid: true,
-      summary: 'Live packet capture & TCP/DNS inspection',
+      isValid: tsharkDurationValid,
+      summary: `Live packet capture · ${tsharkDurationText || '—'} s`,
       fields: (
         <div>
+          <label className="field">
+            <span>Capture duration (seconds)</span>
+            <input
+              type="number"
+              min="1"
+              max={MAX_TSHARK_DURATION}
+              step="1"
+              value={tsharkDuration}
+              onChange={(e) => setTsharkDuration(e.target.value)}
+              aria-invalid={!tsharkDurationValid}
+            />
+            <small>Enter 1 to {MAX_TSHARK_DURATION} seconds (maximum 5 minutes).</small>
+            {!tsharkDurationValid && (
+              <small className="field-error">
+                Enter a whole number from 1 to {MAX_TSHARK_DURATION}.
+              </small>
+            )}
+          </label>
           <p className="future-note" style={{ marginTop: 0 }}>
-            Captures live network traffic and analyzes packet metrics (TCP resets,
-            retransmissions, and DNS failures) during the Collect step.
+            Captures traffic visible to a temporary workload and analyzes packet
+            metrics (TCP resets, retransmissions, and DNS failures) during the
+            Collect step. It does not capture cluster-wide traffic.
           </p>
         </div>
       ),
