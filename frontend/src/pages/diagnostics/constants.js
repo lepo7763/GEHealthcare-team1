@@ -14,6 +14,12 @@ export const SERVICES = [
     description:
       'Captures UMF RTI discovery and QoS data from the live platform. No sample values are read.',
   },
+  {
+    id: 'core-dumps',
+    name: 'Core Dumps',
+    description:
+      'Crash core files from the platform node, verified by checksum. Cores can contain process memory.',
+  },
 ];
 
 export const STEP_INFO = {
