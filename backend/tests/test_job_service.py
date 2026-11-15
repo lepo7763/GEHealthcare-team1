@@ -921,6 +921,9 @@ def test_worker_main_reads_environment(monkeypatch, tmp_path):
         fake_archive,
     )
 
+    mock_sleep = Mock()
+    monkeypatch.setattr(worker_main, "sleep", mock_sleep)
+
     result = worker_main.main()
 
     assert result == 0
@@ -929,6 +932,8 @@ def test_worker_main_reads_environment(monkeypatch, tmp_path):
     assert received["output_dir"] == str(tmp_path)
     assert received["archive_source"] == str(tmp_path)
     assert received["archive_path"] == str(tmp_path / "job-artifacts.zip")
+    assert (tmp_path / ".done").exists()
+    mock_sleep.assert_called_once_with(120)
 
 
 def test_worker_main_rejects_missing_targets(monkeypatch):
@@ -955,6 +960,7 @@ def test_build_netshoot_job_worker_configuration():
     env = {item.name: item.value for item in container.env}
     assert env["CAPTURE_DURATION_SECONDS"] == "60"
     assert env["CAPTURE_OUTPUT_DIR"] == "/captures"
+    assert env["CAPTURE_COLLECT_GRACE_SECONDS"] == "120"
 
     assert container.security_context.privileged is True
     assert any(
@@ -1058,7 +1064,12 @@ def test_worker_main_archive_failure(monkeypatch, tmp_path):
         fake_archive,
     )
 
+    mock_sleep = Mock()
+    monkeypatch.setattr(worker_main, "sleep", mock_sleep)
+
     assert worker_main.main() == 1
+    assert not (tmp_path / ".done").exists()
+    mock_sleep.assert_not_called()
 
 
 def test_upload_capture_archive_success(tmp_path):

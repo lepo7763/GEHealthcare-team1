@@ -67,6 +67,10 @@ def build_netshoot_job(
                 name="CAPTURE_OUTPUT_DIR",
                 value="/captures",
             ),
+            client.V1EnvVar(
+                name = "CAPTURE_COLLECT_GRACE_SECONDS",
+                value = "120"
+            )
         ],
         security_context=client.V1SecurityContext(
         privileged=True,
