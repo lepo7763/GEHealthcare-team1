@@ -1,24 +1,21 @@
 """Short-lived collector Job on the node, and file transfer out of it over exec.
 
 The Job mounts the host core directory read-only and just sleeps; the backend
-execs ``stat``/``sha256sum``/``cat`` in it. Files are streamed frame by frame
-straight to local disk so a 150 MB core never sits in the backend's memory
-(the backend runs with a 256 Mi limit).
+execs ``stat``/``sha256sum``/``cat`` in it (see app.core.job_exec). Files are
+streamed frame by frame straight to local disk, so a 150 MB core never sits in
+the backend's memory.
 """
 
 from __future__ import annotations
 
 import hashlib
-import io
-import json
 import time
 import uuid
 from typing import BinaryIO, Callable, List, Optional, Tuple
 
 from kubernetes import client
-from kubernetes.client.exceptions import ApiException
-from kubernetes.stream import stream
-from websocket import ABNF, WebSocketException
+
+from app.core.job_exec import JobExecError, JobExecSession
 
 from .config import CoreDumpConfig
 from .parsing import LISTING_SCRIPT, is_safe_relative_path, parse_listing
@@ -26,25 +23,9 @@ from .schemas import CoreDumpFile, HostCoreConfig
 
 CONTAINER_NAME = "collector"
 
-# Kubernetes exec channel ids (first byte of every websocket frame).
-_STDOUT, _STDERR, _ERROR = 1, 2, 3
-_STDERR_KEEP = 4096
-_SMALL_OUTPUT_LIMIT = 8 * 1024 * 1024
-_FATAL_WAITING = {
-    "ErrImageNeverPull",
-    "ImagePullBackOff",
-    "ErrImagePull",
-    "CrashLoopBackOff",
-    "CreateContainerConfigError",
-    "CreateContainerError",
-}
 
-
-class CoreDumpCollectionError(Exception):
+class CoreDumpCollectionError(JobExecError):
     """The collector Job could not be run or a transfer failed."""
-
-
-# --- Job manifest ------------------------------------------------------------
 
 
 def build_collector_job(config: CoreDumpConfig) -> client.V1Job:
@@ -112,134 +93,8 @@ def build_collector_job(config: CoreDumpConfig) -> client.V1Job:
     )
 
 
-# --- exec streaming ----------------------------------------------------------
-
-
-def _exec_status(raw: bytes) -> Tuple[bool, Optional[str]]:
-    """Parse the exec error channel's Status object -> (success, message)."""
-    if not raw:
-        return True, None
-    try:
-        status = json.loads(raw.decode("utf-8", "replace"))
-    except ValueError:
-        return False, raw.decode("utf-8", "replace")[:500]
-    if status.get("status") == "Success":
-        return True, None
-    return False, status.get("message") or "command failed"
-
-
-def exec_to_sink(
-    core: client.CoreV1Api,
-    pod: str,
-    namespace: str,
-    command: List[str],
-    sink: BinaryIO,
-    timeout_seconds: float,
-    on_bytes: Optional[Callable[[int], None]] = None,
-    limit_bytes: Optional[int] = None,
-) -> None:
-    """Run `command` in the collector and write its stdout to `sink`.
-
-    Reads one websocket frame at a time (instead of WSClient.update(), which
-    drains every frame already waiting and can buffer a whole file in memory).
-    Raises CoreDumpCollectionError on a non-zero exit, timeout or broken stream.
-    """
-    try:
-        ws = stream(
-            core.connect_get_namespaced_pod_exec,
-            pod,
-            namespace,
-            command=command,
-            container=CONTAINER_NAME,
-            stderr=True,
-            stdin=False,
-            stdout=True,
-            tty=False,
-            binary=True,
-            _preload_content=False,
-        )
-    except ApiException as e:
-        raise CoreDumpCollectionError(
-            f"Could not exec into collector pod {pod}: {e.reason or e}"
-        ) from e
-
-    deadline = time.monotonic() + timeout_seconds
-    stderr = bytearray()
-    error_raw = b""
-    written = 0
-    try:
-        sock = ws.sock
-        sock.settimeout(min(60.0, timeout_seconds))
-        while True:
-            if time.monotonic() > deadline:
-                raise CoreDumpCollectionError(
-                    f"Transfer from {pod} timed out after {timeout_seconds:.0f}s"
-                )
-            opcode, frame = sock.recv_data_frame(True)
-            if opcode == ABNF.OPCODE_CLOSE:
-                break
-            if opcode not in (ABNF.OPCODE_BINARY, ABNF.OPCODE_TEXT):
-                continue
-            data = frame.data
-            if isinstance(data, str):
-                data = data.encode("utf-8")
-            if not data:
-                continue
-            channel, payload = data[0], data[1:]
-            if channel == _STDOUT and payload:
-                written += len(payload)
-                if limit_bytes is not None and written > limit_bytes:
-                    raise CoreDumpCollectionError(
-                        f"Command output exceeded {limit_bytes} bytes"
-                    )
-                sink.write(payload)
-                if on_bytes:
-                    on_bytes(len(payload))
-            elif channel == _STDERR and len(stderr) < _STDERR_KEEP:
-                stderr += payload[: _STDERR_KEEP - len(stderr)]
-            elif channel == _ERROR:
-                error_raw += payload
-    except (WebSocketException, OSError) as e:
-        raise CoreDumpCollectionError(f"Exec stream from {pod} broke: {e}") from e
-    finally:
-        try:
-            ws.close()
-        except Exception:
-            pass
-
-    ok, message = _exec_status(error_raw)
-    if not ok:
-        detail = stderr.decode("utf-8", "replace").strip()
-        raise CoreDumpCollectionError(
-            f"{message}{f': {detail}' if detail else ''}"
-        )
-
-
-def _exec_small(
-    core: client.CoreV1Api,
-    pod: str,
-    config: CoreDumpConfig,
-    command: List[str],
-    timeout_seconds: float = 60,
-) -> str:
-    buffer = io.BytesIO()
-    exec_to_sink(
-        core,
-        pod,
-        config.namespace,
-        command,
-        buffer,
-        timeout_seconds,
-        limit_bytes=_SMALL_OUTPUT_LIMIT,
-    )
-    return buffer.getvalue().decode("utf-8", "replace")
-
-
-# --- session -----------------------------------------------------------------
-
-
-class CollectorSession:
-    """Context manager: create the Job, wait for its pod, always delete it."""
+class CollectorSession(JobExecSession):
+    """Collector Job lifecycle plus the core-dump operations run inside it."""
 
     def __init__(
         self,
@@ -248,116 +103,28 @@ class CollectorSession:
         config: CoreDumpConfig,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        self.core = core
-        self.batch = batch
+        super().__init__(
+            core,
+            batch,
+            build_collector_job(config),
+            CONTAINER_NAME,
+            startup_timeout_seconds=config.startup_timeout_seconds,
+            poll_interval_seconds=config.poll_interval_seconds,
+            sleep=sleep,
+            error_cls=CoreDumpCollectionError,
+        )
         self.config = config
-        self._sleep = sleep
-        self.job_name: Optional[str] = None
-        self.pod_name: Optional[str] = None
-        self.node_name: Optional[str] = None
 
-    def __enter__(self) -> "CollectorSession":
-        job = build_collector_job(self.config)
-        try:
-            created = self.batch.create_namespaced_job(
-                namespace=self.config.namespace, body=job
-            )
-        except ApiException as e:
-            raise CoreDumpCollectionError(
-                f"Could not create core dump collector Job in "
-                f"{self.config.namespace}: {e.reason or e}"
-            ) from e
-        self.job_name = (created.metadata.name if created.metadata else None) or (
-            job.metadata.name
-        )
-        try:
-            self._wait_for_running()
-        except BaseException:
-            self._delete()
-            raise
-        return self
-
-    def __exit__(self, *exc) -> None:
-        self._delete()
-
-    def _wait_for_running(self) -> None:
-        selector = f"job-name={self.job_name}"
-        deadline = time.monotonic() + self.config.startup_timeout_seconds
-        last_pod: Optional[str] = None
-        while time.monotonic() < deadline:
-            pods = self.core.list_namespaced_pod(
-                namespace=self.config.namespace, label_selector=selector
-            ).items
-            if pods:
-                pod = pods[0]
-                last_pod = pod.metadata.name if pod.metadata else last_pod
-                status = pod.status
-                phase = status.phase if status else None
-                if phase == "Running" and last_pod:
-                    self.pod_name = last_pod
-                    self.node_name = pod.spec.node_name if pod.spec else None
-                    return
-                if phase in ("Failed", "Succeeded"):
-                    raise CoreDumpCollectionError(
-                        f"Collector pod {last_pod} exited ({phase}) before use."
-                    )
-                for cs in (status.container_statuses or []) if status else []:
-                    waiting = cs.state.waiting if cs.state else None
-                    if waiting and waiting.reason in _FATAL_WAITING:
-                        detail = f" - {waiting.message}" if waiting.message else ""
-                        raise CoreDumpCollectionError(
-                            f"Collector pod {last_pod} cannot start: "
-                            f"{waiting.reason}{detail}"
-                        )
-                for cond in (status.conditions or []) if status else []:
-                    if (
-                        cond.type == "PodScheduled"
-                        and cond.status == "False"
-                        and cond.reason == "Unschedulable"
-                    ):
-                        raise CoreDumpCollectionError(
-                            f"Collector pod {last_pod} is unschedulable: {cond.message}"
-                        )
-            self._sleep(self.config.poll_interval_seconds)
-        where = f"last pod {last_pod}" if last_pod else "no pod was created"
-        raise CoreDumpCollectionError(
-            f"Collector pod did not start within "
-            f"{self.config.startup_timeout_seconds}s ({where})."
-        )
-
-    def _delete(self) -> None:
-        if not self.job_name:
-            return
-        try:
-            self.batch.delete_namespaced_job(
-                name=self.job_name,
-                namespace=self.config.namespace,
-                propagation_policy="Background",
-                grace_period_seconds=0,
-            )
-        except ApiException:
-            # Already gone, or no permission: activeDeadlineSeconds + TTL
-            # are the backstop.
-            pass
-
-    # --- operations ---
+    def _in_core_dir(self, script: str, *args: str) -> List[str]:
+        return ["sh", "-c", f'cd "$1" && {script}', "sh", self.config.mount_path, *args]
 
     def list_files(self) -> Tuple[List[CoreDumpFile], HostCoreConfig]:
-        output = _exec_small(
-            self.core,
-            self.pod_name,
-            self.config,
-            ["sh", "-c", 'cd "$1" && ' + LISTING_SCRIPT, "sh", self.config.mount_path],
-        )
-        return parse_listing(output)
+        return parse_listing(self.exec_text(self._in_core_dir(LISTING_SCRIPT)))
 
     def remote_sha256(self, path: str) -> str:
         _require_safe(path)
-        output = _exec_small(
-            self.core,
-            self.pod_name,
-            self.config,
-            ["sh", "-c", 'cd "$1" && sha256sum "./$2"', "sh", self.config.mount_path, path],
+        output = self.exec_text(
+            self._in_core_dir('sha256sum "./$2"', path),
             timeout_seconds=self.config.transfer_timeout_seconds,
         )
         digest = output.split(" ", 1)[0].strip()
@@ -383,11 +150,8 @@ class CollectorSession:
                 size += len(data)
                 return sink.write(data)
 
-        exec_to_sink(
-            self.core,
-            self.pod_name,
-            self.config.namespace,
-            ["sh", "-c", 'cd "$1" && exec cat "./$2"', "sh", self.config.mount_path, path],
+        self.exec(
+            self._in_core_dir('exec cat "./$2"', path),
             _HashingSink(),
             self.config.transfer_timeout_seconds,
             on_bytes=on_bytes,

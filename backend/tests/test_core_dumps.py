@@ -12,12 +12,12 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from app.core_dumps import collector as collector_mod
+from app.core import job_exec as job_exec_mod
+from app.core.job_exec import JobExecError, exec_to_sink
 from app.core_dumps.collector import (
     CollectorSession,
     CoreDumpCollectionError,
     build_collector_job,
-    exec_to_sink,
 )
 from app.core_dumps.config import CoreDumpConfig
 from app.core_dumps.parsing import (
@@ -212,32 +212,32 @@ SUCCESS = json.dumps({"metadata": {}, "status": "Success"}).encode()
 
 def test_exec_streams_stdout_to_sink(monkeypatch):
     monkeypatch.setattr(
-        collector_mod,
+        job_exec_mod,
         "stream",
         lambda *a, **k: _fake_ws([(1, b"abc"), (2, b"warn"), (1, b"def"), (3, SUCCESS)]),
     )
     sink, seen = io.BytesIO(), []
-    exec_to_sink(MagicMock(), "pod", "ns", ["cat"], sink, 10, on_bytes=seen.append)
+    exec_to_sink(MagicMock(), "pod", "ns", "c", ["cat"], sink, 10, on_bytes=seen.append)
     assert sink.getvalue() == b"abcdef" and seen == [3, 3]
 
 
 def test_exec_failure_status_raises_with_stderr(monkeypatch):
     failure = json.dumps({"status": "Failure", "message": "command terminated with non-zero exit code"})
     monkeypatch.setattr(
-        collector_mod,
+        job_exec_mod,
         "stream",
         lambda *a, **k: _fake_ws([(2, b"cat: no such file"), (3, failure.encode())]),
     )
-    with pytest.raises(CoreDumpCollectionError, match="non-zero exit.*no such file"):
-        exec_to_sink(MagicMock(), "pod", "ns", ["cat"], io.BytesIO(), 10)
+    with pytest.raises(JobExecError, match="non-zero exit.*no such file"):
+        exec_to_sink(MagicMock(), "pod", "ns", "c", ["cat"], io.BytesIO(), 10)
 
 
 def test_exec_output_limit(monkeypatch):
     monkeypatch.setattr(
-        collector_mod, "stream", lambda *a, **k: _fake_ws([(1, b"x" * 10), (3, SUCCESS)])
+        job_exec_mod, "stream", lambda *a, **k: _fake_ws([(1, b"x" * 10), (3, SUCCESS)])
     )
-    with pytest.raises(CoreDumpCollectionError, match="exceeded"):
-        exec_to_sink(MagicMock(), "pod", "ns", ["cat"], io.BytesIO(), 10, limit_bytes=5)
+    with pytest.raises(JobExecError, match="exceeded"):
+        exec_to_sink(MagicMock(), "pod", "ns", "c", ["cat"], io.BytesIO(), 10, limit_bytes=5)
 
 
 # --- session lifecycle ---------------------------------------------------------------
