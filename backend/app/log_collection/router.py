@@ -35,11 +35,11 @@ def get_collection_progress() -> dict:
 
 @router.get("/zip")
 def download_diagnostics(
-    services: List[Literal["container-logs", "umf-rti", "core-dumps"]] = Query(
+    services: List[Literal["container-logs", "umf-rti", "core-dumps", "firewall"]] = Query(
         default=["container-logs"],
         description=(
             "Repeat for each service: services=container-logs&services=umf-rti"
-            "&services=core-dumps. At least one service is required."
+            "&services=core-dumps&services=firewall. At least one service is required."
         ),
     ),
     log_params: LogCollectionParams = Depends(),
@@ -59,7 +59,7 @@ def download_diagnostics(
     core: client.CoreV1Api = Depends(get_core_v1_api),
     batch: client.BatchV1Api = Depends(get_batch_v1_api),
 ):
-    """Collect container logs, a UMF RTI capture and/or node core dumps into one zip."""
+    """Collect container logs, a UMF RTI capture, node core dumps and/or firewall settings into one zip."""
     if tracker.running:
         raise HTTPException(
             status_code=409,
