@@ -583,6 +583,12 @@ code {
   cursor: pointer;
 }
 
+/* When open, the panel attaches directly underneath: drop the dividing line */
+.service-settings-summary[aria-expanded="true"] {
+  border-bottom: none;
+  border-radius: 0;
+}
+
 .service-settings-summary:hover {
   background: var(--eds-color-purple-subtle);
 }
