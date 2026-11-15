@@ -161,18 +161,21 @@ const Step2Configure = ({
                   </span>
                 </button>
 
-                {panel && !isExpanded && (
+                {panel && (
                   <button
                     type="button"
                     className={`service-settings-summary ${panel.isValid ? '' : 'invalid'}`}
-                    aria-expanded="false"
+                    aria-expanded={!!isExpanded}
                     aria-controls={panelId}
-                    onClick={() => setExpandedId(service.id)}
+                    disabled={isExpanded && !panel.isValid}
+                    onClick={() => setExpandedId(isExpanded ? null : service.id)}
                   >
                     <span>
                       {panel.isValid ? panel.summary : 'Settings need attention'}
                     </span>
-                    <span className="service-settings-edit">Edit settings ▾</span>
+                    <span className="service-settings-edit">
+                      Edit settings {isExpanded ? '▴' : '▾'}
+                    </span>
                   </button>
                 )}
 
@@ -185,16 +188,6 @@ const Step2Configure = ({
                   >
                     <h4 className="service-options-title">{service.name} settings</h4>
                     {panel.fields}
-                    <div className="action-row">
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={() => setExpandedId(null)}
-                        disabled={!panel.isValid}
-                      >
-                        Done
-                      </button>
-                    </div>
                   </div>
                 )}
               </li>
