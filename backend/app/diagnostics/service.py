@@ -11,11 +11,15 @@ from typing import List, Optional
 from app.core_dumps.config import CoreDumpConfig
 from app.core_dumps.schemas import CoreDumpParams
 from app.core_dumps.service import collect_core_dumps_into
+from app.firewall.config import FirewallConfig
+from app.firewall.service import collect_firewall_into
 from app.log_collection.progress import (
     CONTAINER_LOGS_LABEL,
     CONTAINER_LOGS_SERVICE_ID,
     CORE_DUMPS_LABEL,
     CORE_DUMPS_SERVICE_ID,
+    FIREWALL_LABEL,
+    FIREWALL_SERVICE_ID,
     UMF_RTI_LABEL,
     UMF_RTI_SERVICE_ID,
     ServiceProgress,
@@ -48,6 +52,7 @@ SUPPORTED_SERVICES = (
     CONTAINER_LOGS_SERVICE_ID,
     UMF_RTI_SERVICE_ID,
     CORE_DUMPS_SERVICE_ID,
+    FIREWALL_SERVICE_ID,
 )
 
 
@@ -78,6 +83,14 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="containers",
                 )
             )
+        elif service_id == FIREWALL_SERVICE_ID:
+            progress_services.append(
+                ServiceProgress(
+                    id=FIREWALL_SERVICE_ID,
+                    label=FIREWALL_LABEL,
+                    unit="steps",
+                )
+            )
         elif service_id == CORE_DUMPS_SERVICE_ID:
             progress_services.append(
                 ServiceProgress(
@@ -106,6 +119,7 @@ def collect_diagnostics(
     config: Optional[UmfRtiConfig] = None,
     core_dump_params: Optional[CoreDumpParams] = None,
     core_dump_config: Optional[CoreDumpConfig] = None,
+    firewall_config: Optional[FirewallConfig] = None,
 ) -> tempfile.SpooledTemporaryFile:
     """Collect every selected service into one streaming zip.
 
@@ -146,6 +160,8 @@ def collect_diagnostics(
                         core_dump_params or CoreDumpParams(),
                         core_dump_config,
                     )
+                elif service_id == FIREWALL_SERVICE_ID:
+                    collect_firewall_into(zf, manifest, core, batch, firewall_config)
 
             tracker.set_status("packaging")
             manifest.total_logs_collected = len(manifest.collected_files)
