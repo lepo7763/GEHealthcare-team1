@@ -54,5 +54,12 @@ class NetshootCaptureStartResponse(BaseModel):
     duration_seconds: int
     jobs_by_node: dict[str, ScheduledNetshootJob]
 
+class NetshootCollectionParams(BaseModel):
+    """User-configurable network diagnostic parameters."""
 
-    
+    netshoot_duration_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=600,
+        description="Packet capture duration in seconds",
+    )

@@ -1,7 +1,7 @@
 """Orchestrates the selected diagnostic services into one zip package."""
-
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 import zipfile
@@ -15,6 +15,8 @@ from app.log_collection.progress import (
     UMF_RTI_SERVICE_ID,
     ServiceProgress,
     tracker,
+    NETSHOOT_LABEL,
+    NETSHOOT_SERVICE_ID,
 )
 from app.log_collection.schemas import (
     CollectedService,
@@ -37,9 +39,17 @@ from app.umf_rti.service import (
     write_failure_artifacts,
 )
 
+from app.network_diagnostics.capture_service import (
+    NetshootCaptureError,
+    collect_netshoot_captures
+)
+from app.network_diagnostics.schemas import (
+    NetshootCollectionParams
+)
+
 from kubernetes import client
 
-SUPPORTED_SERVICES = (CONTAINER_LOGS_SERVICE_ID, UMF_RTI_SERVICE_ID)
+SUPPORTED_SERVICES = (CONTAINER_LOGS_SERVICE_ID, UMF_RTI_SERVICE_ID, NETSHOOT_SERVICE_ID)
 
 
 class CollectionInProgressError(Exception):
@@ -69,12 +79,20 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="containers",
                 )
             )
-        else:
+        elif service_id == UMF_RTI_SERVICE_ID:
             progress_services.append(
                 ServiceProgress(
                     id=UMF_RTI_SERVICE_ID,
                     label=UMF_RTI_LABEL,
                     unit="seconds",
+                )
+            )
+        else:
+            progress_services.append(
+                ServiceProgress(
+                    id = NETSHOOT_SERVICE_ID,
+                    label = NETSHOOT_LABEL,
+                    unit = "sessions"
                 )
             )
     return tracker.try_begin(progress_services)
@@ -87,6 +105,7 @@ def collect_diagnostics(
     log_params: LogCollectionParams,
     umf_params: UmfRtiParams,
     config: Optional[UmfRtiConfig] = None,
+    netshoot_params: Optional[NetshootCollectionParams] = None,
 ) -> tempfile.SpooledTemporaryFile:
     """Collect every selected service into one streaming zip.
 
@@ -96,6 +115,9 @@ def collect_diagnostics(
     """
     selected = _dedupe_services(services)
     config = config or get_umf_rti_config()
+
+    netshoot_params = netshoot_params or NetshootCollectionParams()
+
     if not _begin_progress(selected):
         raise CollectionInProgressError(
             "A diagnostic collection is already in progress."
@@ -117,6 +139,10 @@ def collect_diagnostics(
                 elif service_id == UMF_RTI_SERVICE_ID:
                     _collect_umf_rti(
                         zf, manifest, core, batch, umf_params, config, selected
+                    )
+                elif service_id == NETSHOOT_SERVICE_ID:
+                    _collect_netshoot(
+                        zf, manifest, core, batch, netshoot_params
                     )
 
             tracker.set_status("packaging")
@@ -217,3 +243,117 @@ def _collect_umf_rti(
         # The recording was pulled to a local temp dir; drop it now it's zipped.
         if result is not None and result.recording_dir:
             shutil.rmtree(result.recording_dir, ignore_errors=True)
+
+def _collect_netshoot(
+    zf: zipfile.ZipFile,
+    manifest: LogCollectionManifest,
+    core: client.CoreV1Api,
+    batch: client.BatchV1Api,
+    params: NetshootCollectionParams,
+) -> None:
+
+    files = []
+    failures = []
+
+    tracker.set_service_total(
+        NETSHOOT_SERVICE_ID, 1, unit="sessions"
+    )
+
+    tracker.set_service_current(
+        NETSHOOT_SERVICE_ID,
+        "Collecting network traffic",
+    )
+
+    try:
+        allowed = {
+            name.strip()
+            for name in os.environ.get(
+                "IOMT_NETSHOOT_ALLOWED_NAMESPACES",
+                "iomt-dev-1",
+            ).split(",")
+            if name.strip()
+        }
+
+        if "iomt-dev-1" not in allowed:
+            raise NetshootCaptureError(
+                "Default capture namespace is not approved"
+            )
+
+        with tempfile.TemporaryDirectory(
+            prefix="netshoot-"
+        ) as directory:
+
+            archives, errors, cleanup_errors = (
+                collect_netshoot_captures(
+                    core_api=core,
+                    batch_api=batch,
+                    namespaces=["iomt-dev-1"],
+                    destination_dir=directory,
+                    duration_seconds=(
+                        params.netshoot_duration_seconds
+                    ),
+                )
+            )
+
+            for node, archive in archives.items():
+                archive_name = (
+                    f"netshoot/{node}/{archive.name}"
+                )
+
+                zf.write(
+                    archive,
+                    arcname=archive_name,
+                    compress_type=zipfile.ZIP_STORED,
+                )
+
+                files.append(archive_name)
+                manifest.collected_files.append(
+                    archive_name
+                )
+
+            for node, error in errors.items():
+                failures.append(
+                    f"Node {node}: {error}"
+                )
+
+            for job, error in cleanup_errors.items():
+                failures.append(
+                    f"Cleanup failed for Job {job}: {error}"
+                )
+
+    except Exception as exc:
+        failures.append(
+            f"Netshoot collection failed: {exc}"
+        )
+
+    for failure in failures:
+        manifest.errors.append(
+            LogErrorEntry(
+                namespace="(cluster)",
+                pod="(multiple)",
+                container="netshoot",
+                reason=failure,
+                service=NETSHOOT_SERVICE_ID,
+            )
+        )
+
+    message = "; ".join(failures) if failures else None
+
+    if failures:
+        tracker.fail_service(
+            NETSHOOT_SERVICE_ID, message
+        )
+    else:
+        tracker.set_service_completed(
+            NETSHOOT_SERVICE_ID, 1
+        )
+
+    manifest.services.append(
+        CollectedService(
+            id=NETSHOOT_SERVICE_ID,
+            label=NETSHOOT_LABEL,
+            status="error" if failures else "done",
+            files=files,
+            error=message,
+        )
+    )

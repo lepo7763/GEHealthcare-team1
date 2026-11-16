@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
+from pydantic import ValidationError
 
 import pytest
 import base64
@@ -9,6 +10,7 @@ import zipfile
 
 from app.network_diagnostics import capture_service
 from app.network_diagnostics.capture_service import (wait_for_worker_pod, NetshootCaptureError,)
+from app.network_diagnostics.schemas import NetshootCollectionParams
 
 from kubernetes.client.exceptions import ApiException
 from app.network_diagnostics.capture_service import (wait_for_archive, collect_worker_archive, collect_worker_archives, cleanup_capture_jobs, collect_netshoot_captures)
@@ -509,3 +511,25 @@ def test_collect_netshoot_captures_no_targets(
         )
 
     batch.delete_namespaced_job.assert_not_called()
+
+def test_netshoot_collection_params_default():
+    params = NetshootCollectionParams()
+
+    assert params.netshoot_duration_seconds == 30
+
+
+@pytest.mark.parametrize("duration", [1, 600])
+def test_netshoot_collection_params_valid(duration):
+    params = NetshootCollectionParams(
+        netshoot_duration_seconds=duration
+    )
+
+    assert params.netshoot_duration_seconds == duration
+
+
+@pytest.mark.parametrize("duration", [0, -1, 601])
+def test_netshoot_collection_params_invalid(duration):
+    with pytest.raises(ValidationError):
+        NetshootCollectionParams(
+            netshoot_duration_seconds=duration
+        )
