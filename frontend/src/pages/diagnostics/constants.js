@@ -14,6 +14,12 @@ export const SERVICES = [
     description:
       'Captures UMF RTI discovery and QoS data from the live platform. No sample values are read.',
   },
+  {
+    id: 'netshoot',
+    name: 'Netshoot Network Capture',
+    description:
+      'Captures network traffic from Kubernetes pods and collects PCAP files for offline analytics',
+  }
 ];
 
 export const STEP_INFO = {

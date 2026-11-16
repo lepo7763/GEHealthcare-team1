@@ -3,6 +3,7 @@ const Step3Review = ({
   selectedServices,
   umfDomain,
   umfDuration,
+  netshootDuration,
   onEditConnection,
   onEditServices,
   onBack,
@@ -13,6 +14,7 @@ const Step3Review = ({
       ? selectedServices.map((service) => service.name).join(', ')
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
+  const netshootSelected = selectedServices.some((service) => service.id === 'netshoot');
 
   return (
     <section className="section-narrow">
@@ -55,6 +57,22 @@ const Step3Review = ({
                 <div className="check-detail">
                   Captures live RTI telemetry in a short-lived Kubernetes Job (deleted
                   afterwards) and bundles it into the diagnostic zip.
+                </div>
+              </div>
+            </li>
+          )}
+          {netshootSelected && (
+            <li>
+              <div>
+                <div className="check-title">
+                  Netshoot Network Capture
+                </div>
+                <div className="check-detail">
+                  Capture duration: {String(netshootDuration).trim()} s
+                </div>
+                <div className="check-detail">
+                  Captures network traffic using temporary Kubernetes
+                  Jobs and bundles the PCAP files into the diagnostic ZIP.
                 </div>
               </div>
             </li>
