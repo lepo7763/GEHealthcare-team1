@@ -16,6 +16,11 @@ rules:
     resources: ["pods"]
     verbs: ["get", "list"]
 
+  # Allow GET-based exec for retrieving Netshoot archives.
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get"]
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
