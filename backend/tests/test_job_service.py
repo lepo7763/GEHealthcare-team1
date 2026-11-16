@@ -1429,6 +1429,14 @@ def test_discover_all_namespaces():
                 "terminating", "pm", "uid-8", "node-B",
                 deletion_timestamp="terminating",
             ),
+            make_pod(
+                "host-pod-2", "compute", "uid-9", "node-A",
+                host_network=True,
+            ),
+            make_pod(
+                "host-pod-3", "compute", "uid-10", "node-B",
+                host_network=True,
+            ),
         ])
     )
 
@@ -1438,8 +1446,8 @@ def test_discover_all_namespaces():
     )
 
     assert len(result) == 2
-    assert len(result["node-A"]) == 2
-    assert len(result["node-B"]) == 2
+    assert len(result["node-A"]) == 3
+    assert len(result["node-B"]) == 3
 
     assert {
         target["namespace"]
@@ -1453,10 +1461,76 @@ def test_discover_all_namespaces():
         target["uid"]
         for targets in result.values()
         for target in targets
-    } == {"uid-1", "uid-2", "uid-3", "uid-4"}
+    } == {"uid-1", "uid-2", "uid-3", "uid-4", "uid-6", "uid-10"}
+
+    host_a = next(
+    target for target in result["node-A"]
+    if target.get("host_network")
+)
+
+    host_b = next(
+        target for target in result["node-B"]
+        if target.get("host_network")
+    )
+
+    assert len(host_a["host_network_pods"]) == 2
+    assert len(host_b["host_network_pods"]) == 1
+
+    assert {
+        pod["uid"] for pod in host_a["host_network_pods"]
+    } == {"uid-6", "uid-9"}
 
     mock_core.list_pod_for_all_namespaces.assert_called_once_with(
         _request_timeout=10,
     )
 
     mock_core.list_namespaced_pod.assert_not_called()
+
+def test_host_network_capture_fallback(tmp_path):
+    first = {
+        "name": "host-pod-1",
+        "namespace": "compute",
+        "uid": "uid-1",
+    }
+
+    second = {
+        "name": "host-pod-2",
+        "namespace": "kube-system",
+        "uid": "uid-2",
+    }
+
+    target = {
+        **first,
+        "host_network": True,
+        "host_network_pods": [first, second],
+    }
+
+    resolver = Mock(
+        side_effect=[
+            ValueError("Sandbox unavailable"),
+            1002,
+        ]
+    )
+
+    popen = Mock(
+        return_value=SimpleNamespace(pid=2001)
+    )
+
+    result = start_capture_processes(
+        [target],
+        str(tmp_path),
+        resolver=resolver,
+        popen_factory=popen,
+    )
+
+    assert len(result["running"]) == 1
+    assert len(result["unavailable"]) == 0
+    assert resolver.call_count == 2
+
+    popen.assert_called_once()
+
+    command = popen.call_args.args[0]
+
+    assert command[:4] == [
+        "nsenter", "-t", "1002", "-n"
+    ]

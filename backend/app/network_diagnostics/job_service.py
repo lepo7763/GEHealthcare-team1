@@ -231,7 +231,7 @@ def group_capture_targets(
     """Filter eligible Pods and group them by node."""
 
     targets_by_node = {}
-
+    host_targets_by_node = {}
     for pod in pods:
         metadata = pod.metadata
         spec = pod.spec
@@ -246,7 +246,7 @@ def group_capture_targets(
         if metadata.deletion_timestamp is not None:
             continue
 
-        if spec.host_network:
+        if spec.host_network and namespace is not None:
             continue
 
         labels = getattr(metadata, "labels", None) or {}
@@ -277,6 +277,21 @@ def group_capture_targets(
             "uid": metadata.uid,
             "ip": status.pod_ip,
         }
+
+        if spec.host_network:
+            if node in host_targets_by_node:
+                host_targets_by_node[node]["host_network_pods"].append(
+                    target
+                )
+                continue
+
+            target = {
+                **target,
+                "host_network": True,
+                "host_network_pods": [target],
+            }
+
+            host_targets_by_node[node] = target
 
         targets_by_node.setdefault(node, []).append(target)
 

@@ -97,6 +97,33 @@ def build_tcpdump_command(pid: int, output_path: str) -> list[str]:
         "-w", output_path,
     ]
 
+def resolve_capture_pid(
+    target: dict,
+    resolver: Callable[[str, str], int],
+) -> int:
+    """Resolve a PID for an individual or shared network namespace."""
+
+    candidates = target.get("host_network_pods", [target])
+
+    errors = []
+
+    for candidate in candidates:
+        try:
+            return resolver(
+                candidate["uid"],
+                candidate["namespace"],
+            )
+
+        except (
+            ValueError,
+            subprocess.SubprocessError,
+            OSError,
+        ) as exc:
+            errors.append(str(exc))
+
+    raise ValueError(
+        "No available capture target: " + "; ".join(errors)
+    )
 
 def start_capture_processes(
     targets: list[dict],
@@ -115,7 +142,7 @@ def start_capture_processes(
     for index, target in enumerate(targets, start=1):
         try:
             # Resolve immediately before launching the capture.
-            pid = resolver(target["uid"], target["namespace"])
+            pid = resolve_capture_pid(target, resolver)
 
             pcap_path = capture_dir / f"capture-{index}.pcap"
             log_path = capture_dir / f"capture-{index}.log"
