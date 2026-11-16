@@ -35,3 +35,27 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: iomt-netshoot-job-manager
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: iomt-netshoot-pod-discovery
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: iomt-netshoot-pod-discovery-binding
+subjects:
+  - kind: ServiceAccount
+    name: iomt-network-backend
+    namespace: iomt-integration
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: iomt-netshoot-pod-discovery
