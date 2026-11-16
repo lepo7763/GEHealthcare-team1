@@ -18,7 +18,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 ARCHIVE_PATH = "/captures/job-artifacts.zip"
-MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
 CHUNK_BYTES = 1024 * 1024
 
 class NetshootCaptureError(RuntimeError):
@@ -412,7 +412,7 @@ def cleanup_capture_jobs(
 def collect_netshoot_captures(
     core_api: client.CoreV1Api,
     batch_api: client.BatchV1Api,
-    namespaces: list[str],
+    namespaces: list[str] | None,
     destination_dir: Path,
     duration_seconds: int = 30,
 ) -> tuple[
