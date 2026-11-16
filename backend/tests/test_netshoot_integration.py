@@ -105,7 +105,7 @@ def test_netshoot_diagnostics_zip(monkeypatch):
     kwargs = mock_collect.call_args.kwargs
 
     assert kwargs["duration_seconds"] == 45
-    assert kwargs["namespaces"] == ["iomt-dev-1"]
+    assert kwargs["namespaces"] is None
 
     assert not Path(kwargs["destination_dir"]).exists()
 
@@ -154,14 +154,15 @@ def test_netshoot_diagnostics_partial_failure(monkeypatch):
             assert "node-b" in manifest["errors"][0]["reason"]
             assert "job-c" in manifest["errors"][1]["reason"]
 
-def test_netshoot_diagnostics_namespace_denied(monkeypatch):
+def test_netshoot_diagnostics_discovery_denied(monkeypatch):
+    from kubernetes.client.exceptions import ApiException
 
-    monkeypatch.setenv(
-        "IOMT_NETSHOOT_ALLOWED_NAMESPACES",
-        "another-namespace",
+    mock_collect = Mock(
+        side_effect=ApiException(
+            status=403,
+            reason="Forbidden",
+        )
     )
-
-    mock_collect = Mock()
 
     monkeypatch.setattr(
         service,
@@ -183,8 +184,9 @@ def test_netshoot_diagnostics_namespace_denied(monkeypatch):
             )
 
             assert manifest["services"][0]["status"] == "error"
+            assert "403" in manifest["errors"][0]["reason"]
 
-    mock_collect.assert_not_called()
+    mock_collect.assert_called_once()
 
 def test_netshoot_api_download(monkeypatch, api_client):
 

@@ -265,19 +265,6 @@ def _collect_netshoot(
     )
 
     try:
-        allowed = {
-            name.strip()
-            for name in os.environ.get(
-                "IOMT_NETSHOOT_ALLOWED_NAMESPACES",
-                "iomt-dev-1",
-            ).split(",")
-            if name.strip()
-        }
-
-        if "iomt-dev-1" not in allowed:
-            raise NetshootCaptureError(
-                "Default capture namespace is not approved"
-            )
 
         with tempfile.TemporaryDirectory(
             prefix="netshoot-"
@@ -287,7 +274,7 @@ def _collect_netshoot(
                 collect_netshoot_captures(
                     core_api=core,
                     batch_api=batch,
-                    namespaces=["iomt-dev-1"],
+                    namespaces=None,
                     destination_dir=directory,
                     duration_seconds=(
                         params.netshoot_duration_seconds
