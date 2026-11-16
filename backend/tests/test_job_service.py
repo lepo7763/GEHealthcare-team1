@@ -1380,3 +1380,83 @@ def test_schedule_capture_jobs_reports_failed_rollback():
     assert exc.value.job_names == ["job-A"]
 
     mock_batch.delete_namespaced_job.assert_called_once()
+
+def test_discover_all_namespaces():
+    mock_core = Mock()
+
+    def make_pod(
+        name, namespace, uid, node,
+        phase="Running", host_network=False,
+        labels=None, deletion_timestamp=None,
+    ):
+        return SimpleNamespace(
+            metadata=SimpleNamespace(
+                name=name,
+                namespace=namespace,
+                uid=uid,
+                deletion_timestamp=deletion_timestamp,
+                labels=labels or {},
+            ),
+            spec=SimpleNamespace(
+                node_name=node,
+                host_network=host_network,
+            ),
+            status=SimpleNamespace(
+                phase=phase,
+                pod_ip="10.0.0.1",
+            ),
+        )
+
+    mock_core.list_pod_for_all_namespaces.return_value = (
+        SimpleNamespace(items=[
+            make_pod("http-test", "iomt-dev-1", "uid-1", "node-A"),
+            make_pod("database", "pm", "uid-2", "node-A"),
+            make_pod("backend", "compute", "uid-3", "node-B"),
+            make_pod("coredns", "kube-system", "uid-4", "node-B"),
+            make_pod(
+                "pending", "pm", "uid-5", "node-A",
+                phase="Pending",
+            ),
+            make_pod(
+                "host-pod", "kube-system", "uid-6", "node-A",
+                host_network=True,
+            ),
+            make_pod(
+                "worker", "iomt-integration", "uid-7", "node-A",
+                labels={"app": "netshoot-diagnostics"},
+            ),
+            make_pod(
+                "terminating", "pm", "uid-8", "node-B",
+                deletion_timestamp="terminating",
+            ),
+        ])
+    )
+
+    result = discover_targets_across_namespaces(
+        mock_core,
+        namespaces=None,
+    )
+
+    assert len(result) == 2
+    assert len(result["node-A"]) == 2
+    assert len(result["node-B"]) == 2
+
+    assert {
+        target["namespace"]
+        for targets in result.values()
+        for target in targets
+    } == {
+        "iomt-dev-1", "pm", "compute", "kube-system"
+    }
+
+    assert {
+        target["uid"]
+        for targets in result.values()
+        for target in targets
+    } == {"uid-1", "uid-2", "uid-3", "uid-4"}
+
+    mock_core.list_pod_for_all_namespaces.assert_called_once_with(
+        _request_timeout=10,
+    )
+
+    mock_core.list_namespaced_pod.assert_not_called()

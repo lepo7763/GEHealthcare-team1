@@ -199,19 +199,40 @@ def discover_capture_targets(
     core_api: client.CoreV1Api,
     namespace: str,
 ) -> dict:
-    """
-    Discover eligible running pods and group them by node.
-    Does not deploy any Jobs.
-    """
+    """Discover eligible Pods in a specific namespace."""
 
     response = core_api.list_namespaced_pod(
         namespace=namespace,
         _request_timeout=10,
     )
 
+    return group_capture_targets(
+        response.items,
+        namespace=namespace,
+    )
+
+
+def discover_all_capture_targets(
+    core_api: client.CoreV1Api,
+) -> dict:
+    """Discover eligible Pods across all namespaces."""
+
+    response = core_api.list_pod_for_all_namespaces(
+        _request_timeout=10,
+    )
+
+    return group_capture_targets(response.items)
+
+
+def group_capture_targets(
+    pods: list,
+    namespace: str | None = None,
+) -> dict:
+    """Filter eligible Pods and group them by node."""
+
     targets_by_node = {}
 
-    for pod in response.items:
+    for pod in pods:
         metadata = pod.metadata
         spec = pod.spec
         status = pod.status
@@ -225,13 +246,24 @@ def discover_capture_targets(
         if metadata.deletion_timestamp is not None:
             continue
 
-        # Host-networked pods need separate capture handling.
         if spec.host_network:
             continue
+
+        labels = getattr(metadata, "labels", None) or {}
+
+        if labels.get("app") == "netshoot-diagnostics":
+            continue
+
+        target_namespace = (
+            namespace
+            if namespace is not None
+            else metadata.namespace
+        )
 
         if not all([
             metadata.name,
             metadata.uid,
+            target_namespace,
             spec.node_name,
             status.pod_ip,
         ]):
@@ -241,7 +273,7 @@ def discover_capture_targets(
 
         target = {
             "name": metadata.name,
-            "namespace": namespace,
+            "namespace": target_namespace,
             "uid": metadata.uid,
             "ip": status.pod_ip,
         }
@@ -255,7 +287,7 @@ def discover_capture_targets(
 def schedule_capture_jobs(
     core_api: client.CoreV1Api,
     batch_api: client.BatchV1Api,
-    namespaces: list[str],
+    namespaces: list[str] | None,
     duration_seconds: int = 60,
 ) -> dict:
     """Schedule one Job per node, rolling back on partial failure."""
@@ -326,12 +358,14 @@ def schedule_capture_jobs(
 
 def discover_targets_across_namespaces(
     core_api: client.CoreV1Api,
-    namespaces: list[str],
+    namespaces: list[str] | None,
 ) -> dict:
     """
     Discover capture targets across approved namespaces
     and group all resulting pods by Kubernetes node.
     """
+    if namespaces is None:
+        return discover_all_capture_targets(core_api)
 
     targets_by_node = {}
 
