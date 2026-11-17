@@ -281,25 +281,6 @@ code {
   background: var(--eds-color-purple-subtle);
 }
 
-/* Destructive action (e.g. cancelling a running collection). */
-.btn-danger {
-  background: var(--eds-color-white);
-  color: var(--eds-color-error);
-  border: 1px solid var(--eds-color-error);
-}
-
-.btn-danger:hover {
-  background: var(--eds-color-error-bg);
-}
-
-.btn-danger:disabled:hover {
-  background: var(--eds-color-white);
-}
-
-.dialog-alert {
-  margin-top: var(--eds-spacing-md);
-}
-
 .btn-block {
   width: 100%;
 }
@@ -645,15 +626,6 @@ code {
 
 .service-progress-done {
   border-color: var(--eds-color-success-bg);
-}
-
-.service-progress-cancelled {
-  border-color: var(--eds-color-warning-bg);
-  background: var(--eds-color-warning-bg);
-}
-
-.service-progress-skipped {
-  opacity: 0.6;
 }
 
 .collect-error {

@@ -35,22 +35,6 @@ def get_collection_progress() -> dict:
     return tracker.snapshot()
 
 
-@router.post("/cancel", response_model=CollectionProgressResponse, status_code=202)
-def cancel_collection() -> dict:
-    """Ask the running collection to stop.
-
-    Cancellation is cooperative: the collection stops at its next checkpoint,
-    deletes the Kubernetes Jobs it created, and the pending /zip request returns
-    a partial package. Poll /progress until the status is "cancelled".
-    """
-    if not tracker.request_cancel():
-        raise HTTPException(
-            status_code=409,
-            detail="No diagnostic collection is running.",
-        )
-    return tracker.snapshot()
-
-
 @router.get("/zip")
 def download_diagnostics(
     services: List[
@@ -122,8 +106,7 @@ def download_diagnostics(
         raise HTTPException(status_code=422, detail=str(e))
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    partial = "_partial" if tracker.snapshot()["status"] == "cancelled" else ""
-    filename = f"iomt_diagnostics_{ts}{partial}.zip"
+    filename = f"iomt_diagnostics_{ts}.zip"
 
     # Can't use FileResponse cuz needs disk file path and SpooledTemporaryZip lives in memory/unlinked temp space
     # Also, this is streaming the zip's delivery to user. The zip creation itself is not streamed.

@@ -300,8 +300,6 @@ def _wait_for_pod_running(
     deadline = time.monotonic() + config.startup_timeout_seconds
     last_pod: str | None = None
     while time.monotonic() < deadline:
-        # Cancel checkpoint; capture_umf_rti's finally deletes the Job.
-        tracker.raise_if_cancelled()
         pods = core.list_namespaced_pod(
             namespace=config.namespace, label_selector=selector
         ).items
@@ -350,8 +348,6 @@ def _wait_for_done(
         UMF_RTI_SERVICE_ID, params.umf_duration_seconds, unit="seconds"
     )
     while time.monotonic() < deadline:
-        # Cancel checkpoint; capture_umf_rti's finally deletes the Job.
-        tracker.raise_if_cancelled()
         # Cap below 100% of the duration so the bar only completes when .done lands.
         elapsed = int(time.monotonic() - started)
         tracker.set_service_completed(

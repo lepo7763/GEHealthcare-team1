@@ -62,7 +62,6 @@ export const STATUS_LABEL = {
   packaging: 'Packaging diagnostic package…',
   done: 'Collection complete.',
   error: 'Collection failed.',
-  cancelled: 'Collection cancelled.',
 };
 
 export const SERVICE_STATUS_LABEL = {
@@ -70,8 +69,6 @@ export const SERVICE_STATUS_LABEL = {
   collecting: 'Collecting',
   done: 'Complete',
   error: 'Failed',
-  cancelled: 'Cancelled',
-  skipped: 'Skipped',
 };
 
 export const parseFilename = (disposition) => {

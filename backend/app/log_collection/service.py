@@ -124,7 +124,6 @@ def _process_pod(
     pod_name = pod.metadata.name
 
     for c_name, has_restarted in _get_pod_targets(pod):
-        tracker.raise_if_cancelled()
         current = f"{ns}/{pod_name}/{c_name}"
         # Fetch current logs for this container
         log_text, err = _fetch_single_log(

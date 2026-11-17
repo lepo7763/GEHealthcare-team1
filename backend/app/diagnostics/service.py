@@ -24,7 +24,6 @@ from app.log_collection.progress import (
     FIREWALL_SERVICE_ID,
     UMF_RTI_LABEL,
     UMF_RTI_SERVICE_ID,
-    CollectionCancelled,
     ServiceProgress,
     tracker,
 )
@@ -156,62 +155,37 @@ def collect_diagnostics(
         total_logs_collected=0,
     )
 
-    cancelled = False
     try:
         with zipfile.ZipFile(
             temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED
         ) as zf:
-            for index, service_id in enumerate(selected):
-                # Checkpoint between services: a cancel skips everything left.
-                if tracker.cancel_requested:
-                    cancelled = True
-                    _record_skipped(manifest, selected[index:])
-                    break
-                files_before = len(manifest.collected_files)
-                try:
-                    if service_id == CONTAINER_LOGS_SERVICE_ID:
-                        _collect_container_logs(zf, manifest, core, log_params)
-                    elif service_id == UMF_RTI_SERVICE_ID:
-                        _collect_umf_rti(
-                            zf, manifest, core, batch, umf_params, config, selected
-                        )
-                    elif service_id == AXONE_LOGS_SERVICE_ID:
-                        _collect_axone_logs(zf, manifest, axone_params, selected)
-                    elif service_id == CORE_DUMPS_SERVICE_ID:
-                        collect_core_dumps_into(
-                            zf,
-                            manifest,
-                            core,
-                            batch,
-                            core_dump_params or CoreDumpParams(),
-                            core_dump_config,
-                        )
-                    elif service_id == FIREWALL_SERVICE_ID:
-                        collect_firewall_into(
-                            zf, manifest, core, batch, firewall_config
-                        )
-                except CollectionCancelled:
-                    # The collector stopped mid-way and its Jobs were deleted on
-                    # the way out. Keep whatever it already wrote to the zip.
-                    cancelled = True
-                    _record_cancelled(
-                        manifest, service_id, manifest.collected_files[files_before:]
+            for service_id in selected:
+                if service_id == CONTAINER_LOGS_SERVICE_ID:
+                    _collect_container_logs(zf, manifest, core, log_params)
+                elif service_id == UMF_RTI_SERVICE_ID:
+                    _collect_umf_rti(
+                        zf, manifest, core, batch, umf_params, config, selected
                     )
-                    _record_skipped(manifest, selected[index + 1 :])
-                    break
-                tracker.complete_service(service_id)
+                elif service_id == AXONE_LOGS_SERVICE_ID:
+                    _collect_axone_logs(zf, manifest, axone_params, selected)
+                elif service_id == CORE_DUMPS_SERVICE_ID:
+                    collect_core_dumps_into(
+                        zf,
+                        manifest,
+                        core,
+                        batch,
+                        core_dump_params or CoreDumpParams(),
+                        core_dump_config,
+                    )
+                elif service_id == FIREWALL_SERVICE_ID:
+                    collect_firewall_into(zf, manifest, core, batch, firewall_config)
 
             tracker.set_status("packaging")
-            if cancelled:
-                manifest.status = "cancelled"
             manifest.total_logs_collected = len(manifest.collected_files)
             zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
 
         temp_zip.seek(0)
-        if cancelled:
-            tracker.finish_cancelled()
-        else:
-            tracker.finish()
+        tracker.finish()
         return temp_zip
     except ClusterUnreachableError as e:
         tracker.fail(str(e))
@@ -231,43 +205,6 @@ def collect_diagnostics(
         raise
 
 
-_SERVICE_LABELS = {
-    CONTAINER_LOGS_SERVICE_ID: CONTAINER_LOGS_LABEL,
-    UMF_RTI_SERVICE_ID: UMF_RTI_LABEL,
-    AXONE_LOGS_SERVICE_ID: AXONE_LOGS_LABEL,
-    CORE_DUMPS_SERVICE_ID: CORE_DUMPS_LABEL,
-    FIREWALL_SERVICE_ID: FIREWALL_LABEL,
-}
-
-
-def _record_cancelled(
-    manifest: LogCollectionManifest, service_id: str, files: List[str]
-) -> None:
-    """Record the service that was running when the user cancelled."""
-    manifest.services.append(
-        CollectedService(
-            id=service_id,
-            label=_SERVICE_LABELS[service_id],
-            status="cancelled",
-            files=list(files),
-            error="Cancelled by the user before this service finished.",
-        )
-    )
-
-
-def _record_skipped(manifest: LogCollectionManifest, service_ids: List[str]) -> None:
-    """Record services that never started because the user cancelled."""
-    for service_id in service_ids:
-        manifest.services.append(
-            CollectedService(
-                id=service_id,
-                label=_SERVICE_LABELS[service_id],
-                status="skipped",
-                error="Cancelled by the user before this service started.",
-            )
-        )
-
-
 def _collect_container_logs(
     zf: zipfile.ZipFile,
     manifest: LogCollectionManifest,
@@ -276,10 +213,9 @@ def _collect_container_logs(
 ) -> None:
     try:
         files = collect_container_logs_into(zf, manifest, core, params)
-    except (ClusterUnreachableError, CollectionCancelled):
-        # Unreachable: let the endpoint return 503, since a partial package is
-        # misleading when we cannot even list pods. Cancelled: the orchestrator
-        # records it.
+    except ClusterUnreachableError:
+        # Let the endpoint return 503: if we cannot list pods, the cluster
+        # connection itself is broken and a partial package is misleading.
         raise
     except Exception as e:
         message = f"Container log collection failed: {e}"
@@ -327,9 +263,6 @@ def _collect_umf_rti(
         check_prerequisites(core, config)
         result = capture_umf_rti(core, batch, params, config)
         write_artifacts(zf, manifest, result)
-    except CollectionCancelled:
-        # capture_umf_rti already deleted its Job; the orchestrator records it.
-        raise
     except UmfRtiPrerequisiteError as e:
         message = str(e)
         tracker.fail_service(UMF_RTI_SERVICE_ID, message)
