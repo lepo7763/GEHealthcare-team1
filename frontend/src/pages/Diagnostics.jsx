@@ -6,6 +6,7 @@ import Step1Connect from './diagnostics/Step1Connect';
 import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
+import { CORE_DEFAULT_MB, sinceIso } from './diagnostics/coreDumps';
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -47,6 +48,14 @@ const Diagnostics = () => {
   const [umfDomain, setUmfDomain] = useState(13);
   const [umfDuration, setUmfDuration] = useState('60');
   const [umfDomainOptions, setUmfDomainOptions] = useState(FALLBACK_UMF_DOMAINS);
+
+  // Core dump filters (Step 2) and the node listing that previews them.
+  const [coreSinceHours, setCoreSinceHours] = useState('');
+  const [coreProcesses, setCoreProcesses] = useState([]);
+  const [coreMaxMb, setCoreMaxMb] = useState(CORE_DEFAULT_MB);
+  // status: idle | loading | done | error
+  const [corePreview, setCorePreview] = useState({ status: 'idle', data: null, error: '' });
+  const corePreviewAbortRef = useRef(null);
 
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
@@ -117,6 +126,12 @@ const Diagnostics = () => {
       params.set('umf_domain_id', String(umfDomain));
       params.set('umf_duration_seconds', String(umfDuration).trim());
     }
+    if (selected.includes('core-dumps')) {
+      const since = sinceIso(coreSinceHours);
+      if (since) params.set('core_since', since);
+      coreProcesses.forEach((name) => params.append('core_process', name));
+      params.set('core_max_mb', String(coreMaxMb).trim());
+    }
 
     fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
       .then(async (res) => {
@@ -151,6 +166,37 @@ const Diagnostics = () => {
     startPolling();
   };
 
+  const loadCorePreview = () => {
+    if (corePreviewAbortRef.current) corePreviewAbortRef.current.abort();
+    const controller = new AbortController();
+    corePreviewAbortRef.current = controller;
+    setCorePreview((prev) => ({ ...prev, status: 'loading', error: '' }));
+    fetch('/api/core-dumps', { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          let detail = `Request failed (${res.status})`;
+          try {
+            const body = await res.json();
+            if (body?.detail) detail = formatErrorDetail(body.detail);
+          } catch {
+            /* non-JSON error body */
+          }
+          throw new Error(detail);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setCorePreview({ status: 'done', data, error: '' });
+        // Drop ticked processes that no longer exist on the node.
+        const present = new Set((data.files || []).map((f) => f.process));
+        setCoreProcesses((prev) => prev.filter((name) => present.has(name)));
+      })
+      .catch((e) => {
+        if (e.name === 'AbortError') return;
+        setCorePreview((prev) => ({ ...prev, status: 'error', error: e.message }));
+      });
+  };
+
   // Load the UMF RTI domain options once.
   useEffect(() => {
     const controller = new AbortController();
@@ -170,11 +216,16 @@ const Diagnostics = () => {
     return () => {
       stopPolling();
       if (abortRef.current) abortRef.current.abort();
+      if (corePreviewAbortRef.current) corePreviewAbortRef.current.abort();
       if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
     };
   }, []);
 
   const toggleService = (id) => {
+    // Scan the node the first time Core Dumps is selected.
+    if (id === 'core-dumps' && !selected.includes(id) && corePreview.status === 'idle') {
+      loadCorePreview();
+    }
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((serviceId) => serviceId !== id) : [...prev, id],
     );
@@ -250,56 +301,66 @@ const Diagnostics = () => {
       </ol>
 
       <div className="step-panel" key={step}>
-      {step === 1 && (
-        <Step1Connect
-          host={host}
-          setHost={setHost}
-          phase={phase}
-          result={result}
-          error={error}
-          isChecking={isChecking}
-          onCheck={handleCheck}
-        />
-      )}
+        {step === 1 && (
+          <Step1Connect
+            host={host}
+            setHost={setHost}
+            phase={phase}
+            result={result}
+            error={error}
+            isChecking={isChecking}
+            onCheck={handleCheck}
+          />
+        )}
 
-      {step === 2 && (
-        <Step2Configure
-          selected={selected}
-          onToggleService={toggleService}
-          umfDomain={umfDomain}
-          setUmfDomain={setUmfDomain}
-          umfDuration={umfDuration}
-          setUmfDuration={setUmfDuration}
-          umfDomainOptions={umfDomainOptions}
-          onBack={handleBackToConnect}
-          onContinue={() => setStep(3)}
-        />
-      )}
+        {step === 2 && (
+          <Step2Configure
+            selected={selected}
+            onToggleService={toggleService}
+            umfDomain={umfDomain}
+            setUmfDomain={setUmfDomain}
+            umfDuration={umfDuration}
+            setUmfDuration={setUmfDuration}
+            umfDomainOptions={umfDomainOptions}
+            coreSinceHours={coreSinceHours}
+            setCoreSinceHours={setCoreSinceHours}
+            coreProcesses={coreProcesses}
+            setCoreProcesses={setCoreProcesses}
+            coreMaxMb={coreMaxMb}
+            setCoreMaxMb={setCoreMaxMb}
+            corePreview={corePreview}
+            onRefreshCorePreview={loadCorePreview}
+            onBack={handleBackToConnect}
+            onContinue={() => setStep(3)}
+          />
+        )}
 
-      {step === 3 && (
-        <Step3Review
-          result={result}
-          selectedServices={selectedServices}
-          umfDomain={umfDomain}
-          umfDuration={umfDuration}
-          onEditConnection={() => setStep(1)}
-          onEditServices={() => setStep(2)}
-          onBack={() => setStep(2)}
-          onStart={() => {
-            setStep(4);
-            startCollection();
-          }}
-        />
-      )}
+        {step === 3 && (
+          <Step3Review
+            result={result}
+            selectedServices={selectedServices}
+            umfDomain={umfDomain}
+            umfDuration={umfDuration}
+            coreFilters={{ sinceHours: coreSinceHours, processes: coreProcesses, maxMb: coreMaxMb }}
+            corePreview={corePreview}
+            onEditConnection={() => setStep(1)}
+            onEditServices={() => setStep(2)}
+            onBack={() => setStep(2)}
+            onStart={() => {
+              setStep(4);
+              startCollection();
+            }}
+          />
+        )}
 
-      {step === 4 && (
-        <Step4Collect
-          collect={collect}
-          collectError={collectError}
-          download={download}
-          onBack={() => setStep(3)}
-        />
-      )}
+        {step === 4 && (
+          <Step4Collect
+            collect={collect}
+            collectError={collectError}
+            download={download}
+            onBack={() => setStep(3)}
+          />
+        )}
       </div>
     </div>
   );

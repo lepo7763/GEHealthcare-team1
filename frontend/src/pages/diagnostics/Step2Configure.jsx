@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
+import CoreDumpSettings from './CoreDumpSettings';
+import { describeCoreFilters, validateCoreMaxMb } from './coreDumps';
 
 // Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
 const MIN_DURATION = 10;
@@ -24,6 +26,14 @@ const Step2Configure = ({
   umfDomainOptions,
   netshootDuration,
   setNetshootDuration,
+  coreSinceHours,
+  setCoreSinceHours,
+  coreProcesses,
+  setCoreProcesses,
+  coreMaxMb,
+  setCoreMaxMb,
+  corePreview,
+  onRefreshCorePreview,
   onBack,
   onContinue,
 }) => {
@@ -111,6 +121,26 @@ const Step2Configure = ({
       ),
     },
 
+    'core-dumps': {
+      isValid: validateCoreMaxMb(coreMaxMb),
+      summary: describeCoreFilters({
+        sinceHours: coreSinceHours,
+        processes: coreProcesses,
+        maxMb: coreMaxMb,
+      }),
+      fields: (
+        <CoreDumpSettings
+          sinceHours={coreSinceHours}
+          setSinceHours={setCoreSinceHours}
+          processes={coreProcesses}
+          setProcesses={setCoreProcesses}
+          maxMb={coreMaxMb}
+          setMaxMb={setCoreMaxMb}
+          preview={corePreview}
+          onRefresh={onRefreshCorePreview}
+        />
+      ),
+    },
   };
 
   // Only one service's settings are open at a time, so the boxes don't stack up.
@@ -164,18 +194,21 @@ const Step2Configure = ({
                   </span>
                 </button>
 
-                {panel && !isExpanded && (
+                {panel && (
                   <button
                     type="button"
                     className={`service-settings-summary ${panel.isValid ? '' : 'invalid'}`}
-                    aria-expanded="false"
+                    aria-expanded={!!isExpanded}
                     aria-controls={panelId}
-                    onClick={() => setExpandedId(service.id)}
+                    disabled={isExpanded && !panel.isValid}
+                    onClick={() => setExpandedId(isExpanded ? null : service.id)}
                   >
                     <span>
                       {panel.isValid ? panel.summary : 'Settings need attention'}
                     </span>
-                    <span className="service-settings-edit">Edit settings ▾</span>
+                    <span className="service-settings-edit">
+                      Edit settings {isExpanded ? '▴' : '▾'}
+                    </span>
                   </button>
                 )}
 
@@ -188,16 +221,6 @@ const Step2Configure = ({
                   >
                     <h4 className="service-options-title">{service.name} settings</h4>
                     {panel.fields}
-                    <div className="action-row">
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={() => setExpandedId(null)}
-                        disabled={!panel.isValid}
-                      >
-                        Done
-                      </button>
-                    </div>
                   </div>
                 )}
               </li>

@@ -1,9 +1,13 @@
+import { describeCoreFilters, estimateSelection, formatBytes } from './coreDumps';
+
 const Step3Review = ({
   result,
   selectedServices,
   umfDomain,
   umfDuration,
   netshootDuration,
+  coreFilters,
+  corePreview,
   onEditConnection,
   onEditServices,
   onBack,
@@ -15,6 +19,10 @@ const Step3Review = ({
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
   const netshootSelected = selectedServices.some((service) => service.id === 'netshoot');
+  const coreSelected = selectedServices.some((service) => service.id === 'core-dumps');
+  const coreEstimate = corePreview?.data
+    ? estimateSelection(corePreview.data.files, coreFilters)
+    : null;
 
   return (
     <section className="section-narrow">
@@ -73,6 +81,26 @@ const Step3Review = ({
                 <div className="check-detail">
                   Captures network traffic using temporary Kubernetes
                   Jobs and bundles the PCAP files into the diagnostic ZIP.
+                </div>
+              </div>
+            </li>
+          )}
+          {coreSelected && (
+            <li>
+              <div>
+                <div className="check-title">Core dumps</div>
+                <div className="check-detail">{describeCoreFilters(coreFilters)}</div>
+                {coreEstimate && (
+                  <div className="check-detail">
+                    About {coreEstimate.count} core{coreEstimate.count === 1 ? '' : 's'} ·{' '}
+                    {formatBytes(coreEstimate.bytes)}
+                    {coreEstimate.skipped > 0 && ` (${coreEstimate.skipped} skipped by the size cap)`}
+                  </div>
+                )}
+                <div className="check-detail">
+                  Read from the node by a short-lived, read-only Kubernetes Job (deleted
+                  afterwards). Cores can contain process memory, including patient data —
+                  handle the package accordingly.
                 </div>
               </div>
             </li>

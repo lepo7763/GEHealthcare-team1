@@ -6,10 +6,14 @@ from typing import List, Optional
 # Service identifiers shared by the collector, orchestrator and UI.
 CONTAINER_LOGS_SERVICE_ID = "container-logs"
 UMF_RTI_SERVICE_ID = "umf-rti"
+CORE_DUMPS_SERVICE_ID = "core-dumps"
+FIREWALL_SERVICE_ID = "firewall"
 NETSHOOT_SERVICE_ID = "netshoot"
 
 CONTAINER_LOGS_LABEL = "Container Log Collection"
 UMF_RTI_LABEL = "UMF RTI"
+CORE_DUMPS_LABEL = "Core Dumps"
+FIREWALL_LABEL = "Firewall Settings"
 NETSHOOT_LABEL = "Netshoot Network Capture"
 
 # Statuses that mean a collection is actively running.
