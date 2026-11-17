@@ -49,6 +49,9 @@ const Diagnostics = () => {
   const [umfDuration, setUmfDuration] = useState('60');
   const [umfDomainOptions, setUmfDomainOptions] = useState(FALLBACK_UMF_DOMAINS);
 
+  // Netshoot capture duration (seconds).
+  const [netshootDuration, setNetshootDuration] = useState('30');
+
   // Core dump filters (Step 2) and the node listing that previews them.
   const [coreSinceHours, setCoreSinceHours] = useState('');
   const [coreProcesses, setCoreProcesses] = useState([]);
@@ -125,6 +128,12 @@ const Diagnostics = () => {
     if (selected.includes('umf-rti')) {
       params.set('umf_domain_id', String(umfDomain));
       params.set('umf_duration_seconds', String(umfDuration).trim());
+    }
+    if (selected.includes('netshoot')) {
+      params.set(
+        'netshoot_duration_seconds',
+        String(netshootDuration).trim()
+      );
     }
     if (selected.includes('core-dumps')) {
       const since = sinceIso(coreSinceHours);
@@ -322,6 +331,8 @@ const Diagnostics = () => {
             umfDuration={umfDuration}
             setUmfDuration={setUmfDuration}
             umfDomainOptions={umfDomainOptions}
+            netshootDuration={netshootDuration}
+            setNetshootDuration={setNetshootDuration}
             coreSinceHours={coreSinceHours}
             setCoreSinceHours={setCoreSinceHours}
             coreProcesses={coreProcesses}
@@ -341,6 +352,7 @@ const Diagnostics = () => {
             selectedServices={selectedServices}
             umfDomain={umfDomain}
             umfDuration={umfDuration}
+            netshootDuration={netshootDuration}
             coreFilters={{ sinceHours: coreSinceHours, processes: coreProcesses, maxMb: coreMaxMb }}
             corePreview={corePreview}
             onEditConnection={() => setStep(1)}
