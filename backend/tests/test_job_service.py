@@ -45,7 +45,7 @@ def test_build_netshoot_job():
     container = pod_spec.containers[0]
 
     assert container.name == "netshoot"
-    assert container.resources.limits["cpu"] == "250m"
+    assert container.resources.limits["cpu"] == "1000m"
     assert job.spec.backoff_limit == 0
 
 

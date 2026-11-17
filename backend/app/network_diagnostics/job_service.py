@@ -52,7 +52,7 @@ def build_netshoot_job(
         image_pull_policy="IfNotPresent",
         resources=client.V1ResourceRequirements(
             requests={"cpu": "100m", "memory": "128Mi"},
-            limits={"cpu": "250m", "memory": "256Mi"},
+            limits={"cpu": "1000m", "memory": "256Mi"},
         ),
         env=[
             client.V1EnvVar(
