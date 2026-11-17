@@ -18,7 +18,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 ARCHIVE_PATH = "/captures/job-artifacts.zip"
-MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
 CHUNK_BYTES = 1024 * 1024
 
 class NetshootCaptureError(RuntimeError):
@@ -152,7 +152,7 @@ def retrieve_capture_archive(
     destination: Path,
     max_bytes: int = MAX_ARCHIVE_BYTES,
     chunk_bytes: int = CHUNK_BYTES,
-    timeout_seconds: int = 90,
+    timeout_seconds: int = 300,
 ) -> Path:
     """Retrieve and validate a completed capture archive."""
 

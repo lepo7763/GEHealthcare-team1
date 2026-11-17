@@ -933,7 +933,7 @@ def test_worker_main_reads_environment(monkeypatch, tmp_path):
     assert received["archive_source"] == str(tmp_path)
     assert received["archive_path"] == str(tmp_path / "job-artifacts.zip")
     assert (tmp_path / ".done").exists()
-    mock_sleep.assert_called_once_with(120)
+    mock_sleep.assert_called_once_with(360)
 
 
 def test_worker_main_rejects_missing_targets(monkeypatch):
@@ -960,7 +960,7 @@ def test_build_netshoot_job_worker_configuration():
     env = {item.name: item.value for item in container.env}
     assert env["CAPTURE_DURATION_SECONDS"] == "60"
     assert env["CAPTURE_OUTPUT_DIR"] == "/captures"
-    assert env["CAPTURE_COLLECT_GRACE_SECONDS"] == "120"
+    assert env["CAPTURE_COLLECT_GRACE_SECONDS"] == "360"
 
     assert container.security_context.privileged is True
     assert any(
@@ -968,7 +968,7 @@ def test_build_netshoot_job_worker_configuration():
         and volume.host_path.path == CRI_SOCKET_PATH
         for volume in pod.volumes
     )
-    assert job.spec.active_deadline_seconds == 360
+    assert job.spec.active_deadline_seconds == 660
 
 
 def test_create_capture_archive(tmp_path):

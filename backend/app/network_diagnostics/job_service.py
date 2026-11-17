@@ -69,7 +69,7 @@ def build_netshoot_job(
             ),
             client.V1EnvVar(
                 name = "CAPTURE_COLLECT_GRACE_SECONDS",
-                value = "120"
+                value = "360"
             )
         ],
         security_context=client.V1SecurityContext(
@@ -119,7 +119,7 @@ def build_netshoot_job(
         ),
         spec=client.V1JobSpec(
             backoff_limit=0,
-            active_deadline_seconds=duration_seconds + 300,
+            active_deadline_seconds=duration_seconds + 600,
             ttl_seconds_after_finished=600,
             template=client.V1PodTemplateSpec(
                 metadata=client.V1ObjectMeta(labels=labels),

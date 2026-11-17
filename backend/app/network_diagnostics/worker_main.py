@@ -19,10 +19,10 @@ def main() -> int:
         duration = int(os.environ.get("CAPTURE_DURATION_SECONDS", "60"))
         output_dir = os.environ.get("CAPTURE_OUTPUT_DIR", "/captures")
 
-        collect_grace_seconds = int(os.environ.get("CAPTURE_COLLECT_GRACE_SECONDS", "120"))
+        collect_grace_seconds = int(os.environ.get("CAPTURE_COLLECT_GRACE_SECONDS", "360"))
 
-        if not 1 <= collect_grace_seconds <= 180:
-            raise ValueError("Collection grace period must be 1-180 seconds")
+        if not 1 <= collect_grace_seconds <= 360:
+            raise ValueError("Collection grace period must be 1-360 seconds")
 
         manifest = run_capture_session(
             raw_targets=raw_targets,
