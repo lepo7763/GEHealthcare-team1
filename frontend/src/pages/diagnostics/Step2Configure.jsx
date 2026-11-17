@@ -14,6 +14,7 @@ const Step2Configure = ({
   toolParams,
   onToolParamsChange,
   initialEditingId = null,
+  toolContext,
   onBack,
   onContinue,
 }) => {
@@ -131,6 +132,7 @@ const Step2Configure = ({
         <ToolParamsDialog
           tool={editingTool}
           params={toolParams[editingTool.id]}
+          context={toolContext}
           onSave={(params) => {
             onToolParamsChange(editingTool.id, params);
             setEditingId(null);

@@ -19,6 +19,18 @@ export const SERVICES = [
     name: 'Axone Logs',
     description: 'Exports stored Axone device and system events as CSV.',
   },
+  {
+    id: 'core-dumps',
+    name: 'Core Dumps',
+    description:
+      'Crash core files from the platform node, verified by checksum. Cores can contain process memory.',
+  },
+  {
+    id: 'firewall',
+    name: 'Firewall Settings',
+    description:
+      'Read-only snapshot of firewalld zones and policies, iptables, nftables and ipsets on the node, with a printable report.',
+  },
 ];
 
 export const STEP_INFO = {

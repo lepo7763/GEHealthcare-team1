@@ -1,11 +1,11 @@
 import { isConfigurable, summarizeToolParams } from './toolParams';
+import { estimateSelection, formatBytes } from './coreDumps';
 
 const Step3Review = ({
   result,
   selectedServices,
   toolParams,
-  umfDomain,
-  umfDuration,
+  corePreview,
   onEditConnection,
   onEditServices,
   onEditToolParams,
@@ -18,6 +18,10 @@ const Step3Review = ({
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
   const configuredTools = selectedServices.filter((service) => isConfigurable(service.id));
+  const coreSelected = selectedServices.some((service) => service.id === 'core-dumps');
+  const coreEstimate = corePreview?.data
+    ? estimateSelection(corePreview.data.files, toolParams['core-dumps'])
+    : null;
 
   return (
     <section className="section-narrow">
@@ -72,11 +76,27 @@ const Step3Review = ({
               <div>
                 <div className="check-title">UMF RTI capture</div>
                 <div className="check-detail">
-                  Domain {umfDomain} · {String(umfDuration).trim()} s
-                </div>
-                <div className="check-detail">
                   Captures live RTI telemetry in a short-lived Kubernetes Job (deleted
                   afterwards) and bundles it into the diagnostic zip.
+                </div>
+              </div>
+            </li>
+          )}
+          {coreSelected && (
+            <li>
+              <div>
+                <div className="check-title">Core dump collection</div>
+                {coreEstimate && (
+                  <div className="check-detail">
+                    About {coreEstimate.count} core{coreEstimate.count === 1 ? '' : 's'} ·{' '}
+                    {formatBytes(coreEstimate.bytes)}
+                    {coreEstimate.skipped > 0 && ` (${coreEstimate.skipped} skipped by the size cap)`}
+                  </div>
+                )}
+                <div className="check-detail">
+                  Read from the node by a short-lived, read-only Kubernetes Job (deleted
+                  afterwards). Cores can contain process memory, including patient data —
+                  handle the package accordingly.
                 </div>
               </div>
             </li>

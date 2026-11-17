@@ -41,6 +41,11 @@ const Diagnostics = () => {
   // Tool whose Edit dialog should open when returning to Configure from Review.
   const [pendingEditId, setPendingEditId] = useState(null);
 
+  // Node listing that previews the Core Dumps filters (Configure + Review).
+  // status: idle | loading | done | error
+  const [corePreview, setCorePreview] = useState({ status: 'idle', data: null, error: '' });
+  const corePreviewAbortRef = useRef(null);
+
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
   const [collectError, setCollectError] = useState('');
@@ -146,16 +151,58 @@ const Diagnostics = () => {
     startPolling();
   };
 
+  const loadCorePreview = () => {
+    if (corePreviewAbortRef.current) corePreviewAbortRef.current.abort();
+    const controller = new AbortController();
+    corePreviewAbortRef.current = controller;
+    setCorePreview((prev) => ({ ...prev, status: 'loading', error: '' }));
+    fetch('/api/core-dumps', { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          let detail = `Request failed (${res.status})`;
+          try {
+            const body = await res.json();
+            if (body?.detail) detail = formatErrorDetail(body.detail);
+          } catch {
+            /* non-JSON error body */
+          }
+          throw new Error(detail);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setCorePreview({ status: 'done', data, error: '' });
+        // Drop ticked processes that no longer exist on the node.
+        const present = new Set((data.files || []).map((f) => f.process));
+        setToolParams((prev) => ({
+          ...prev,
+          'core-dumps': {
+            ...prev['core-dumps'],
+            processes: prev['core-dumps'].processes.filter((name) => present.has(name)),
+          },
+        }));
+      })
+      .catch((e) => {
+        if (e.name === 'AbortError') return;
+        setCorePreview((prev) => ({ ...prev, status: 'error', error: e.message }));
+      });
+  };
+
   // Stop polling and abort any in-flight request if the page is left.
   useEffect(() => {
     return () => {
       stopPolling();
       if (abortRef.current) abortRef.current.abort();
+      if (corePreviewAbortRef.current) corePreviewAbortRef.current.abort();
       if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
     };
   }, []);
 
   const toggleService = (id) => {
+    // Scan the node the first time Core Dumps is selected.
+    if (id === 'core-dumps' && !selected.includes(id) && corePreview.status === 'idle') {
+      loadCorePreview();
+    }
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((serviceId) => serviceId !== id) : [...prev, id],
     );
@@ -253,6 +300,7 @@ const Diagnostics = () => {
             setToolParams((prev) => ({ ...prev, [toolId]: params }))
           }
           initialEditingId={pendingEditId}
+          toolContext={{ corePreview, onRefreshCorePreview: loadCorePreview }}
           onBack={handleBackToConnect}
           onContinue={() => {
             setPendingEditId(null);
@@ -266,6 +314,7 @@ const Diagnostics = () => {
           result={result}
           selectedServices={selectedServices}
           toolParams={toolParams}
+          corePreview={corePreview}
           onEditConnection={() => setStep(1)}
           onEditServices={() => setStep(2)}
           onEditToolParams={(toolId) => {

@@ -2,6 +2,7 @@
 // an Edit button; tools without parameters (e.g. container logs) do not.
 import { DEFAULT_AXONE_PARAMS, summarizeAxone, toAxoneQuery } from './axoneParams';
 import { DEFAULT_UMF_PARAMS, summarizeUmf, toUmfQuery } from './umfParams';
+import { DEFAULT_CORE_PARAMS, summarizeCore, toCoreQuery } from './coreDumpParams';
 
 export const TOOL_PARAMS = {
   'umf-rti': { defaults: DEFAULT_UMF_PARAMS, toQuery: toUmfQuery, summarize: summarizeUmf },
@@ -9,6 +10,11 @@ export const TOOL_PARAMS = {
     defaults: DEFAULT_AXONE_PARAMS,
     toQuery: toAxoneQuery,
     summarize: summarizeAxone,
+  },
+  'core-dumps': {
+    defaults: DEFAULT_CORE_PARAMS,
+    toQuery: toCoreQuery,
+    summarize: summarizeCore,
   },
 };
 

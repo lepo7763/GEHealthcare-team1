@@ -2,17 +2,19 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import AxoneLogParamsForm from './AxoneLogParams';
 import UmfRtiParamsForm from './UmfRtiParams';
+import CoreDumpParamsForm from './CoreDumpParamsForm';
 import { getToolIssue } from './toolParams';
 
 const FORMS = {
   'umf-rti': UmfRtiParamsForm,
   'axone-logs': AxoneLogParamsForm,
+  'core-dumps': CoreDumpParamsForm,
 };
 
 // Edits a draft copy of one tool's parameters; Save commits it, Cancel/Escape
 // discards it. Saving an incomplete draft is allowed so progress isn't lost; the
 // Configure step blocks continuing until required parameters are complete.
-const ToolParamsDialog = ({ tool, params, onSave, onClose }) => {
+const ToolParamsDialog = ({ tool, params, context, onSave, onClose }) => {
   const [draft, setDraft] = useState(params);
   const Form = FORMS[tool.id];
   const issue = getToolIssue(tool.id, draft);
@@ -30,7 +32,7 @@ const ToolParamsDialog = ({ tool, params, onSave, onClose }) => {
 
         <form onSubmit={handleSubmit} noValidate>
           <div className="dialog-body">
-            <Form value={draft} onChange={setDraft} />
+            <Form value={draft} onChange={setDraft} context={context} />
           </div>
 
           <p
