@@ -215,13 +215,29 @@ def discover_capture_targets(
 def discover_all_capture_targets(
     core_api: client.CoreV1Api,
 ) -> dict:
-    """Discover eligible Pods across all namespaces."""
+    """Discover Pod and host capture targets across the cluster."""
 
     response = core_api.list_pod_for_all_namespaces(
         _request_timeout=10,
     )
 
-    return group_capture_targets(response.items)
+    targets_by_node = group_capture_targets(response.items)
+
+    for node_name, targets in targets_by_node.items():
+        if not any(
+            target.get("host_network", False)
+            for target in targets
+        ):
+            targets.append({
+                "name": "host-network",
+                "namespace": "(host)",
+                "uid": f"host:{node_name}",
+                "node": node_name,
+                "host_network": True,
+                "host_network_pods": [],
+            })
+
+    return targets_by_node
 
 
 def group_capture_targets(

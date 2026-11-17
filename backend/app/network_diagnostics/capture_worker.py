@@ -101,28 +101,14 @@ def resolve_capture_pid(
     target: dict,
     resolver: Callable[[str, str], int],
 ) -> int:
-    """Resolve a PID for an individual or shared network namespace."""
+    """Resolve the PID associated with a capture target."""
 
-    candidates = target.get("host_network_pods", [target])
+    if target.get("host_network", False):
+        return 1
 
-    errors = []
-
-    for candidate in candidates:
-        try:
-            return resolver(
-                candidate["uid"],
-                candidate["namespace"],
-            )
-
-        except (
-            ValueError,
-            subprocess.SubprocessError,
-            OSError,
-        ) as exc:
-            errors.append(str(exc))
-
-    raise ValueError(
-        "No available capture target: " + "; ".join(errors)
+    return resolver(
+        target["uid"],
+        target["namespace"],
     )
 
 def start_capture_processes(
@@ -152,7 +138,7 @@ def start_capture_processes(
             )
 
             #accomodate heavier traffic on shared host level captures
-            if target.get("host-network", False):
+            if target.get("host_network", False):
                 command.extend(["-B", "8192"])
 
             with log_path.open("wb") as log_file:

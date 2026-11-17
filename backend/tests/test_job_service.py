@@ -1486,7 +1486,7 @@ def test_discover_all_namespaces():
 
     mock_core.list_namespaced_pod.assert_not_called()
 
-def test_host_network_capture_fallback(tmp_path):
+def test_direct_host_network_capture(tmp_path):
     first = {
         "name": "host-pod-1",
         "namespace": "compute",
@@ -1525,12 +1525,56 @@ def test_host_network_capture_fallback(tmp_path):
 
     assert len(result["running"]) == 1
     assert len(result["unavailable"]) == 0
-    assert resolver.call_count == 2
+    resolver.assert_not_called()
 
     popen.assert_called_once()
 
     command = popen.call_args.args[0]
 
     assert command[:4] == [
-        "nsenter", "-t", "1002", "-n"
+        "nsenter", "-t", "1", "-n"
     ]
+
+    assert "-B" in command
+    assert command[command.index("-B") + 1] == "8192"
+
+def test_discover_node_without_host_network_pods():
+    mock_core = Mock()
+
+    pod = SimpleNamespace(
+        metadata=SimpleNamespace(
+            name="regular-pod",
+            namespace="compute",
+            uid="uid-1",
+            deletion_timestamp=None,
+            labels={},
+        ),
+        spec=SimpleNamespace(
+            node_name="node-A",
+            host_network=False,
+        ),
+        status=SimpleNamespace(
+            phase="Running",
+            pod_ip="10.0.0.1",
+        ),
+    )
+
+    mock_core.list_pod_for_all_namespaces.return_value = (
+        SimpleNamespace(items=[pod])
+    )
+
+    result = discover_targets_across_namespaces(
+        mock_core,
+        namespaces=None,
+    )
+
+    assert len(result) == 1
+    assert len(result["node-A"]) == 2
+
+    host_target = next(
+        target for target in result["node-A"]
+        if target.get("host_network")
+    )
+
+    assert host_target["uid"] == "host:node-A"
+    assert host_target["host_network_pods"] == []
