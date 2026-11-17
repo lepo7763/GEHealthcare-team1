@@ -151,6 +151,10 @@ def start_capture_processes(
                 pid, str(pcap_path)
             )
 
+            #accomodate heavier traffic on shared host level captures
+            if target.get("host-network", False):
+                command.extend(["-B", "8192"])
+
             with log_path.open("wb") as log_file:
                 process = popen_factory(
                     command,
