@@ -44,6 +44,8 @@ class CollectedService(BaseModel):
 
 class LogCollectionManifest(BaseModel):
     timestamp_utc: str
+    # "complete", or "cancelled" when the user stopped the run part-way.
+    status: str = "complete"
     total_logs_collected: int
     collected_files: List[str] = Field(default_factory=list)
     errors: List[LogErrorEntry] = Field(default_factory=list)
@@ -68,3 +70,4 @@ class CollectionProgressResponse(BaseModel):
     message: Optional[str] = None
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
+    cancel_requested: bool = False

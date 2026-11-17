@@ -20,6 +20,16 @@ FIREWALL_LABEL = "Firewall Settings"
 RUNNING_STATUSES = frozenset({"listing", "collecting", "packaging"})
 
 
+class CollectionCancelled(Exception):
+    """The user asked to stop the running collection.
+
+    Raised from collector checkpoints (``tracker.raise_if_cancelled()``) and
+    caught by the orchestrator, which packages whatever finished. It unwinds
+    through each collector's ``finally``/``with`` blocks, so the Kubernetes Jobs
+    they created are deleted on the way out.
+    """
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -35,7 +45,7 @@ class ServiceProgress:
 
     id: str
     label: str
-    status: str = "pending"  # pending | collecting | done | error
+    status: str = "pending"  # pending | collecting | done | error | cancelled | skipped
     completed: int = 0
     total: int = 0
     unit: str = "items"
@@ -46,11 +56,13 @@ class ServiceProgress:
 
 @dataclass
 class CollectionProgress:
-    status: str = "idle"  # idle | listing | collecting | packaging | done | error
+    status: str = "idle"  # idle | listing | collecting | packaging | done | error | cancelled
     services: List[ServiceProgress] = field(default_factory=list)
     message: Optional[str] = None
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
+    # Set by request_cancel(); the run keeps its status until a checkpoint sees it.
+    cancel_requested: bool = False
 
 
 def _find_service(state: CollectionProgress, service_id: str) -> Optional[ServiceProgress]:
@@ -171,6 +183,58 @@ class ProgressTracker:
                 service.status = "error"
                 service.error = message
                 service.errors += 1
+
+    def complete_service(self, service_id: str) -> None:
+        """Mark one service finished (unless it already failed).
+
+        Called as each service returns, so a later cancel can tell finished
+        services apart from the one that was interrupted.
+        """
+        with self._lock:
+            service = _find_service(self._state, service_id)
+            if service and service.status != "error":
+                service.status = "done"
+                service.current = None
+
+    def request_cancel(self) -> bool:
+        """Ask the running collection to stop. False if nothing is running."""
+        with self._lock:
+            if self._state.status not in RUNNING_STATUSES:
+                return False
+            if not self._state.cancel_requested:
+                self._state.cancel_requested = True
+                self._state.message = (
+                    "Cancelling: stopping the current step and removing deployed tools."
+                )
+            return True
+
+    @property
+    def cancel_requested(self) -> bool:
+        with self._lock:
+            return self._state.cancel_requested
+
+    def raise_if_cancelled(self) -> None:
+        """Collector checkpoint: raise CollectionCancelled if a cancel is pending."""
+        if self.cancel_requested:
+            raise CollectionCancelled()
+
+    def finish_cancelled(self) -> None:
+        """End the run as cancelled; finished services keep their results."""
+        with self._lock:
+            self._state.status = "cancelled"
+            self._state.finished_at = _utcnow()
+            for service in self._state.services:
+                if service.status == "pending":
+                    service.status = "skipped"
+                elif service.status == "collecting":
+                    service.status = "cancelled"
+                service.current = None
+            kept = sum(1 for s in self._state.services if s.status == "done")
+            self._state.message = (
+                f"Cancelled. Results from {kept} finished service(s) were packaged."
+                if kept
+                else "Cancelled before any service finished."
+            )
 
     def finish(self) -> None:
         with self._lock:
