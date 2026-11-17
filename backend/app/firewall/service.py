@@ -9,7 +9,12 @@ from typing import Callable, Dict, Optional, Tuple
 
 from kubernetes import client
 
-from app.log_collection.progress import FIREWALL_LABEL, FIREWALL_SERVICE_ID, tracker
+from app.log_collection.progress import (
+    FIREWALL_LABEL,
+    FIREWALL_SERVICE_ID,
+    CollectionCancelled,
+    tracker,
+)
 from app.log_collection.schemas import (
     CollectedService,
     LogCollectionManifest,
@@ -100,11 +105,15 @@ def collect_firewall_into(
 
     def on_step(label: str) -> None:
         nonlocal done
+        # Cancel checkpoint between steps; capture_firewall's `with` deletes the Job.
+        tracker.raise_if_cancelled()
         tracker.set_service_completed(FIREWALL_SERVICE_ID, min(done, steps - 1), current=label)
         done += 1
 
     try:
         capture = capture_firewall(core, batch, config, session_factory, on_step=on_step)
+    except CollectionCancelled:
+        raise
     except Exception as e:  # FirewallCollectionError or anything unexpected
         message = (
             str(e) if isinstance(e, FirewallCollectionError)

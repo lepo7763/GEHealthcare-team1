@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { SERVICE_STATUS_LABEL, STATUS_LABEL } from './constants';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { RUNNING_STATUSES, SERVICE_STATUS_LABEL, STATUS_LABEL } from './constants';
 import AnalysisReport from '../logAnalysis/AnalysisReport';
 import { analyzeZip } from '../logAnalysis/analyzeZip';
 
@@ -9,13 +10,13 @@ const ServiceProgressCard = ({ service }) => {
   const completed = Number(service.completed) || 0;
   const unit = service.unit || 'items';
   const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
-  const isPending = status === 'pending';
+  // Pending and skipped services never started: render an empty track so they
+  // read as 0% instead of inheriting the fill's full width.
+  const notStarted = status === 'pending' || status === 'skipped';
   const isDone = status === 'done';
-  // A pending service hasn't started yet: render an empty (light purple) track
-  // so it reads as 0% instead of inheriting the fill's full width.
-  const displayPercent = isDone ? 100 : isPending ? 0 : percent;
+  const displayPercent = isDone ? 100 : notStarted ? 0 : percent;
   const isIndeterminate = status === 'collecting' && total === 0;
-  const showPercent = isPending || isDone || total > 0;
+  const showPercent = status === 'pending' || isDone || (total > 0 && status !== 'skipped');
 
   return (
     <div className={`service-progress-card service-progress-${status}`}>
@@ -61,7 +62,58 @@ const ServiceProgressCard = ({ service }) => {
   );
 };
 
-const Step4Collect = ({ collect, collectError, download, onBack }) => {
+// Asks before stopping a run, since cancelling discards unfinished work.
+const CancelDialog = ({ onConfirm, onClose, error, isSubmitting }) => (
+  <Dialog open onOpenChange={(open) => !open && !isSubmitting && onClose()}>
+    <DialogContent>
+      <DialogTitle>Cancel this collection?</DialogTitle>
+      <DialogDescription>
+        Running tools stop at their next safe point and are removed from the cluster.
+        Results from services that already finished are kept and packaged for download.
+      </DialogDescription>
+
+      {error && (
+        <div className="alert alert-error dialog-alert" role="alert">
+          <strong>Could not cancel</strong>
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="action-row dialog-actions">
+        <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>
+          Keep collecting
+        </button>
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={onConfirm}
+          disabled={isSubmitting}
+          aria-busy={isSubmitting}
+        >
+          {isSubmitting ? 'Cancelling…' : 'Cancel collection'}
+        </button>
+      </div>
+    </DialogContent>
+  </Dialog>
+);
+
+const Step4Collect = ({ collect, collectError, download, onCancel, onBack }) => {
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelError, setCancelError] = useState('');
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+
+  const confirmCancel = async () => {
+    setIsSubmittingCancel(true);
+    setCancelError('');
+    const error = await onCancel();
+    setIsSubmittingCancel(false);
+    if (error) {
+      setCancelError(error);
+    } else {
+      setConfirmingCancel(false);
+    }
+  };
+
   // Analysis of the zip that was just collected (POST /api/analysis/zip)
   const [report, setReport] = useState(null);
   const [analyzeError, setAnalyzeError] = useState('');
@@ -89,6 +141,10 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
   const serviceErrors = services.filter((service) => service.status === 'error').length;
   const totalErrors = services.reduce((sum, service) => sum + (service.errors || 0), 0);
   const allDone = collectStatus === 'done';
+  const wasCancelled = collectStatus === 'cancelled';
+  const isRunning = RUNNING_STATUSES.includes(collectStatus) && !download;
+  const cancelRequested = Boolean(collect?.cancel_requested) && isRunning;
+  const keptServices = services.filter((service) => service.status === 'done').length;
 
   return (
     <>
@@ -131,6 +187,28 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
             </div>
           )}
 
+          {!collectFailed && wasCancelled && (
+            <div className="alert alert-warning" role="status">
+              <strong>Collection cancelled</strong>
+              <span>
+                {keptServices > 0
+                  ? `Results from ${keptServices} finished service${keptServices === 1 ? '' : 's'} were packaged. `
+                  : 'No service finished, so the package contains only partial results and the manifest. '}
+                Tools started by this collection were stopped and removed from the cluster.
+              </span>
+            </div>
+          )}
+
+          {cancelRequested && (
+            <div className="alert alert-warning" role="status">
+              <strong>Cancelling…</strong>
+              <span>
+                Waiting for the current step to stop safely and removing deployed tools. This
+                can take a few seconds.
+              </span>
+            </div>
+          )}
+
           {services.length > 0 ? (
             <div className="service-progress-list">
               {services.map((service) => (
@@ -158,7 +236,7 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
           {download && (
             <div className="action-row">
               <a className="btn btn-primary" href={download.url} download={download.filename}>
-                Download diagnostic package
+                {wasCancelled ? 'Download partial package' : 'Download diagnostic package'}
               </a>
               <button
                 type="button"
@@ -184,9 +262,30 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
           <button className="btn btn-secondary" onClick={onBack}>
             Back
           </button>
+          {isRunning && (
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() => {
+                setCancelError('');
+                setConfirmingCancel(true);
+              }}
+              disabled={cancelRequested}
+            >
+              {cancelRequested ? 'Cancelling…' : 'Cancel collection'}
+            </button>
+          )}
         </div>
       </div>
     </section>
+    {confirmingCancel && (
+      <CancelDialog
+        onConfirm={confirmCancel}
+        onClose={() => setConfirmingCancel(false)}
+        error={cancelError}
+        isSubmitting={isSubmittingCancel}
+      />
+    )}
     {report && <AnalysisReport report={report} />}
     </>
   );

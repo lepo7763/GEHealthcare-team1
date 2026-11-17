@@ -12,6 +12,7 @@ from kubernetes import client
 from app.log_collection.progress import (
     CORE_DUMPS_LABEL,
     CORE_DUMPS_SERVICE_ID,
+    CollectionCancelled,
     tracker,
 )
 from app.log_collection.schemas import (
@@ -142,6 +143,7 @@ def collect_core_dumps_into(
     )
     written: List[str] = []
     service_error: Optional[str] = None
+    cancelled = False
     workdir = tempfile.mkdtemp(prefix="core-dumps-")
 
     try:
@@ -161,10 +163,14 @@ def collect_core_dumps_into(
 
             def on_bytes(n: int) -> None:
                 nonlocal done_bytes
+                # Checkpoint inside a transfer, so a large core stops promptly.
+                # Nothing is zipped until the whole file has arrived.
+                tracker.raise_if_cancelled()
                 done_bytes += n
                 tracker.set_service_completed(CORE_DUMPS_SERVICE_ID, done_bytes // _MB)
 
             for f in selected:
+                tracker.raise_if_cancelled()
                 start = done_bytes
                 tracker.set_service_current(CORE_DUMPS_SERVICE_ID, f.path)
                 try:
@@ -178,6 +184,9 @@ def collect_core_dumps_into(
                 done_bytes = start + f.size_bytes
                 tracker.set_service_completed(CORE_DUMPS_SERVICE_ID, done_bytes // _MB)
                 summary.collected.append(record)
+    except CollectionCancelled:
+        # Leaving the `with` block above already deleted the collector Job.
+        cancelled = True
     except CoreDumpCollectionError as e:
         service_error = str(e)
     except Exception as e:  # don't let an unexpected failure sink other services
@@ -191,6 +200,11 @@ def collect_core_dumps_into(
     zf.writestr(SUMMARY_PATH, summary.model_dump_json(indent=2))
     files_out = [*written, SUMMARY_PATH]
     manifest.collected_files.extend(files_out)
+
+    if cancelled:
+        # Cores already collected and the summary stay in the zip; the
+        # orchestrator records this service as cancelled.
+        raise CollectionCancelled()
 
     if service_error:
         tracker.fail_service(CORE_DUMPS_SERVICE_ID, service_error)

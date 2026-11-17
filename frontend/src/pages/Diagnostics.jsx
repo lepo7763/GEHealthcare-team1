@@ -83,6 +83,35 @@ const Diagnostics = () => {
     pollRef.current = setInterval(pollProgress, 600);
   };
 
+  // Ask the backend to stop the running collection. The pending /api/logs/zip
+  // request is deliberately left open: it resolves with the partial package
+  // once the backend has stopped and removed the deployed tools. Returns an
+  // error message, or '' on success.
+  const cancelCollection = async () => {
+    try {
+      const res = await fetch('/api/logs/cancel', { method: 'POST' });
+      if (res.ok) {
+        setCollect(await res.json());
+        return '';
+      }
+      if (res.status === 409) {
+        // It finished before the request arrived; show the final state.
+        pollProgress();
+        return '';
+      }
+      let detail = `Could not cancel the collection (${res.status}).`;
+      try {
+        const body = await res.json();
+        if (body?.detail) detail = formatErrorDetail(body.detail);
+      } catch {
+        /* non-JSON error body */
+      }
+      return detail;
+    } catch {
+      return 'Could not reach the analysis tool backend to cancel the collection.';
+    }
+  };
+
   const startCollection = async () => {
     setCollectError('');
     setCollect(null);
@@ -334,6 +363,7 @@ const Diagnostics = () => {
           collect={collect}
           collectError={collectError}
           download={download}
+          onCancel={cancelCollection}
           onBack={() => setStep(3)}
         />
       )}
