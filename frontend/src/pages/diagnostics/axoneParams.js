@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
-import { toLocalDateTime } from '../../lib/dateTime';
-import { normalizeTime } from '../../lib/time';
-import { buildAxoneLogParams } from '../../lib/logExport';
+import { toLocalDateTime } from '../../lib/dateTime.js';
+import { normalizeTime } from '../../lib/time.js';
+import { buildAxoneLogParams } from '../../lib/logExport.js';
 
 export const DEFAULT_AXONE_PARAMS = {
   scope: 'device',
