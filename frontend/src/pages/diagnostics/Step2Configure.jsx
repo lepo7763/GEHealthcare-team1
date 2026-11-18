@@ -1,16 +1,21 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
+import {
+  NETSHOOT_DEFAULT_SCOPE,
+  NETSHOOT_MAX_DURATION,
+  NETSHOOT_MIN_DURATION,
+  NETSHOOT_SCOPES,
+  NETSHOOT_SCOPE_TEXT,
+} from './netshootApi';
 
 // Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
 const MIN_DURATION = 10;
 const MAX_DURATION = 600;
 
-const validateDuration = (value) => {
+const validateDuration = (value, min = MIN_DURATION, max = MAX_DURATION) => {
   const text = String(value ?? '').trim();
   const number = Number(text);
-  return (
-    text !== '' && Number.isInteger(number) && number >= MIN_DURATION && number <= MAX_DURATION
-  );
+  return text !== '' && Number.isInteger(number) && number >= min && number <= max;
 };
 
 const Step2Configure = ({
@@ -21,12 +26,23 @@ const Step2Configure = ({
   umfDuration,
   setUmfDuration,
   umfDomainOptions,
+  netshootScope,
+  setNetshootScope,
+  netshootDuration,
+  setNetshootDuration,
   onBack,
   onContinue,
 }) => {
   const domainOption = umfDomainOptions.find((option) => option.domain === Number(umfDomain));
   const domainValid = Boolean(domainOption);
   const durationValid = validateDuration(umfDuration);
+
+  const netshootScopeValid = Boolean(NETSHOOT_SCOPE_TEXT[netshootScope]);
+  const netshootDurationValid = validateDuration(
+    netshootDuration,
+    NETSHOOT_MIN_DURATION,
+    NETSHOOT_MAX_DURATION,
+  );
 
   // Settings for each service that has any, keyed by service id. To give a new service
   // (e.g. Netshoot) its own settings, add an entry here: whether its values are valid,
@@ -71,6 +87,64 @@ const Step2Configure = ({
               {!durationValid && (
                 <small className="field-error">
                   Enter a whole number from {MIN_DURATION} to {MAX_DURATION}.
+                </small>
+              )}
+            </label>
+          </div>
+        </>
+      ),
+    },
+    netshoot: {
+      isValid: netshootScopeValid && netshootDurationValid,
+      summary: `${NETSHOOT_SCOPE_TEXT[netshootScope] || '—'} · ${String(netshootDuration).trim() || '—'} s`,
+      fields: (
+        <>
+          <fieldset className="scope-field">
+            <legend>Capture scope</legend>
+            <div className="scope-options" role="radiogroup">
+              {NETSHOOT_SCOPES.map((option) => (
+                <label
+                  key={option.value}
+                  className={`scope-option ${netshootScope === option.value ? 'selected' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="netshoot-scope"
+                    value={option.value}
+                    checked={netshootScope === option.value}
+                    onChange={() => setNetshootScope(option.value)}
+                  />
+                  <span>
+                    <strong>{option.label}</strong>
+                    {option.detail && ` — ${option.detail}`}
+                    {option.value === NETSHOOT_DEFAULT_SCOPE && ' (default)'}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <small>
+              Pod traffic covers every running pod on each node; host traffic covers the
+              node&apos;s own network interfaces.
+            </small>
+          </fieldset>
+          <div className="form-row">
+            <label className="field grow">
+              <span>Capture duration (seconds)</span>
+              <input
+                type="number"
+                min={NETSHOOT_MIN_DURATION}
+                max={NETSHOOT_MAX_DURATION}
+                step="1"
+                value={netshootDuration}
+                onChange={(e) => setNetshootDuration(e.target.value)}
+                aria-invalid={!netshootDurationValid}
+              />
+              <small>
+                Between {NETSHOOT_MIN_DURATION} and {NETSHOOT_MAX_DURATION} seconds.
+              </small>
+              {!netshootDurationValid && (
+                <small className="field-error">
+                  Enter a whole number from {NETSHOOT_MIN_DURATION} to {NETSHOOT_MAX_DURATION}.
                 </small>
               )}
             </label>

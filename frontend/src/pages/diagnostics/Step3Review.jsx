@@ -1,8 +1,12 @@
+import { NETSHOOT_SCOPE_TEXT } from './netshootApi';
+
 const Step3Review = ({
   result,
   selectedServices,
   umfDomain,
   umfDuration,
+  netshootScope,
+  netshootDuration,
   onEditConnection,
   onEditServices,
   onBack,
@@ -13,6 +17,7 @@ const Step3Review = ({
       ? selectedServices.map((service) => service.name).join(', ')
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
+  const netshootSelected = selectedServices.some((service) => service.id === 'netshoot');
 
   return (
     <section className="section-narrow">
@@ -55,6 +60,24 @@ const Step3Review = ({
                 <div className="check-detail">
                   Captures live RTI telemetry in a short-lived Kubernetes Job (deleted
                   afterwards) and bundles it into the diagnostic zip.
+                </div>
+              </div>
+            </li>
+          )}
+          {netshootSelected && (
+            <li>
+              <div>
+                <div className="check-title">Netshoot packet capture</div>
+                <div className="check-detail">
+                  {NETSHOOT_SCOPE_TEXT[netshootScope]} · {String(netshootDuration).trim()} s
+                </div>
+                <div className="check-detail">
+                  Runs one short-lived Netshoot Job per node
+                  {netshootScope === 'host'
+                    ? ' to capture traffic on the node’s own network interfaces.'
+                    : netshootScope === 'pod'
+                      ? ' to capture traffic from every running pod on that node.'
+                      : ' to capture traffic from every running pod and the node’s own network interfaces.'}
                 </div>
               </div>
             </li>

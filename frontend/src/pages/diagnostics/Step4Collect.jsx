@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SERVICE_STATUS_LABEL, STATUS_LABEL } from './constants';
 import AnalysisReport from '../logAnalysis/AnalysisReport';
 import { analyzeZip } from '../logAnalysis/analyzeZip';
+import NetshootCaptureCard from './NetshootCaptureCard';
 
 const ServiceProgressCard = ({ service }) => {
   const status = service.status || 'pending';
@@ -61,7 +62,15 @@ const ServiceProgressCard = ({ service }) => {
   );
 };
 
-const Step4Collect = ({ collect, collectError, download, onBack }) => {
+const Step4Collect = ({
+  collect,
+  collectError,
+  download,
+  showLogCollection = true,
+  netshootCapture,
+  onCancelNetshoot,
+  onBack,
+}) => {
   // Analysis of the zip that was just collected (POST /api/analysis/zip)
   const [report, setReport] = useState(null);
   const [analyzeError, setAnalyzeError] = useState('');
@@ -104,79 +113,96 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
           className="collect-panel"
           aria-busy={collectStatus === 'collecting' || collectStatus === 'packaging'}
         >
-          {collectFailed && (
-            <div className="alert alert-error" role="alert">
-              <strong>Collection failed</strong>
-              <span>{collectFailed}</span>
-            </div>
-          )}
+          {showLogCollection && (
+            <>
+            {collectFailed && (
+              <div className="alert alert-error" role="alert">
+                <strong>Collection failed</strong>
+                <span>{collectFailed}</span>
+              </div>
+            )}
 
-          {!collectFailed && allDone && (
-            <div
-              className={`alert ${serviceErrors ? 'alert-warning' : 'alert-success'}`}
-              role="status"
-            >
-              <strong>
-                {serviceErrors ? 'Collection completed with errors' : 'Collection complete'}
-              </strong>
-              <span>
-                {serviceErrors > 0
-                  ? `${serviceErrors} service${serviceErrors === 1 ? '' : 's'} failed`
-                  : 'All selected services finished'}
-                {totalErrors > 0
-                  ? ` · ${totalErrors} error${totalErrors === 1 ? '' : 's'} reported`
-                  : ''}
-                .
-              </span>
-            </div>
-          )}
-
-          {services.length > 0 ? (
-            <div className="service-progress-list">
-              {services.map((service) => (
-                <ServiceProgressCard key={service.id} service={service} />
-              ))}
-            </div>
-          ) : (
-            !collectFailed &&
-            !allDone && (
-              <>
-                <div
-                  className="progress progress-indeterminate"
-                  role="progressbar"
-                  aria-label="Starting collection"
-                >
-                  <div className="progress-fill" />
-                </div>
-                <p className="collect-meta">
-                  {STATUS_LABEL[collectStatus] || 'Starting collection…'}
-                </p>
-              </>
-            )
-          )}
-
-          {download && (
-            <div className="action-row">
-              <a className="btn btn-primary" href={download.url} download={download.filename}>
-                Download diagnostic package
-              </a>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={analyzeDownload}
-                disabled={isAnalyzing}
-                aria-busy={isAnalyzing}
+            {!collectFailed && allDone && (
+              <div
+                className={`alert ${serviceErrors ? 'alert-warning' : 'alert-success'}`}
+                role="status"
               >
-                {isAnalyzing ? 'Analyzing…' : 'Analyze logs'}
-              </button>
-            </div>
+                <strong>
+                  {/* With Netshoot also running, this alert only covers the log package. */}
+                  {netshootCapture
+                    ? serviceErrors
+                      ? 'Log collection completed with errors'
+                      : 'Log collection complete'
+                    : serviceErrors
+                      ? 'Collection completed with errors'
+                      : 'Collection complete'}
+                </strong>
+                <span>
+                  {serviceErrors > 0
+                    ? `${serviceErrors} service${serviceErrors === 1 ? '' : 's'} failed`
+                    : netshootCapture
+                      ? 'The diagnostic package is ready'
+                      : 'All selected services finished'}
+                  {totalErrors > 0
+                    ? ` · ${totalErrors} error${totalErrors === 1 ? '' : 's'} reported`
+                    : ''}
+                  .
+                </span>
+              </div>
+            )}
+
+            {services.length > 0 ? (
+              <div className="service-progress-list">
+                {services.map((service) => (
+                  <ServiceProgressCard key={service.id} service={service} />
+                ))}
+              </div>
+            ) : (
+              !collectFailed &&
+              !allDone && (
+                <>
+                  <div
+                    className="progress progress-indeterminate"
+                    role="progressbar"
+                    aria-label="Starting collection"
+                  >
+                    <div className="progress-fill" />
+                  </div>
+                  <p className="collect-meta">
+                    {STATUS_LABEL[collectStatus] || 'Starting collection…'}
+                  </p>
+                </>
+              )
+            )}
+
+            {download && (
+              <div className="action-row">
+                <a className="btn btn-primary" href={download.url} download={download.filename}>
+                  Download diagnostic package
+                </a>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={analyzeDownload}
+                  disabled={isAnalyzing}
+                  aria-busy={isAnalyzing}
+                >
+                  {isAnalyzing ? 'Analyzing…' : 'Analyze logs'}
+                </button>
+              </div>
+            )}
+
+            {analyzeError && (
+              <div className="alert alert-error" role="alert">
+                <strong>Analysis failed</strong>
+                <span>{analyzeError}</span>
+              </div>
+            )}
+            </>
           )}
 
-          {analyzeError && (
-            <div className="alert alert-error" role="alert">
-              <strong>Analysis failed</strong>
-              <span>{analyzeError}</span>
-            </div>
+          {netshootCapture && (
+            <NetshootCaptureCard capture={netshootCapture} onCancel={onCancelNetshoot} />
           )}
         </div>
 
