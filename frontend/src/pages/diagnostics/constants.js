@@ -26,6 +26,11 @@ export const SERVICES = [
     description:
       'Read-only snapshot of firewalld zones and policies, iptables, nftables and ipsets on the node, with a printable report.',
   },
+  {
+    id: 'netshoot',
+    name: 'Netshoot packet capture',
+    description: 'Captures network traffic (pcap) from pods and/or the host on every node.',
+  },
 ];
 
 export const STEP_INFO = {

@@ -1124,3 +1124,75 @@ code {
 .core-table th:first-child {
   width: 32px;
 }
+
+/* Netshoot: capture scope (Configure) and per-node Job list (Collect) */
+.scope-field {
+  border: 0;
+  margin: 0 0 var(--eds-spacing-md);
+  padding: 0;
+  min-width: 0;
+}
+
+.scope-field legend {
+  padding: 0;
+  margin-bottom: var(--eds-spacing-xs);
+  font-weight: var(--eds-font-weight-semibold);
+}
+
+.scope-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--eds-spacing-xs);
+  margin-bottom: var(--eds-spacing-xs);
+}
+
+.scope-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--eds-color-gray-200);
+  border-radius: var(--eds-radius-md);
+  background: var(--eds-color-white);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.scope-option:hover { background: var(--eds-color-gray-50); }
+
+.scope-option.selected {
+  border-color: var(--eds-color-purple);
+  background: rgba(96, 34, 166, 0.06);
+}
+
+.scope-option input {
+  /* undo the generic .field input sizing (42px tall, full width) */
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--eds-color-purple);
+}
+
+.scope-option:has(input:focus-visible) { box-shadow: var(--eds-focus-ring); }
+
+.netshoot-node-list {
+  list-style: none;
+  margin: var(--eds-spacing-xs) 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: var(--eds-font-size-sm);
+}
+
+.netshoot-node-list li {
+  display: flex;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+  justify-content: space-between;
+  gap: var(--eds-spacing-sm);
+  padding: 6px 10px;
+  border-radius: var(--eds-radius-sm);
+  background: var(--eds-color-gray-50);
+}

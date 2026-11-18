@@ -1,4 +1,5 @@
 import { describeCoreFilters, estimateSelection, formatBytes } from './coreDumps';
+import { NETSHOOT_SCOPE_TEXT } from './netshootApi';
 
 const Step3Review = ({
   result,
@@ -7,6 +8,8 @@ const Step3Review = ({
   umfDuration,
   coreFilters,
   corePreview,
+  netshootScope,
+  netshootDuration,
   onEditConnection,
   onEditServices,
   onBack,
@@ -21,6 +24,7 @@ const Step3Review = ({
   const coreEstimate = corePreview?.data
     ? estimateSelection(corePreview.data.files, coreFilters)
     : null;
+  const netshootSelected = selectedServices.some((service) => service.id === 'netshoot');
 
   return (
     <section className="section-narrow">
@@ -83,6 +87,24 @@ const Step3Review = ({
                   Read from the node by a short-lived, read-only Kubernetes Job (deleted
                   afterwards). Cores can contain process memory, including patient data —
                   handle the package accordingly.
+                </div>
+              </div>
+            </li>
+          )}
+          {netshootSelected && (
+            <li>
+              <div>
+                <div className="check-title">Netshoot packet capture</div>
+                <div className="check-detail">
+                  {NETSHOOT_SCOPE_TEXT[netshootScope]} · {String(netshootDuration).trim()} s
+                </div>
+                <div className="check-detail">
+                  Runs one short-lived Netshoot Job per node
+                  {netshootScope === 'host'
+                    ? ' to capture traffic on the node’s own network interfaces.'
+                    : netshootScope === 'pod'
+                      ? ' to capture traffic from every running pod on that node.'
+                      : ' to capture traffic from every running pod and the node’s own network interfaces.'}
                 </div>
               </div>
             </li>

@@ -7,6 +7,7 @@ import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
 import { CORE_DEFAULT_MB, sinceIso } from './diagnostics/coreDumps';
+import { NETSHOOT_DEFAULT_SCOPE, startNetshootCapture } from './diagnostics/netshootApi';
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -57,6 +58,12 @@ const Diagnostics = () => {
   const [corePreview, setCorePreview] = useState({ status: 'idle', data: null, error: '' });
   const corePreviewAbortRef = useRef(null);
 
+  // Netshoot packet capture settings (Step 2) and run state (Step 4).
+  const [netshootScope, setNetshootScope] = useState(NETSHOOT_DEFAULT_SCOPE);
+  const [netshootDuration, setNetshootDuration] = useState('30');
+  const [netshootCapture, setNetshootCapture] = useState(null);
+  const netshootHandleRef = useRef(null);
+
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
   const [collectError, setCollectError] = useState('');
@@ -94,7 +101,20 @@ const Diagnostics = () => {
     pollRef.current = setInterval(pollProgress, 600);
   };
 
+  // Netshoot runs as its own capture (POST /api/network/captures), next to the log zip.
+  const startNetshoot = () => {
+    netshootHandleRef.current?.dispose();
+    if (netshootCapture?.download) URL.revokeObjectURL(netshootCapture.download.url);
+    setNetshootCapture(null);
+    if (!selected.includes('netshoot')) return;
+    netshootHandleRef.current = startNetshootCapture(
+      { scope: netshootScope, durationSeconds: Number(netshootDuration) },
+      setNetshootCapture,
+    );
+  };
+
   const startCollection = async () => {
+    startNetshoot();
     setCollectError('');
     setCollect(null);
     setDownload(null);
@@ -102,6 +122,10 @@ const Diagnostics = () => {
       URL.revokeObjectURL(downloadUrlRef.current);
       downloadUrlRef.current = null;
     }
+
+    // Netshoot isn't part of the log zip; skip the zip when it's the only service.
+    const zipServices = selected.filter((serviceId) => serviceId !== 'netshoot');
+    if (zipServices.length === 0) return;
 
     // Attach to a run that's already in progress instead of starting a second.
     let current = null;
@@ -121,7 +145,7 @@ const Diagnostics = () => {
     abortRef.current = controller;
 
     const params = new URLSearchParams();
-    selected.forEach((serviceId) => params.append('services', serviceId));
+    zipServices.forEach((serviceId) => params.append('services', serviceId));
     if (selected.includes('umf-rti')) {
       params.set('umf_domain_id', String(umfDomain));
       params.set('umf_duration_seconds', String(umfDuration).trim());
@@ -218,6 +242,7 @@ const Diagnostics = () => {
       if (abortRef.current) abortRef.current.abort();
       if (corePreviewAbortRef.current) corePreviewAbortRef.current.abort();
       if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
+      netshootHandleRef.current?.dispose();
     };
   }, []);
 
@@ -330,6 +355,10 @@ const Diagnostics = () => {
             setCoreMaxMb={setCoreMaxMb}
             corePreview={corePreview}
             onRefreshCorePreview={loadCorePreview}
+            netshootScope={netshootScope}
+            setNetshootScope={setNetshootScope}
+            netshootDuration={netshootDuration}
+            setNetshootDuration={setNetshootDuration}
             onBack={handleBackToConnect}
             onContinue={() => setStep(3)}
           />
@@ -343,6 +372,8 @@ const Diagnostics = () => {
             umfDuration={umfDuration}
             coreFilters={{ sinceHours: coreSinceHours, processes: coreProcesses, maxMb: coreMaxMb }}
             corePreview={corePreview}
+            netshootScope={netshootScope}
+            netshootDuration={netshootDuration}
             onEditConnection={() => setStep(1)}
             onEditServices={() => setStep(2)}
             onBack={() => setStep(2)}
@@ -358,6 +389,9 @@ const Diagnostics = () => {
             collect={collect}
             collectError={collectError}
             download={download}
+            showLogCollection={selected.some((serviceId) => serviceId !== 'netshoot')}
+            netshootCapture={netshootCapture}
+            onCancelNetshoot={() => netshootHandleRef.current?.cancel()}
             onBack={() => setStep(3)}
           />
         )}
