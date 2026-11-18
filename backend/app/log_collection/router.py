@@ -1,9 +1,10 @@
 import io
 import zipfile
 from datetime import datetime, timezone
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from app.core.k8s_client import get_batch_v1_api, get_core_v1_api
+from app.core_dumps.schemas import DEFAULT_MAX_MB, MAX_MAX_MB, CoreDumpParams
 from app.diagnostics.service import CollectionInProgressError, collect_diagnostics
 from app.log_collection.progress import tracker
 from app.log_collection.schemas import CollectionProgressResponse, LogCollectionParams
@@ -34,19 +35,31 @@ def get_collection_progress() -> dict:
 
 @router.get("/zip")
 def download_diagnostics(
-    services: List[Literal["container-logs", "umf-rti"]] = Query(
+    services: List[Literal["container-logs", "umf-rti", "core-dumps", "firewall"]] = Query(
         default=["container-logs"],
         description=(
-            "Repeat for each service: services=container-logs&services=umf-rti. "
-            "At least one service is required."
+            "Repeat for each service: services=container-logs&services=umf-rti"
+            "&services=core-dumps&services=firewall. At least one service is required."
         ),
     ),
     log_params: LogCollectionParams = Depends(),
     umf_params: UmfRtiParams = Depends(),
+    core_since: Optional[datetime] = Query(
+        default=None, description="Core dumps: only cores dumped at/after this time."
+    ),
+    core_process: List[str] = Query(
+        default=[], description="Core dumps: process name(s) to include (repeatable)."
+    ),
+    core_max_mb: int = Query(
+        default=DEFAULT_MAX_MB,
+        ge=1,
+        le=MAX_MAX_MB,
+        description="Core dumps: total size cap in MB (newest kept first).",
+    ),
     core: client.CoreV1Api = Depends(get_core_v1_api),
     batch: client.BatchV1Api = Depends(get_batch_v1_api),
 ):
-    """Collect container logs and/or a UMF RTI discovery capture into one zip."""
+    """Collect container logs, a UMF RTI capture, node core dumps and/or firewall settings into one zip."""
     if tracker.running:
         raise HTTPException(
             status_code=409,
@@ -64,6 +77,9 @@ def download_diagnostics(
             services=list(services),
             log_params=log_params,
             umf_params=umf_params,
+            core_dump_params=CoreDumpParams(
+                since=core_since, processes=core_process, max_mb=core_max_mb
+            ),
         )
     except CollectionInProgressError as e:
         raise HTTPException(status_code=409, detail=str(e))

@@ -8,6 +8,8 @@ from app.log_export.router import router as log_export_router
 from app.environments.router import router as environments_router
 from app.umf_rti.router import router as umf_rti_router
 from app.log_analysis.router import router as analysis_router
+from app.core_dumps.router import router as core_dumps_router
+from app.firewall.router import router as firewall_router
 
 app = FastAPI(title="IoMT Analysis Tool", version="0.1.0")
 
@@ -19,6 +21,8 @@ app.include_router(log_export_router)
 app.include_router(environments_router)
 app.include_router(umf_rti_router)
 app.include_router(analysis_router)
+app.include_router(core_dumps_router)
+app.include_router(firewall_router)
 
 # Prototype page for the "Analyze Package" step at /analysis/. Served by the backend itself
 # so it works offline in the lab and needs no CORS setup; will move into the React frontend.
