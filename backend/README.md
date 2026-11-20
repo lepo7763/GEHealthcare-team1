@@ -3,11 +3,18 @@
 FastAPI service for the IoMT Analysis Tool. It currently exposes:
 
 - `GET /api/health` — liveness/readiness.
-- `GET /api/environments/check` — Kubernetes reachability/authentication check.
+- `POST /api/environments/check` — Kubernetes reachability/authentication check.
+- `GET /api/logs/zip` — one diagnostic package from the selected services:
+  `container-logs`, `umf-rti`, `axone-logs`, `core-dumps` and `firewall`.
 - `GET /api/logs/progress` — per-service progress for the running collection.
-- `GET /api/logs/zip` — container logs and/or a UMF RTI discovery capture.
 - `GET /api/logs/demo.zip` — simulated package for UI development.
-- `GET /api/logs/export` — Axone system log export in CSV or JSON.
+- `GET /api/logs/export` — standalone Axone system log export in CSV or JSON.
+- `GET /api/umf-rti/domains` — DDS domain options for the UMF RTI capture.
+- `GET /api/core-dumps` — core files on the node, without downloading them.
+- `GET /api/firewall` — current node firewall snapshot and report.
+- `POST /api/analysis/zip` and `POST /api/analysis/privacy` — error summary and
+  PHI/PII scan of a collected package.
+- `/api/network/*` — Netshoot pod discovery and demo packet capture.
 
 ## Requirements
 
@@ -62,17 +69,21 @@ attached to the app in `main.py`.
 
 ## Axone log export
 
-The Sessions page includes **Export Axone logs**. Select one device or all
-devices, enter the local time range,
-and choose CSV or JSON. An optional integer event category selects the event
-variant of each query. Category names are not mapped to codes; confirm codes
-with the team. A device/source UUID identifies an Axone device, not a pod or
-container name.
+In the UI, Axone logs are one of the tools in the Diagnostics workflow. Select
+**Axone Logs** in the Configure step and use **Edit** to choose one device or all
+devices, the local start and end time, and an optional integer event category.
+Category names are not mapped to codes; confirm codes with the team. A
+device/source UUID identifies an Axone device, not a pod or container name.
 
-The frontend calls `GET /api/logs/export` on this backend. The backend forwards
-the request to the appropriate one of the eight endpoints in the
-[Axone API guide](docs/log-export-api-guide.md). The original ZIP download is
-still available at `GET /api/logs/zip`.
+The frontend sends these filters to `GET /api/logs/zip` as `axone_scope`,
+`axone_device_uuid`, `axone_start_timestamp`, `axone_end_timestamp` and
+`axone_event_category`, and the export is added to the package as
+`axone/axone_<scope>_logs.csv`. The filters are validated before collection
+starts, so a bad range fails fast instead of after the other services run.
+
+`GET /api/logs/export` is still available as a standalone API for scripts and
+testing; it also supports JSON. Both paths forward to the appropriate one of the
+eight endpoints in the [Axone API guide](docs/log-export-api-guide.md).
 
 Set `AXONE_LOG_EXPORT_URL` to the Axone service's base URL (scheme, host, and
 port only; no path prefix). The default is `http://axone-log-export-tcp:9200`.
@@ -89,7 +100,7 @@ or the cluster network. The browser calls the backend, so it does not need
 direct access to the Axone service. Vite forwards `/api` requests to port 8000
 in development; a production web server must also route `/api` to the backend.
 
-Example backend request:
+Example standalone request:
 
 ```text
 GET /api/logs/export?scope=device&format=csv&deviceuuid=d4e5f6a7-1234-5678-9abc-def012345678&startTimestamp=2024-01-15T09:00:00.000&endTimestamp=2024-01-15T09:45:00.000

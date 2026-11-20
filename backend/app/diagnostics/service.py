@@ -14,6 +14,8 @@ from app.core_dumps.service import collect_core_dumps_into
 from app.firewall.config import FirewallConfig
 from app.firewall.service import collect_firewall_into
 from app.log_collection.progress import (
+    AXONE_LOGS_LABEL,
+    AXONE_LOGS_SERVICE_ID,
     CONTAINER_LOGS_LABEL,
     CONTAINER_LOGS_SERVICE_ID,
     CORE_DUMPS_LABEL,
@@ -35,6 +37,8 @@ from app.log_collection.service import (
     ClusterUnreachableError,
     collect_container_logs_into,
 )
+from app.log_export.schemas import AxoneLogParams
+from app.log_export.service import ExportError, fetch_axone_csv
 from app.umf_rti.config import UmfRtiConfig, get_umf_rti_config
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import (
@@ -51,6 +55,7 @@ from kubernetes import client
 SUPPORTED_SERVICES = (
     CONTAINER_LOGS_SERVICE_ID,
     UMF_RTI_SERVICE_ID,
+    AXONE_LOGS_SERVICE_ID,
     CORE_DUMPS_SERVICE_ID,
     FIREWALL_SERVICE_ID,
 )
@@ -83,6 +88,22 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="containers",
                 )
             )
+        elif service_id == UMF_RTI_SERVICE_ID:
+            progress_services.append(
+                ServiceProgress(
+                    id=UMF_RTI_SERVICE_ID,
+                    label=UMF_RTI_LABEL,
+                    unit="seconds",
+                )
+            )
+        elif service_id == AXONE_LOGS_SERVICE_ID:
+            progress_services.append(
+                ServiceProgress(
+                    id=AXONE_LOGS_SERVICE_ID,
+                    label=AXONE_LOGS_LABEL,
+                    unit="files",
+                )
+            )
         elif service_id == FIREWALL_SERVICE_ID:
             progress_services.append(
                 ServiceProgress(
@@ -99,14 +120,6 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="MB",
                 )
             )
-        else:
-            progress_services.append(
-                ServiceProgress(
-                    id=UMF_RTI_SERVICE_ID,
-                    label=UMF_RTI_LABEL,
-                    unit="seconds",
-                )
-            )
     return tracker.try_begin(progress_services)
 
 
@@ -117,6 +130,7 @@ def collect_diagnostics(
     log_params: LogCollectionParams,
     umf_params: UmfRtiParams,
     config: Optional[UmfRtiConfig] = None,
+    axone_params: Optional[AxoneLogParams] = None,
     core_dump_params: Optional[CoreDumpParams] = None,
     core_dump_config: Optional[CoreDumpConfig] = None,
     firewall_config: Optional[FirewallConfig] = None,
@@ -129,6 +143,7 @@ def collect_diagnostics(
     """
     selected = _dedupe_services(services)
     config = config or get_umf_rti_config()
+    axone_params = axone_params or AxoneLogParams()
     if not _begin_progress(selected):
         raise CollectionInProgressError(
             "A diagnostic collection is already in progress."
@@ -151,6 +166,8 @@ def collect_diagnostics(
                     _collect_umf_rti(
                         zf, manifest, core, batch, umf_params, config, selected
                     )
+                elif service_id == AXONE_LOGS_SERVICE_ID:
+                    _collect_axone_logs(zf, manifest, axone_params, selected)
                 elif service_id == CORE_DUMPS_SERVICE_ID:
                     collect_core_dumps_into(
                         zf,
@@ -176,6 +193,10 @@ def collect_diagnostics(
         raise
     except UmfRtiPrerequisiteError as e:
         tracker.fail(str(e))
+        temp_zip.close()
+        raise
+    except ExportError as e:
+        tracker.fail(e.detail)
         temp_zip.close()
         raise
     except Exception as e:
@@ -261,3 +282,61 @@ def _collect_umf_rti(
         # The recording was pulled to a local temp dir; drop it now it's zipped.
         if result is not None and result.recording_dir:
             shutil.rmtree(result.recording_dir, ignore_errors=True)
+
+
+def _collect_axone_logs(
+    zf: zipfile.ZipFile,
+    manifest: LogCollectionManifest,
+    params: AxoneLogParams,
+    selected: List[str],
+) -> None:
+    tracker.set_service_total(AXONE_LOGS_SERVICE_ID, 1, unit="files")
+    tracker.set_service_current(AXONE_LOGS_SERVICE_ID, "Requesting CSV export")
+    try:
+        content = fetch_axone_csv(params)
+    except ExportError as e:
+        message = f"Axone log export failed: {e.detail}"
+        tracker.fail_service(AXONE_LOGS_SERVICE_ID, message)
+        if selected == [AXONE_LOGS_SERVICE_ID]:
+            # Nothing else was requested, so surface the actionable error.
+            raise
+        _record_axone_failure(manifest, message)
+        return
+    except Exception as e:
+        message = f"Axone log export failed: {e}"
+        tracker.fail_service(AXONE_LOGS_SERVICE_ID, message)
+        _record_axone_failure(manifest, message)
+        return
+
+    path = f"axone/axone_{params.axone_scope}_logs.csv"
+    zf.writestr(path, content)
+    manifest.collected_files.append(path)
+    tracker.increment_service(AXONE_LOGS_SERVICE_ID, current=path)
+    manifest.services.append(
+        CollectedService(
+            id=AXONE_LOGS_SERVICE_ID,
+            label=AXONE_LOGS_LABEL,
+            status="done",
+            files=[path],
+        )
+    )
+
+
+def _record_axone_failure(manifest: LogCollectionManifest, message: str) -> None:
+    manifest.errors.append(
+        LogErrorEntry(
+            namespace="(axone)",
+            pod="(log-export)",
+            container="(all)",
+            reason=message,
+            service=AXONE_LOGS_SERVICE_ID,
+        )
+    )
+    manifest.services.append(
+        CollectedService(
+            id=AXONE_LOGS_SERVICE_ID,
+            label=AXONE_LOGS_LABEL,
+            status="error",
+            error=message,
+        )
+    )

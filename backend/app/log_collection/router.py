@@ -9,6 +9,8 @@ from app.diagnostics.service import CollectionInProgressError, collect_diagnosti
 from app.log_collection.progress import tracker
 from app.log_collection.schemas import CollectionProgressResponse, LogCollectionParams
 from app.log_collection.service import ClusterUnreachableError
+from app.log_export.schemas import AxoneLogParams
+from app.log_export.service import ExportError, validate_axone_params
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import UmfRtiPrerequisiteError
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -35,15 +37,19 @@ def get_collection_progress() -> dict:
 
 @router.get("/zip")
 def download_diagnostics(
-    services: List[Literal["container-logs", "umf-rti", "core-dumps", "firewall"]] = Query(
+    services: List[
+        Literal["container-logs", "umf-rti", "axone-logs", "core-dumps", "firewall"]
+    ] = Query(
         default=["container-logs"],
         description=(
             "Repeat for each service: services=container-logs&services=umf-rti"
-            "&services=core-dumps&services=firewall. At least one service is required."
+            "&services=axone-logs&services=core-dumps&services=firewall. "
+            "At least one service is required."
         ),
     ),
     log_params: LogCollectionParams = Depends(),
     umf_params: UmfRtiParams = Depends(),
+    axone_params: AxoneLogParams = Depends(),
     core_since: Optional[datetime] = Query(
         default=None, description="Core dumps: only cores dumped at/after this time."
     ),
@@ -59,7 +65,8 @@ def download_diagnostics(
     core: client.CoreV1Api = Depends(get_core_v1_api),
     batch: client.BatchV1Api = Depends(get_batch_v1_api),
 ):
-    """Collect container logs, a UMF RTI capture, node core dumps and/or firewall settings into one zip."""
+    """Collect container logs, a UMF RTI capture, an Axone log CSV export,
+    node core dumps and/or firewall settings into one zip."""
     if tracker.running:
         raise HTTPException(
             status_code=409,
@@ -70,6 +77,11 @@ def download_diagnostics(
             status_code=422,
             detail="Select at least one diagnostic service.",
         )
+    if "axone-logs" in services:
+        try:
+            validate_axone_params(axone_params)
+        except ExportError as e:
+            raise HTTPException(status_code=422, detail=e.detail)
     try:
         temp_zip = collect_diagnostics(
             core=core,
@@ -77,6 +89,7 @@ def download_diagnostics(
             services=list(services),
             log_params=log_params,
             umf_params=umf_params,
+            axone_params=axone_params,
             core_dump_params=CoreDumpParams(
                 since=core_since, processes=core_process, max_mb=core_max_mb
             ),
@@ -87,6 +100,8 @@ def download_diagnostics(
         raise HTTPException(status_code=503, detail=str(e))
     except UmfRtiPrerequisiteError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except ExportError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
