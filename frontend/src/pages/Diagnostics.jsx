@@ -7,6 +7,7 @@ import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
 import { CORE_DEFAULT_MB, sinceIso } from './diagnostics/coreDumps';
+import { DEFAULT_AXONE_PARAMS, toAxoneQuery } from './diagnostics/axoneParams';
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -48,6 +49,9 @@ const Diagnostics = () => {
   const [umfDomain, setUmfDomain] = useState(13);
   const [umfDuration, setUmfDuration] = useState('60');
   const [umfDomainOptions, setUmfDomainOptions] = useState(FALLBACK_UMF_DOMAINS);
+
+  // Axone log export filters (Step 2): scope, device, time range, event category.
+  const [axoneParams, setAxoneParams] = useState(DEFAULT_AXONE_PARAMS);
 
   // Core dump filters (Step 2) and the node listing that previews them.
   const [coreSinceHours, setCoreSinceHours] = useState('');
@@ -117,11 +121,17 @@ const Diagnostics = () => {
       return;
     }
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     const params = new URLSearchParams();
     selected.forEach((serviceId) => params.append('services', serviceId));
+    if (selected.includes('axone-logs')) {
+      // Re-validate right before sending; the backend validates again too.
+      try {
+        toAxoneQuery(axoneParams).forEach((value, key) => params.set(key, value));
+      } catch (e) {
+        setCollectError(e.message);
+        return;
+      }
+    }
     if (selected.includes('umf-rti')) {
       params.set('umf_domain_id', String(umfDomain));
       params.set('umf_duration_seconds', String(umfDuration).trim());
@@ -132,6 +142,9 @@ const Diagnostics = () => {
       coreProcesses.forEach((name) => params.append('core_process', name));
       params.set('core_max_mb', String(coreMaxMb).trim());
     }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
       .then(async (res) => {
@@ -322,6 +335,8 @@ const Diagnostics = () => {
             umfDuration={umfDuration}
             setUmfDuration={setUmfDuration}
             umfDomainOptions={umfDomainOptions}
+            axoneParams={axoneParams}
+            setAxoneParams={setAxoneParams}
             coreSinceHours={coreSinceHours}
             setCoreSinceHours={setCoreSinceHours}
             coreProcesses={coreProcesses}
@@ -341,6 +356,7 @@ const Diagnostics = () => {
             selectedServices={selectedServices}
             umfDomain={umfDomain}
             umfDuration={umfDuration}
+            axoneParams={axoneParams}
             coreFilters={{ sinceHours: coreSinceHours, processes: coreProcesses, maxMb: coreMaxMb }}
             corePreview={corePreview}
             onEditConnection={() => setStep(1)}

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
 import CoreDumpSettings from './CoreDumpSettings';
+import AxoneLogSettings from './AxoneLogSettings';
+import { summarizeAxone, toAxoneQuery } from './axoneParams';
 import { describeCoreFilters, validateCoreMaxMb } from './coreDumps';
 
 // Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
@@ -15,6 +17,16 @@ const validateDuration = (value) => {
   );
 };
 
+// Validation message for the Axone settings, or null when they're complete.
+const axoneIssue = (value) => {
+  try {
+    toAxoneQuery(value);
+    return null;
+  } catch (e) {
+    return e.message;
+  }
+};
+
 const Step2Configure = ({
   selected,
   onToggleService,
@@ -23,6 +35,8 @@ const Step2Configure = ({
   umfDuration,
   setUmfDuration,
   umfDomainOptions,
+  axoneParams,
+  setAxoneParams,
   coreSinceHours,
   setCoreSinceHours,
   coreProcesses,
@@ -37,6 +51,7 @@ const Step2Configure = ({
   const domainOption = umfDomainOptions.find((option) => option.domain === Number(umfDomain));
   const domainValid = Boolean(domainOption);
   const durationValid = validateDuration(umfDuration);
+  const axoneError = axoneIssue(axoneParams);
 
   // Settings for each service that has any, keyed by service id. To give a new service
   // (e.g. Netshoot) its own settings, add an entry here: whether its values are valid,
@@ -86,6 +101,13 @@ const Step2Configure = ({
             </label>
           </div>
         </>
+      ),
+    },
+    'axone-logs': {
+      isValid: !axoneError,
+      summary: summarizeAxone(axoneParams),
+      fields: (
+        <AxoneLogSettings value={axoneParams} onChange={setAxoneParams} issue={axoneError} />
       ),
     },
     'core-dumps': {
