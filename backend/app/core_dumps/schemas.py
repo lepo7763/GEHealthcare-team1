@@ -10,6 +10,9 @@ class CoreDumpParams(BaseModel):
     since: Optional[datetime] = Field(
         default=None, description="Only cores dumped at or after this time (UTC)."
     )
+    until: Optional[datetime] = Field(
+        default=None, description="Only cores dumped at or before this time (UTC)."
+    )
     processes: List[str] = Field(
         default_factory=list, description="Only cores from these process names."
     )

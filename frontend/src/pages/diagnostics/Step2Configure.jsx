@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
 import CoreDumpSettings from './CoreDumpSettings';
-import { describeCoreFilters } from './coreDumps';
+import { CUSTOM_RANGE, describeCoreFilters, isCustomRangeValid } from './coreDumps';
 
 // Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
 const MIN_DURATION = 10;
@@ -25,6 +25,8 @@ const Step2Configure = ({
   umfDomainOptions,
   coreSinceHours,
   setCoreSinceHours,
+  coreCustomRange,
+  setCoreCustomRange,
   onBack,
   onContinue,
 }) => {
@@ -83,12 +85,14 @@ const Step2Configure = ({
       ),
     },
     'core-dumps': {
-      isValid: true,
-      summary: describeCoreFilters({ sinceHours: coreSinceHours }),
+      isValid: coreSinceHours !== CUSTOM_RANGE || isCustomRangeValid(coreCustomRange),
+      summary: describeCoreFilters({ sinceHours: coreSinceHours, customRange: coreCustomRange }),
       fields: (
         <CoreDumpSettings
           sinceHours={coreSinceHours}
           setSinceHours={setCoreSinceHours}
+          customRange={coreCustomRange}
+          setCustomRange={setCoreCustomRange}
         />
       ),
     },

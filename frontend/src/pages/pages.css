@@ -1104,3 +1104,62 @@ code {
 .analysis-action span {
   display: block;
 }
+
+/* Core dumps: custom date-range calendar */
+.range-calendar {
+  margin-top: var(--eds-spacing-sm);
+  padding: var(--eds-spacing-sm);
+  max-width: 20rem;
+  border: 1px solid var(--eds-color-purple-subtle);
+  border-radius: var(--eds-radius-md);
+  background: #fff;
+}
+
+.range-calendar-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--eds-spacing-xs, 4px);
+}
+
+.range-calendar-nav {
+  border: none;
+  background: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--eds-color-purple);
+}
+
+.range-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+
+.range-calendar-weekday {
+  font-size: var(--eds-font-size-sm);
+  opacity: 0.6;
+}
+
+.range-calendar-day {
+  padding: 6px 0;
+  border: none;
+  border-radius: var(--eds-radius-md);
+  background: none;
+  font-family: var(--eds-font-family);
+  cursor: pointer;
+}
+
+.range-calendar-day:hover {
+  background: var(--eds-color-purple-subtle);
+}
+
+.range-calendar-day.in-range {
+  background: var(--eds-color-purple-faint);
+}
+
+.range-calendar-day.edge {
+  background: var(--eds-color-purple);
+  color: #fff;
+}

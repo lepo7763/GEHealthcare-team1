@@ -153,11 +153,15 @@ def select_files(
     since: Optional[datetime] = params.since
     if since is not None and since.tzinfo is None:
         since = since.replace(tzinfo=timezone.utc)
+    until: Optional[datetime] = params.until
+    if until is not None and until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
     wanted = {p for p in params.processes if p}
     return [
         f
         for f in sorted(files, key=lambda f: (f.time_utc, f.path), reverse=True)
         if (since is None or f.time_utc >= since)
+        and (until is None or f.time_utc <= until)
         and (not wanted or f.process in wanted)
     ]
 

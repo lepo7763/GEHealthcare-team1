@@ -6,7 +6,7 @@ import Step1Connect from './diagnostics/Step1Connect';
 import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
-import { sinceIso } from './diagnostics/coreDumps';
+import { EMPTY_CUSTOM_RANGE, sinceIso, untilIso } from './diagnostics/coreDumps';
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -51,6 +51,7 @@ const Diagnostics = () => {
 
   // Core dump filters (Step 2) and the node listing that previews them.
   const [coreSinceHours, setCoreSinceHours] = useState('');
+  const [coreCustomRange, setCoreCustomRange] = useState(EMPTY_CUSTOM_RANGE);
   // status: idle | loading | done | error
   const [corePreview, setCorePreview] = useState({ status: 'idle', data: null, error: '' });
   const corePreviewAbortRef = useRef(null);
@@ -125,8 +126,10 @@ const Diagnostics = () => {
       params.set('umf_duration_seconds', String(umfDuration).trim());
     }
     if (selected.includes('core-dumps')) {
-      const since = sinceIso(coreSinceHours);
+      const since = sinceIso(coreSinceHours, Date.now(), coreCustomRange);
       if (since) params.set('core_since', since);
+      const until = untilIso(coreSinceHours, coreCustomRange);
+      if (until) params.set('core_until', until);
     }
 
     fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
@@ -317,6 +320,8 @@ const Diagnostics = () => {
             umfDomainOptions={umfDomainOptions}
             coreSinceHours={coreSinceHours}
             setCoreSinceHours={setCoreSinceHours}
+            coreCustomRange={coreCustomRange}
+            setCoreCustomRange={setCoreCustomRange}
             onBack={handleBackToConnect}
             onContinue={() => setStep(3)}
           />
@@ -328,7 +333,7 @@ const Diagnostics = () => {
             selectedServices={selectedServices}
             umfDomain={umfDomain}
             umfDuration={umfDuration}
-            coreFilters={{ sinceHours: coreSinceHours }}
+            coreFilters={{ sinceHours: coreSinceHours, customRange: coreCustomRange }}
             corePreview={corePreview}
             onEditConnection={() => setStep(1)}
             onEditServices={() => setStep(2)}
