@@ -14,7 +14,6 @@ from .schemas import (
     CoreDumpFile,
     CoreDumpParams,
     HostCoreConfig,
-    SkippedCoreDump,
 )
 
 # coredump_handler.sh writes
@@ -149,38 +148,18 @@ def parse_listing(output: str) -> Tuple[List[CoreDumpFile], HostCoreConfig]:
 
 def select_files(
     files: Iterable[CoreDumpFile], params: CoreDumpParams
-) -> Tuple[List[CoreDumpFile], List[SkippedCoreDump]]:
-    """Apply the filters, then fill the size cap newest-first.
-
-    Cores that match the filters but don't fit are reported as skipped (so the
-    package says what was left behind); cores that don't match are not.
-    """
+) -> List[CoreDumpFile]:
+    """Apply the time and process filters; newest first. No size cap."""
     since: Optional[datetime] = params.since
     if since is not None and since.tzinfo is None:
         since = since.replace(tzinfo=timezone.utc)
     wanted = {p for p in params.processes if p}
-    budget = params.max_mb * 1024 * 1024
-
-    selected: List[CoreDumpFile] = []
-    skipped: List[SkippedCoreDump] = []
-    used = 0
-    for f in sorted(files, key=lambda f: (f.time_utc, f.path), reverse=True):
-        if since is not None and f.time_utc < since:
-            continue
-        if wanted and f.process not in wanted:
-            continue
-        if used + f.size_bytes > budget:
-            skipped.append(
-                SkippedCoreDump(
-                    path=f.path,
-                    size_bytes=f.size_bytes,
-                    reason=f"Over the {params.max_mb} MB size cap",
-                )
-            )
-            continue
-        selected.append(f)
-        used += f.size_bytes
-    return selected, skipped
+    return [
+        f
+        for f in sorted(files, key=lambda f: (f.time_utc, f.path), reverse=True)
+        if (since is None or f.time_utc >= since)
+        and (not wanted or f.process in wanted)
+    ]
 
 
 def archive_name(path: str) -> str:

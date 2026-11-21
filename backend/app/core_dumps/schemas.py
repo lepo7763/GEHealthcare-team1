@@ -3,24 +3,15 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-DEFAULT_MAX_MB = 500
-MAX_MAX_MB = 4096
-
 
 class CoreDumpParams(BaseModel):
-    """What the user filters on. Empty filters mean "everything" (up to the cap)."""
+    """What the user filters on. Empty filters mean "everything"."""
 
     since: Optional[datetime] = Field(
         default=None, description="Only cores dumped at or after this time (UTC)."
     )
     processes: List[str] = Field(
         default_factory=list, description="Only cores from these process names."
-    )
-    max_mb: int = Field(
-        default=DEFAULT_MAX_MB,
-        ge=1,
-        le=MAX_MAX_MB,
-        description="Total size cap; newest cores are kept first.",
     )
 
 
@@ -43,12 +34,6 @@ class CoreDumpFile(BaseModel):
     gid: Optional[int] = None
     # From the handler's %t when the name parses, else the file mtime.
     time_utc: datetime
-
-
-class SkippedCoreDump(BaseModel):
-    path: str
-    size_bytes: int
-    reason: str
 
 
 class HostCoreConfig(BaseModel):
@@ -90,4 +75,3 @@ class CoreDumpCollectionSummary(BaseModel):
     available_count: int
     available_bytes: int
     collected: List[CollectedCoreDump] = Field(default_factory=list)
-    skipped: List[SkippedCoreDump] = Field(default_factory=list)

@@ -6,7 +6,7 @@ import Step1Connect from './diagnostics/Step1Connect';
 import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
-import { CORE_DEFAULT_MB, sinceIso } from './diagnostics/coreDumps';
+import { sinceIso } from './diagnostics/coreDumps';
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -52,7 +52,6 @@ const Diagnostics = () => {
   // Core dump filters (Step 2) and the node listing that previews them.
   const [coreSinceHours, setCoreSinceHours] = useState('');
   const [coreProcesses, setCoreProcesses] = useState([]);
-  const [coreMaxMb, setCoreMaxMb] = useState(CORE_DEFAULT_MB);
   // status: idle | loading | done | error
   const [corePreview, setCorePreview] = useState({ status: 'idle', data: null, error: '' });
   const corePreviewAbortRef = useRef(null);
@@ -130,7 +129,6 @@ const Diagnostics = () => {
       const since = sinceIso(coreSinceHours);
       if (since) params.set('core_since', since);
       coreProcesses.forEach((name) => params.append('core_process', name));
-      params.set('core_max_mb', String(coreMaxMb).trim());
     }
 
     fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
@@ -326,8 +324,6 @@ const Diagnostics = () => {
             setCoreSinceHours={setCoreSinceHours}
             coreProcesses={coreProcesses}
             setCoreProcesses={setCoreProcesses}
-            coreMaxMb={coreMaxMb}
-            setCoreMaxMb={setCoreMaxMb}
             corePreview={corePreview}
             onRefreshCorePreview={loadCorePreview}
             onBack={handleBackToConnect}
@@ -341,7 +337,7 @@ const Diagnostics = () => {
             selectedServices={selectedServices}
             umfDomain={umfDomain}
             umfDuration={umfDuration}
-            coreFilters={{ sinceHours: coreSinceHours, processes: coreProcesses, maxMb: coreMaxMb }}
+            coreFilters={{ sinceHours: coreSinceHours, processes: coreProcesses }}
             corePreview={corePreview}
             onEditConnection={() => setStep(1)}
             onEditServices={() => setStep(2)}

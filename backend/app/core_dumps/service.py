@@ -151,7 +151,7 @@ def collect_core_dumps_into(
             files, summary.host_config = session.list_files()
             summary.available_count = len(files)
             summary.available_bytes = sum(f.size_bytes for f in files)
-            selected, summary.skipped = select_files(files, params)
+            selected = select_files(files, params)
 
             total_bytes = sum(f.size_bytes for f in selected)
             tracker.set_service_total(

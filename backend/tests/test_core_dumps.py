@@ -148,18 +148,15 @@ def _files(*specs):
 def test_select_since_and_process_filters():
     files = _files(("a", 100, 1), ("b", 200, 1), ("a", 300, 1))
     since = datetime.fromtimestamp(150, tz=timezone.utc).replace(tzinfo=None)  # naive = UTC
-    selected, skipped = select_files(files, CoreDumpParams(since=since, processes=["a"]))
+    selected = select_files(files, CoreDumpParams(since=since, processes=["a"]))
     assert [f.time_utc.timestamp() for f in selected] == [300]
-    assert skipped == []
 
 
-def test_select_size_cap_keeps_newest_and_reports_skipped():
-    mb = 1024 * 1024
-    files = _files(("a", 100, mb // 2), ("a", 200, mb), ("a", 300, mb // 2))
-    selected, skipped = select_files(files, CoreDumpParams(max_mb=1))
-    # Newest (300, 0.5 MB) fits, 200 (1 MB) would overflow, 100 (0.5 MB) fits.
-    assert [int(f.time_utc.timestamp()) for f in selected] == [300, 100]
-    assert len(skipped) == 1 and "1 MB size cap" in skipped[0].reason
+def test_select_has_no_size_cap():
+    gb = 1024 * 1024 * 1024
+    files = _files(("a", 100, 5 * gb), ("a", 200, 10 * gb), ("a", 300, gb))
+    selected = select_files(files, CoreDumpParams())
+    assert [int(f.time_utc.timestamp()) for f in selected] == [300, 200, 100]
 
 
 # --- Job manifest -------------------------------------------------------------------
@@ -452,14 +449,11 @@ def test_zip_endpoint_passes_core_dump_filters(no_k8s, monkeypatch):
     monkeypatch.setattr(logs_router, "collect_diagnostics", fake_collect)
     resp = api.get(
         "/api/logs/zip?services=core-dumps&core_since=2026-11-01T00:00:00Z"
-        "&core_process=xGate&core_process=systemd-journal&core_max_mb=50"
+        "&core_process=xGate&core_process=systemd-journal"
     )
     assert resp.status_code == 200
     assert seen["services"] == ["core-dumps"]
     p = seen["core_dump_params"]
-    assert p.processes == ["xGate", "systemd-journal"] and p.max_mb == 50
+    assert p.processes == ["xGate", "systemd-journal"]
     assert p.since == datetime(2026, 11, 1, tzinfo=timezone.utc)
 
-
-def test_zip_endpoint_rejects_bad_cap(no_k8s):
-    assert api.get("/api/logs/zip?services=core-dumps&core_max_mb=0").status_code == 422
