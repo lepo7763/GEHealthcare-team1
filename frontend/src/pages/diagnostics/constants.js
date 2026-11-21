@@ -30,7 +30,7 @@ export const SERVICES = [
     id: 'prometheus',
     name: 'Prometheus Database',
     description:
-      'Raw Prometheus TSDB blocks for a chosen time window, ready to open in a local Prometheus. Can be several GB.',
+      'Raw Prometheus TSDB blocks for a chosen time window. Can be several GB.',
   },
 ];
 
