@@ -31,6 +31,12 @@
   width: 68px;
 }
 
+/* Collapsed: the logo and user circles are hidden, so centre what's left. */
+.eds-nav-drawer.collapsed .eds-drawer-header,
+.eds-nav-drawer.collapsed .eds-drawer-footer {
+  justify-content: center;
+}
+
 /* DRAWER HEADER */
 .eds-drawer-header {
   height: 60px;

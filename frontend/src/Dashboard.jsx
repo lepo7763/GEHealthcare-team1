@@ -161,15 +161,15 @@ const Dashboard = ({ user, onSignOut }) => {
         aria-label="Application Navigation"
       >
         <div className="eds-drawer-header">
-          <div className="eds-drawer-brand">
-            <div className="eds-brand-logo-circle" aria-label="GE Logo">GE</div>
-            {!isDrawerCollapsed && (
+          {!isDrawerCollapsed && (
+            <div className="eds-drawer-brand">
+              <div className="eds-brand-logo-circle" aria-label="GE Logo">GE</div>
               <div className="eds-brand-text-group">
                 <span className="eds-brand-title">IoMT Analysis Tool</span>
                 <span className="eds-brand-tag">Workstation Portal</span>
               </div>
-            )}
-          </div>
+            </div>
+          )}
           <button
             className="eds-drawer-toggle-btn"
             onClick={() => setIsDrawerCollapsed(!isDrawerCollapsed)}
@@ -205,17 +205,17 @@ const Dashboard = ({ user, onSignOut }) => {
         </nav>
 
         <div className="eds-drawer-footer">
-          <div className="eds-user-profile">
-            <div className="eds-user-avatar" title={`User ID: ${user?.id || '12345'}`}>
-              {user?.id ? user.id.slice(0, 2).toUpperCase() : '12'}
-            </div>
-            {!isDrawerCollapsed && (
+          {!isDrawerCollapsed && (
+            <div className="eds-user-profile">
+              <div className="eds-user-avatar" title={`User ID: ${user?.id || '12345'}`}>
+                {user?.id ? user.id.slice(0, 2).toUpperCase() : '12'}
+              </div>
               <div className="eds-user-meta">
                 <span className="eds-user-name">User #{user?.id || '12345'}</span>
                 <span className="eds-user-role">Specialist</span>
               </div>
-            )}
-          </div>
+            </div>
+          )}
           <button
             className="eds-btn-signout"
             onClick={onSignOut}
