@@ -64,6 +64,7 @@ const Diagnostics = () => {
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
   const [collectError, setCollectError] = useState('');
+  const cancelRef = useRef(null);
   const [download, setDownload] = useState(null);
   const pollRef = useRef(null);
   const abortRef = useRef(null);
@@ -101,6 +102,12 @@ const Diagnostics = () => {
     setCollectError('');
     setCollect(null);
     setDownload(null);
+
+    // A cancel from the Back button may still be finishing on the server.
+    if (cancelRef.current) {
+      await cancelRef.current;
+      cancelRef.current = null;
+    }
 
     // Attach to a run that's already in progress instead of starting a second.
     let current = null;
@@ -288,6 +295,32 @@ const Diagnostics = () => {
     }
   };
 
+  // Back from the Collect step: leave right away and stop the run in the background
+  // (server-side too, so its collector pods get cleaned up). startCollection waits for
+  // that to finish before starting a new run, so it never attaches to the old one.
+  const handleBackFromCollect = () => {
+    stopPolling();
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = null;
+    cancelRef.current = (async () => {
+      try {
+        // Each call returns once the server is idle, or after ~30 s if it is stuck in a
+        // long cluster call; keep asking until it is really idle.
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const res = await fetch('/api/logs/cancel', { method: 'POST' });
+          const body = res.ok ? await res.json() : null;
+          if (!body || !body.running) break;
+        }
+      } catch {
+        /* best effort */
+      }
+    })();
+    setCollect(null);
+    setCollectError('');
+    setDownload(null);
+    setStep(3);
+  };
+
   const handleBackToConnect = () => {
     setStep(1);
     resetCheck();
@@ -368,7 +401,7 @@ const Diagnostics = () => {
             collect={collect}
             collectError={collectError}
             download={download}
-            onBack={() => setStep(3)}
+            onBack={handleBackFromCollect}
           />
         )}
       </div>

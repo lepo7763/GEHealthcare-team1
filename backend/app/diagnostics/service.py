@@ -23,6 +23,7 @@ from app.log_collection.progress import (
     CONTAINER_LOGS_SERVICE_ID,
     CORE_DUMPS_LABEL,
     CORE_DUMPS_SERVICE_ID,
+    CollectionCancelled,
     FIREWALL_LABEL,
     FIREWALL_SERVICE_ID,
     PROMETHEUS_LABEL,
@@ -62,6 +63,10 @@ SUPPORTED_SERVICES = (
     FIREWALL_SERVICE_ID,
     PROMETHEUS_SERVICE_ID,
 )
+
+
+class CollectionCancelledError(Exception):
+    """The user cancelled the collection (the Back button on the collect step)."""
 
 
 class CollectionInProgressError(Exception):
@@ -167,6 +172,7 @@ def collect_diagnostics(
             temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED
         ) as zf:
             for service_id in selected:
+                tracker.check_cancelled()
                 if service_id == CONTAINER_LOGS_SERVICE_ID:
                     _collect_container_logs(zf, manifest, core, log_params)
                 elif service_id == UMF_RTI_SERVICE_ID:
@@ -201,6 +207,11 @@ def collect_diagnostics(
         temp_zip.seek(0)
         tracker.finish()
         return temp_zip
+    except CollectionCancelled:
+        # The collectors' finally blocks have already deleted their Jobs.
+        tracker.mark_cancelled()
+        temp_zip.close()
+        raise CollectionCancelledError("Collection cancelled.") from None
     except ClusterUnreachableError as e:
         tracker.fail(str(e))
         temp_zip.close()
