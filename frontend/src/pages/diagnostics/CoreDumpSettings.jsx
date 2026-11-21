@@ -126,35 +126,25 @@ const CoreDumpSettings = ({ sinceHours, setSinceHours, customRange, setCustomRan
               </label>
               <div className="field grow">
                 <span>End time ({customRange.end})</span>
-                {endIsToday && (
-                  <div className="range-end-mode" role="radiogroup" aria-label="End time mode">
-                    <label>
+                <div className="range-end-time">
+                  <input
+                    type="time"
+                    value={customRange.endTime}
+                    disabled={useNow}
+                    max={endIsToday ? new Date().toTimeString().slice(0, 5) : undefined}
+                    onChange={(e) => patch({ endTime: e.target.value })}
+                  />
+                  {endIsToday && (
+                    <label className="range-now-check">
                       <input
-                        type="radio"
-                        name="core-end-mode"
+                        type="checkbox"
                         checked={useNow}
-                        onChange={() => patch({ endNow: true })}
-                      />{' '}
+                        onChange={(e) => patch({ endNow: e.target.checked })}
+                      />
                       Current time
                     </label>
-                    <label>
-                      <input
-                        type="radio"
-                        name="core-end-mode"
-                        checked={!useNow}
-                        onChange={() => patch({ endNow: false })}
-                      />{' '}
-                      Custom time
-                    </label>
-                  </div>
-                )}
-                <input
-                  type="time"
-                  value={customRange.endTime}
-                  disabled={useNow}
-                  max={endIsToday ? new Date().toTimeString().slice(0, 5) : undefined}
-                  onChange={(e) => patch({ endTime: e.target.value })}
-                />
+                  )}
+                </div>
               </div>
             </div>
           )}

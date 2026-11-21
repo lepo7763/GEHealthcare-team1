@@ -1171,8 +1171,16 @@ code {
   opacity: 0.6;
 }
 
-.range-end-mode {
+.range-end-time {
   display: flex;
+  align-items: center;
   gap: var(--eds-spacing-md);
-  margin: 4px 0;
+}
+
+.range-now-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
 }
