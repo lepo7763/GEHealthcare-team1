@@ -4,7 +4,6 @@ import {
   describeCoreFilters,
   estimateSelection,
   formatBytes,
-  groupByProcess,
   sinceIso,
 } from './coreDumps.js';
 
@@ -23,28 +22,15 @@ const FILES = [
   file(null, '2026-11-11T00:00:00Z', 10),
 ];
 
-test('groups by process, most cores first, unrecognized names labelled', () => {
-  const groups = groupByProcess(FILES);
-  assert.equal(groups[0].process, 'xGate');
-  assert.equal(groups[0].count, 2);
-  assert.deepEqual(groups[0].signals, ['SIGABRT', 'SIGSEGV']);
-  assert.equal(groups[0].latest, '2026-11-12T22:06:36Z');
-  assert.ok(groups.some((g) => g.process === '(unrecognized name)'));
-});
-
 test('estimate has no size cap: every matching core counts', () => {
-  const est = estimateSelection(FILES, { sinceHours: '', processes: [] });
+  const est = estimateSelection(FILES, { sinceHours: '' });
   assert.deepEqual(est, { count: 4, bytes: 2 * MB + 10 });
 });
 
-test('estimate applies since and process filters', () => {
+test('estimate applies the since filter', () => {
   const now = Date.parse('2026-11-13T00:00:00Z');
-  const est = estimateSelection(
-    FILES,
-    { sinceHours: '168', processes: ['xGate'] },
-    now,
-  );
-  assert.deepEqual(est, { count: 1, bytes: MB / 2 });
+  const est = estimateSelection(FILES, { sinceHours: '168' }, now);
+  assert.deepEqual(est, { count: 3, bytes: 1.5 * MB + 10 });
 });
 
 test('sinceIso is null for "any time"', () => {
@@ -57,7 +43,7 @@ test('formatting helpers', () => {
   assert.equal(formatBytes(509 * MB), '509 MB');
   assert.equal(formatBytes(1.5 * MB), '1.5 MB');
   assert.equal(
-    describeCoreFilters({ sinceHours: '24', processes: ['xGate'] }),
-    'Last 24 hours · xGate',
+    describeCoreFilters({ sinceHours: '24' }),
+    'Last 24 hours',
   );
 });

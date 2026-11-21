@@ -1104,23 +1104,3 @@ code {
 .analysis-action span {
   display: block;
 }
-
-/* Core Dumps preview (Configure step) */
-.core-preview {
-  margin-top: 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--eds-color-gray-200, #e4e4e4);
-  border-radius: 8px;
-}
-
-.core-preview-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.core-table td:first-child,
-.core-table th:first-child {
-  width: 32px;
-}
