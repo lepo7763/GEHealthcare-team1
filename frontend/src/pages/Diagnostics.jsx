@@ -59,6 +59,7 @@ const Diagnostics = () => {
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
   const [collectError, setCollectError] = useState('');
+  const [stopping, setStopping] = useState(false);
   const [download, setDownload] = useState(null);
   const pollRef = useRef(null);
   const abortRef = useRef(null);
@@ -281,12 +282,20 @@ const Diagnostics = () => {
     stopPolling();
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = null;
+    setStopping(true);
     try {
-      // Resolves once the server has stopped and cleaned up, so a new run can start at once.
-      await fetch('/api/logs/cancel', { method: 'POST' });
+      // Each call returns once the server has stopped and cleaned up, or after ~30 s if
+      // it is stuck in a long cluster call. Keep asking until it is really idle, so a
+      // new run never "attaches" to the old one that is still winding down.
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const res = await fetch('/api/logs/cancel', { method: 'POST' });
+        const body = res.ok ? await res.json() : null;
+        if (!body || !body.running) break;
+      }
     } catch {
       /* best effort: still leave the step */
     }
+    setStopping(false);
     if (downloadUrlRef.current) {
       URL.revokeObjectURL(downloadUrlRef.current);
       downloadUrlRef.current = null;
@@ -372,6 +381,7 @@ const Diagnostics = () => {
             collect={collect}
             collectError={collectError}
             download={download}
+            stopping={stopping}
             onBack={handleBackFromCollect}
           />
         )}
