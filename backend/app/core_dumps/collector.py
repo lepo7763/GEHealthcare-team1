@@ -29,7 +29,10 @@ class CoreDumpCollectionError(JobExecError):
 
 
 def build_collector_job(config: CoreDumpConfig) -> client.V1Job:
-    """Pure: the collector Job. Read-only host mount, no API token, minimal caps."""
+    """Pure: the collector Job. Read-only host mount, no API token, minimal caps.
+
+    Also used by the Prometheus collector, whose config has the same fields.
+    """
     labels = {"app": config.job_prefix}
     container = client.V1Container(
         name=CONTAINER_NAME,
@@ -102,6 +105,7 @@ class CollectorSession(JobExecSession):
         batch: client.BatchV1Api,
         config: CoreDumpConfig,
         sleep: Callable[[float], None] = time.sleep,
+        error_cls: type = CoreDumpCollectionError,
     ) -> None:
         super().__init__(
             core,
@@ -111,7 +115,7 @@ class CollectorSession(JobExecSession):
             startup_timeout_seconds=config.startup_timeout_seconds,
             poll_interval_seconds=config.poll_interval_seconds,
             sleep=sleep,
-            error_cls=CoreDumpCollectionError,
+            error_cls=error_cls,
         )
         self.config = config
 
@@ -122,14 +126,14 @@ class CollectorSession(JobExecSession):
         return parse_listing(self.exec_text(self._in_core_dir(LISTING_SCRIPT)))
 
     def remote_sha256(self, path: str) -> str:
-        _require_safe(path)
+        self._require_safe(path)
         output = self.exec_text(
             self._in_core_dir('sha256sum "./$2"', path),
             timeout_seconds=self.config.transfer_timeout_seconds,
         )
         digest = output.split(" ", 1)[0].strip()
         if len(digest) != 64:
-            raise CoreDumpCollectionError(f"Unexpected sha256sum output for {path}")
+            raise self._error(f"Unexpected sha256sum output for {path}")
         return digest
 
     def fetch(
@@ -139,7 +143,7 @@ class CollectorSession(JobExecSession):
         on_bytes: Optional[Callable[[int], None]] = None,
     ) -> Tuple[str, int]:
         """Stream one file into `sink`; returns (sha256, size) of what arrived."""
-        _require_safe(path)
+        self._require_safe(path)
         hasher = hashlib.sha256()
         size = 0
 
@@ -158,7 +162,6 @@ class CollectorSession(JobExecSession):
         )
         return hasher.hexdigest(), size
 
-
-def _require_safe(path: str) -> None:
-    if not is_safe_relative_path(path):
-        raise CoreDumpCollectionError(f"Refusing unsafe core path: {path!r}")
+    def _require_safe(self, path: str) -> None:
+        if not is_safe_relative_path(path):
+            raise self._error(f"Refusing unsafe path: {path!r}")

@@ -9,6 +9,8 @@ from typing import Callable, List, Optional
 
 from kubernetes import client
 
+from app.core.workdir import work_dir
+
 from app.log_collection.progress import (
     CORE_DUMPS_LABEL,
     CORE_DUMPS_SERVICE_ID,
@@ -142,7 +144,7 @@ def collect_core_dumps_into(
     )
     written: List[str] = []
     service_error: Optional[str] = None
-    workdir = tempfile.mkdtemp(prefix="core-dumps-")
+    workdir = tempfile.mkdtemp(prefix="core-dumps-", dir=work_dir())
 
     try:
         with session_factory(core, batch, config) as session:

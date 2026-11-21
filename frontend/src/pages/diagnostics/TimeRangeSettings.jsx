@@ -1,10 +1,5 @@
 import { useState } from 'react';
-import {
-  CORE_SINCE_OPTIONS,
-  CUSTOM_RANGE,
-  customRangeError,
-  dateKey,
-} from './coreDumps';
+import { CUSTOM_RANGE, customRangeError, dateKey } from './timeRange';
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const pad = (n) => String(n).padStart(2, '0');
@@ -81,8 +76,17 @@ const RangeCalendar = ({ start, end, onChange }) => {
   );
 };
 
-// Settings for the Core Dumps service: every core in the chosen time range is collected.
-const CoreDumpSettings = ({ sinceHours, setSinceHours, customRange, setCustomRange }) => {
+// Time-window picker: a preset dropdown, or (for "Custom") a range calendar plus times.
+// Shared by every service that collects data from a time range (Core Dumps, Prometheus).
+const TimeRangeSettings = ({
+  label,
+  hint,
+  options,
+  sinceHours,
+  setSinceHours,
+  customRange,
+  setCustomRange,
+}) => {
   const isCustom = sinceHours === CUSTOM_RANGE;
   const bothDates = Boolean(customRange.start && customRange.end);
   const patch = (changes) => setCustomRange({ ...customRange, ...changes });
@@ -94,15 +98,15 @@ const CoreDumpSettings = ({ sinceHours, setSinceHours, customRange, setCustomRan
     <>
       <div className="form-row">
         <label className="field grow">
-          <span>Dumped since</span>
+          <span>{label}</span>
           <select value={sinceHours} onChange={(e) => setSinceHours(e.target.value)}>
-            {CORE_SINCE_OPTIONS.map((option) => (
+            {options.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
-          <small>Based on the crash time recorded in each core's filename.</small>
+          {hint && <small>{hint}</small>}
         </label>
       </div>
 
@@ -155,4 +159,4 @@ const CoreDumpSettings = ({ sinceHours, setSinceHours, customRange, setCustomRan
   );
 };
 
-export default CoreDumpSettings;
+export default TimeRangeSettings;

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SERVICE_STATUS_LABEL, STATUS_LABEL } from './constants';
 import AnalysisReport from '../logAnalysis/AnalysisReport';
 import { analyzeZip } from '../logAnalysis/analyzeZip';
+import { formatBytes } from './coreDumps';
 
 const ServiceProgressCard = ({ service }) => {
   const status = service.status || 'pending';
@@ -158,7 +159,7 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
           {download && (
             <div className="action-row">
               <a className="btn btn-primary" href={download.url} download={download.filename}>
-                Download diagnostic package
+                Download diagnostic package ({formatBytes(download.sizeBytes)})
               </a>
               <button
                 type="button"

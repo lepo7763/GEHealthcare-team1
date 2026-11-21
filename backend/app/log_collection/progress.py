@@ -8,11 +8,13 @@ CONTAINER_LOGS_SERVICE_ID = "container-logs"
 UMF_RTI_SERVICE_ID = "umf-rti"
 CORE_DUMPS_SERVICE_ID = "core-dumps"
 FIREWALL_SERVICE_ID = "firewall"
+PROMETHEUS_SERVICE_ID = "prometheus"
 
 CONTAINER_LOGS_LABEL = "Container Log Collection"
 UMF_RTI_LABEL = "UMF RTI"
 CORE_DUMPS_LABEL = "Core Dumps"
 FIREWALL_LABEL = "Firewall Settings"
+PROMETHEUS_LABEL = "Prometheus Database"
 
 # Statuses that mean a collection is actively running.
 RUNNING_STATUSES = frozenset({"listing", "collecting", "packaging"})
