@@ -1,11 +1,6 @@
 // Helpers for the Core Dumps service (Configure + Review steps).
 // The estimate mirrors the backend's select_files(): filter by time and
-// process, then fill the size cap newest-first, skipping cores that don't fit.
-
-// Must match the backend's CoreDumpParams.max_mb bounds.
-export const CORE_MIN_MB = 1;
-export const CORE_MAX_MB = 4096;
-export const CORE_DEFAULT_MB = '500';
+// process. There is no size cap; every matching core is collected.
 
 export const CORE_SINCE_OPTIONS = [
   { value: '', label: 'Any time' },
@@ -13,12 +8,6 @@ export const CORE_SINCE_OPTIONS = [
   { value: '168', label: 'Last 7 days' },
   { value: '720', label: 'Last 30 days' },
 ];
-
-export const validateCoreMaxMb = (value) => {
-  const text = String(value ?? '').trim();
-  const number = Number(text);
-  return text !== '' && Number.isInteger(number) && number >= CORE_MIN_MB && number <= CORE_MAX_MB;
-};
 
 export const sinceIso = (hours, now = Date.now()) =>
   hours ? new Date(now - Number(hours) * 3600 * 1000).toISOString() : null;
@@ -55,25 +44,18 @@ export const groupByProcess = (files) => {
     .sort((a, b) => b.count - a.count || a.process.localeCompare(b.process));
 };
 
-export const estimateSelection = (files, { sinceHours, processes, maxMb }, now = Date.now()) => {
+export const estimateSelection = (files, { sinceHours, processes }, now = Date.now()) => {
   const since = sinceIso(sinceHours, now);
   const wanted = new Set(processes || []);
-  const budget = (Number(maxMb) || 0) * 1024 * 1024;
-  const sorted = [...(files || [])].sort((a, b) => (a.time_utc < b.time_utc ? 1 : -1));
   let bytes = 0;
   let count = 0;
-  let skipped = 0;
-  for (const file of sorted) {
+  for (const file of files || []) {
     if (since && new Date(file.time_utc) < new Date(since)) continue;
     if (wanted.size && !wanted.has(file.process)) continue;
-    if (bytes + file.size_bytes > budget) {
-      skipped += 1;
-      continue;
-    }
     bytes += file.size_bytes;
     count += 1;
   }
-  return { count, bytes, skipped };
+  return { count, bytes };
 };
 
 export const formatTime = (iso) => {
@@ -82,8 +64,8 @@ export const formatTime = (iso) => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 };
 
-export const describeCoreFilters = ({ sinceHours, processes, maxMb }) => {
+export const describeCoreFilters = ({ sinceHours, processes }) => {
   const since = CORE_SINCE_OPTIONS.find((o) => o.value === String(sinceHours ?? ''))?.label || 'Any time';
   const procs = processes?.length ? processes.join(', ') : 'all processes';
-  return `${since} · ${procs} · up to ${String(maxMb).trim() || '—'} MB`;
+  return `${since} · ${procs}`;
 };

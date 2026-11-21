@@ -76,7 +76,6 @@ const Step3Review = ({
                   <div className="check-detail">
                     About {coreEstimate.count} core{coreEstimate.count === 1 ? '' : 's'} ·{' '}
                     {formatBytes(coreEstimate.bytes)}
-                    {coreEstimate.skipped > 0 && ` (${coreEstimate.skipped} skipped by the size cap)`}
                   </div>
                 )}
                 <div className="check-detail">

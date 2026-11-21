@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
 import CoreDumpSettings from './CoreDumpSettings';
-import { describeCoreFilters, validateCoreMaxMb } from './coreDumps';
+import { describeCoreFilters } from './coreDumps';
 
 // Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
 const MIN_DURATION = 10;
@@ -27,8 +27,6 @@ const Step2Configure = ({
   setCoreSinceHours,
   coreProcesses,
   setCoreProcesses,
-  coreMaxMb,
-  setCoreMaxMb,
   corePreview,
   onRefreshCorePreview,
   onBack,
@@ -89,11 +87,10 @@ const Step2Configure = ({
       ),
     },
     'core-dumps': {
-      isValid: validateCoreMaxMb(coreMaxMb),
+      isValid: true,
       summary: describeCoreFilters({
         sinceHours: coreSinceHours,
         processes: coreProcesses,
-        maxMb: coreMaxMb,
       }),
       fields: (
         <CoreDumpSettings
@@ -101,8 +98,6 @@ const Step2Configure = ({
           setSinceHours={setCoreSinceHours}
           processes={coreProcesses}
           setProcesses={setCoreProcesses}
-          maxMb={coreMaxMb}
-          setMaxMb={setCoreMaxMb}
           preview={corePreview}
           onRefresh={onRefreshCorePreview}
         />

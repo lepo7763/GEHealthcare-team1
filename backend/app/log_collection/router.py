@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 from app.core.k8s_client import get_batch_v1_api, get_core_v1_api
-from app.core_dumps.schemas import DEFAULT_MAX_MB, MAX_MAX_MB, CoreDumpParams
+from app.core_dumps.schemas import CoreDumpParams
 from app.diagnostics.service import CollectionInProgressError, collect_diagnostics
 from app.log_collection.progress import tracker
 from app.log_collection.schemas import CollectionProgressResponse, LogCollectionParams
@@ -50,12 +50,6 @@ def download_diagnostics(
     core_process: List[str] = Query(
         default=[], description="Core dumps: process name(s) to include (repeatable)."
     ),
-    core_max_mb: int = Query(
-        default=DEFAULT_MAX_MB,
-        ge=1,
-        le=MAX_MAX_MB,
-        description="Core dumps: total size cap in MB (newest kept first).",
-    ),
     core: client.CoreV1Api = Depends(get_core_v1_api),
     batch: client.BatchV1Api = Depends(get_batch_v1_api),
 ):
@@ -77,9 +71,7 @@ def download_diagnostics(
             services=list(services),
             log_params=log_params,
             umf_params=umf_params,
-            core_dump_params=CoreDumpParams(
-                since=core_since, processes=core_process, max_mb=core_max_mb
-            ),
+            core_dump_params=CoreDumpParams(since=core_since, processes=core_process),
         )
     except CollectionInProgressError as e:
         raise HTTPException(status_code=409, detail=str(e))

@@ -1,12 +1,9 @@
 import {
-  CORE_MAX_MB,
-  CORE_MIN_MB,
   CORE_SINCE_OPTIONS,
   estimateSelection,
   formatBytes,
   formatTime,
   groupByProcess,
-  validateCoreMaxMb,
 } from './coreDumps';
 
 // Settings + live preview for the Core Dumps service. The preview comes from
@@ -16,15 +13,12 @@ const CoreDumpSettings = ({
   setSinceHours,
   processes,
   setProcesses,
-  maxMb,
-  setMaxMb,
   preview,
   onRefresh,
 }) => {
-  const maxValid = validateCoreMaxMb(maxMb);
   const files = preview.data?.files || [];
   const groups = groupByProcess(files);
-  const estimate = estimateSelection(files, { sinceHours, processes, maxMb });
+  const estimate = estimateSelection(files, { sinceHours, processes });
   const host = preview.data?.host_config;
   const handlerMissing = host && host.core_pattern && !host.core_pattern.includes('coredump_handler');
 
@@ -45,24 +39,6 @@ const CoreDumpSettings = ({
             ))}
           </select>
           <small>Based on the crash time recorded in each core's filename.</small>
-        </label>
-        <label className="field grow">
-          <span>Size cap (MB)</span>
-          <input
-            type="number"
-            min={CORE_MIN_MB}
-            max={CORE_MAX_MB}
-            step="1"
-            value={maxMb}
-            onChange={(e) => setMaxMb(e.target.value)}
-            aria-invalid={!maxValid}
-          />
-          <small>Newest cores are kept first; the rest are listed as skipped.</small>
-          {!maxValid && (
-            <small className="field-error">
-              Enter a whole number from {CORE_MIN_MB} to {CORE_MAX_MB}.
-            </small>
-          )}
         </label>
       </div>
 
@@ -158,7 +134,6 @@ const CoreDumpSettings = ({
                 Will collect {estimate.count} core{estimate.count === 1 ? '' : 's'} ·{' '}
                 {formatBytes(estimate.bytes)}
               </strong>
-              {estimate.skipped > 0 && ` (${estimate.skipped} over the size cap, skipped)`}
             </p>
           </>
         )}
