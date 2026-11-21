@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -18,7 +19,13 @@ from app.log_collection.schemas import (
 
 from .collector import FirewallCollectionError, FirewallSession
 from .config import FirewallConfig, get_firewall_config
-from .parsing import COMMANDS, build_snapshot, render_report
+from .parsing import (
+    INFO_COMMAND,
+    INFO_FILE,
+    MISSING_EXIT_CODE,
+    build_snapshot,
+    render_report,
+)
 from .schemas import FirewallResponse, FirewallSnapshot
 
 REPORT_PATH = "firewall/report.txt"
@@ -90,21 +97,21 @@ def collect_firewall_into(
     config: Optional[FirewallConfig] = None,
     session_factory: SessionFactory = FirewallSession,
 ) -> None:
-    """Write report, summary, raw outputs and /etc/firewalld into `zf`.
+    """Write only firewall/firewall-info.txt
+    (`firewall-cmd --zone=external --list-all`) into `zf`.
 
     Never raises for collection problems; failures go in the manifest.
     """
-    steps = 3
+    steps = 2
     tracker.set_service_total(FIREWALL_SERVICE_ID, steps, unit="steps")
-    done = 0
-
-    def on_step(label: str) -> None:
-        nonlocal done
-        tracker.set_service_completed(FIREWALL_SERVICE_ID, min(done, steps - 1), current=label)
-        done += 1
+    config = config or get_firewall_config()
 
     try:
-        capture = capture_firewall(core, batch, config, session_factory, on_step=on_step)
+        tracker.set_service_completed(FIREWALL_SERVICE_ID, 0, current="Starting collector pod")
+        with session_factory(core, batch, config) as session:
+            tracker.set_service_completed(FIREWALL_SERVICE_ID, 1, current="Reading firewall state")
+            outputs = session.run_commands((INFO_COMMAND,))
+            pod_name = session.pod_name
     except Exception as e:  # FirewallCollectionError or anything unexpected
         message = (
             str(e) if isinstance(e, FirewallCollectionError)
@@ -120,25 +127,19 @@ def collect_firewall_into(
         ))
         return
 
-    snap = capture.snapshot
+    text, rc = outputs.get(INFO_COMMAND.id, ("", None))
     written = []
+    errors = []
+    if rc is None or rc == MISSING_EXIT_CODE or rc not in INFO_COMMAND.ok_exit_codes:
+        detail = text.strip().splitlines()[0] if text.strip() else "no output"
+        errors.append(f"{shlex.join(INFO_COMMAND.argv)} failed (exit {rc}): {detail}")
+    if text:
+        zf.writestr(INFO_FILE, text)
+        written.append(INFO_FILE)
 
-    def put(path: str, data) -> None:
-        zf.writestr(path, data)
-        written.append(path)
-
-    put(REPORT_PATH, render_report(snap))
-    put(SUMMARY_PATH, snap.model_dump_json(indent=2))
-    for command in COMMANDS:
-        if command.id in capture.outputs:
-            put(command.file, capture.outputs[command.id][0])
-    for name, data in sorted(capture.config_files.items()):
-        rel = name.split("/", 1)[1] if name.startswith("firewalld/") else name
-        put(CONFIG_PREFIX + rel, data)
-
-    for err in snap.errors:
+    for err in errors:
         manifest.errors.append(LogErrorEntry(
-            namespace="(node)", pod=snap.collector_pod or "", container="(firewall)",
+            namespace="(node)", pod=pod_name or "", container="(firewall)",
             reason=err, service=FIREWALL_SERVICE_ID,
         ))
     manifest.collected_files.extend(written)
@@ -147,6 +148,6 @@ def collect_firewall_into(
         label=FIREWALL_LABEL,
         status="done",
         files=written,
-        error=f"{len(snap.errors)} firewall command(s) failed." if snap.errors else None,
+        error=f"{len(errors)} firewall command(s) failed." if errors else None,
     ))
     tracker.set_service_completed(FIREWALL_SERVICE_ID, steps)

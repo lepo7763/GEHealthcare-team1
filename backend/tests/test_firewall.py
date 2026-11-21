@@ -401,7 +401,7 @@ class FakeSession:
     def __exit__(self, *exc):
         pass
 
-    def run_commands(self):
+    def run_commands(self, commands=None):
         return self.outputs
 
     def config_files(self):
@@ -426,26 +426,25 @@ def _collect(session):
     return zipfile.ZipFile(buf), manifest
 
 
-def test_package_contents(progress):
-    zf, manifest = _collect(FakeSession())
-    names = set(zf.namelist())
-    assert {REPORT_PATH, SUMMARY_PATH, "firewall/iptables_save.txt",
-            "firewall/zones_runtime.txt", CONFIG_PREFIX + "zones/external.xml"} <= names
-    assert zf.read("firewall/iptables_save.txt").decode() == IPTABLES
-    assert json.loads(zf.read(SUMMARY_PATH))["firewalld"]["default_zone"] == "external"
-    assert "ZONE external (default)" in zf.read(REPORT_PATH).decode()
+def test_package_contains_only_firewall_info(progress):
+    info = "external (active)\n  target: default\n"
+    zf, manifest = _collect(FakeSession(outputs={"firewall_info": (info, 0)}))
+    assert zf.namelist() == ["firewall/firewall-info.txt"]
+    assert zf.read("firewall/firewall-info.txt").decode() == info
     svc = manifest.services[0]
-    assert svc.status == "done" and svc.error is None and REPORT_PATH in svc.files
+    assert svc.status == "done" and svc.error is None
+    assert svc.files == ["firewall/firewall-info.txt"]
     snap = tracker.snapshot()["services"][0]
-    assert snap["completed"] == snap["total"] == 3
+    assert snap["completed"] == snap["total"] == 2
 
 
-def test_config_dir_failure_is_recorded_but_package_survives(progress):
-    zf, manifest = _collect(FakeSession(fail_files=FirewallCollectionError("tar: denied")))
-    assert REPORT_PATH in zf.namelist()
-    assert not any(n.startswith(CONFIG_PREFIX) for n in zf.namelist())
-    assert "tar: denied" in zf.read(REPORT_PATH).decode()
-    assert manifest.services[0].status == "done" and "1 firewall command" in manifest.services[0].error
+def test_failed_info_command_is_recorded(progress):
+    zf, manifest = _collect(
+        FakeSession(outputs={"firewall_info": ("Error: INVALID_ZONE: external", 111)})
+    )
+    assert manifest.services[0].status == "done"
+    assert "1 firewall command" in manifest.services[0].error
+    assert "INVALID_ZONE" in manifest.errors[0].reason
 
 
 def test_collector_failure_is_recorded_not_raised(progress):
