@@ -73,6 +73,13 @@ COMMANDS: Tuple[FirewallCommand, ...] = (
                     "IPv6 enabled in the kernel (exit 1 = disabled)", (0, 1)),
 )
 
+# The only thing the diagnostic zip collects: `firewall-cmd --zone=external --list-all`.
+INFO_COMMAND = FirewallCommand(
+    "firewall_info", ("firewall-cmd", "--zone=external", "--list-all"),
+    "External zone settings",
+)
+INFO_FILE = "firewall/firewall-info.txt"
+
 MISSING_EXIT_CODE = 127
 
 
