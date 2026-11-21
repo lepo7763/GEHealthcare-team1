@@ -47,3 +47,15 @@ test('formatting helpers', () => {
     'Last 24 hours',
   );
 });
+
+test('custom range filters by start and end', () => {
+  const customRange = { start: '2026-11-10', end: '2026-11-12', startTime: '00:00', endTime: '23:59' };
+  const est = estimateSelection(FILES, { sinceHours: 'custom', customRange });
+  // 11-10 10:00Z and 11-11 00:00Z fall inside (timezone-dependent edges aside); 11-01 does not.
+  assert.ok(est.count >= 2 && est.count <= 3);
+  assert.equal(sinceIso('custom', Date.now(), { ...customRange, end: '' }), null);
+  assert.equal(
+    describeCoreFilters({ sinceHours: 'custom', customRange }),
+    '2026-11-10 00:00 – 2026-11-12 23:59',
+  );
+});

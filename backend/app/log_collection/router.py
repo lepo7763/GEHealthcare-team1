@@ -47,6 +47,9 @@ def download_diagnostics(
     core_since: Optional[datetime] = Query(
         default=None, description="Core dumps: only cores dumped at/after this time."
     ),
+    core_until: Optional[datetime] = Query(
+        default=None, description="Core dumps: only cores dumped at/before this time."
+    ),
     core_process: List[str] = Query(
         default=[], description="Core dumps: process name(s) to include (repeatable)."
     ),
@@ -71,7 +74,9 @@ def download_diagnostics(
             services=list(services),
             log_params=log_params,
             umf_params=umf_params,
-            core_dump_params=CoreDumpParams(since=core_since, processes=core_process),
+            core_dump_params=CoreDumpParams(
+                since=core_since, until=core_until, processes=core_process
+            ),
         )
     except CollectionInProgressError as e:
         raise HTTPException(status_code=409, detail=str(e))
