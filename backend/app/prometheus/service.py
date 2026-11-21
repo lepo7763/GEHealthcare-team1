@@ -156,6 +156,7 @@ def _zip_staged(zf: zipfile.ZipFile, staged: _Staged) -> List[CollectedTsdbFile]
             info, "w", force_zip64=record.size_bytes >= (1 << 31)
         ) as dst:
             while chunk := src.read(1024 * 1024):
+                tracker.check_cancelled()
                 dst.write(chunk)
         records.append(record)
     staged.discard()
@@ -260,6 +261,7 @@ def collect_prometheus_into(
             blocks, _ = select(data_dirs, params)
             progress.grow(sum(b.size_bytes for b in blocks))
             for block in blocks:
+                tracker.check_cancelled()
                 copy_block(block)
 
             # 2. Re-list, pick up blocks created meanwhile (head compaction, or
@@ -279,6 +281,7 @@ def collect_prometheus_into(
                 ]
                 progress.grow(sum(b.size_bytes for b in new_blocks))
                 for block in new_blocks:
+                    tracker.check_cancelled()
                     copy_block(block)
                 if not heads:
                     break

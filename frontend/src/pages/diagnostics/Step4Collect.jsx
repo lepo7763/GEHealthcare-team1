@@ -62,7 +62,7 @@ const ServiceProgressCard = ({ service }) => {
   );
 };
 
-const Step4Collect = ({ collect, collectError, download, stopping, onBack }) => {
+const Step4Collect = ({ collect, collectError, download, onBack }) => {
   // Analysis of the zip that was just collected (POST /api/analysis/zip)
   const [report, setReport] = useState(null);
   const [analyzeError, setAnalyzeError] = useState('');
@@ -182,8 +182,8 @@ const Step4Collect = ({ collect, collectError, download, stopping, onBack }) => 
         </div>
 
         <div className="action-row">
-          <button className="btn btn-secondary" onClick={onBack} disabled={stopping}>
-            {stopping ? 'Stopping…' : 'Back'}
+          <button className="btn btn-secondary" onClick={onBack}>
+            Back
           </button>
         </div>
       </div>
