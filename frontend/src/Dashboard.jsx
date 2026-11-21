@@ -238,10 +238,6 @@ const Dashboard = ({ user, onSignOut }) => {
             <h1 className="eds-topbar-title">{currentItem.label}</h1>
           </div>
           <div className="eds-topbar-right">
-            <div className="eds-status-pill">
-              <span className="eds-status-indicator-dot" aria-hidden="true"></span>
-              <span>Cluster: <strong>HOSP-US-EAST-01</strong> • TLS 1.3 Active</span>
-            </div>
             <div className="eds-topbar-corner-actions" aria-label="Utility navigation">
               {CORNER_ITEMS.map((item) => {
                 const isActive = activeTab === item.id;
