@@ -608,14 +608,12 @@ code {
   margin-top: var(--eds-spacing-md);
 }
 
-.service-options-title {
-  margin: 0;
-  font-size: var(--eds-font-size-md);
-  font-weight: var(--eds-font-weight-semibold);
-}
-
 .service-options .form-row {
   margin-top: var(--eds-spacing-sm);
+}
+
+.service-options > .form-row:first-child {
+  margin-top: 0;
 }
 
 .field-error {

@@ -174,7 +174,6 @@ const Step2Configure = ({
                     role="region"
                     aria-label={`${service.name} settings`}
                   >
-                    <h4 className="service-options-title">{service.name} settings</h4>
                     {panel.fields}
                   </div>
                 )}
