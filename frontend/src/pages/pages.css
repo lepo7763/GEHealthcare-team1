@@ -1162,3 +1162,24 @@ code {
   background: var(--eds-color-purple);
   color: #fff;
 }
+
+.range-calendar-day:disabled {
+  color: #b5b5b5;
+  background: none;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.range-end-time {
+  display: flex;
+  align-items: center;
+  gap: var(--eds-spacing-md);
+}
+
+.range-now-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
