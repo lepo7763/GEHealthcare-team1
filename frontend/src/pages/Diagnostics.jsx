@@ -41,7 +41,7 @@ const Diagnostics = () => {
   const [phase, setPhase] = useState('idle');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  const [selected, setSelected] = useState(['container-logs']);
+  const [selected, setSelected] = useState([]);
 
   // UMF RTI capture settings (Step 2). Domain options come from the backend so they
   // stay in sync with the domains it accepts; the fallback mirrors its defaults.
