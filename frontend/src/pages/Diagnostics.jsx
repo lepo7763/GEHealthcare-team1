@@ -51,7 +51,6 @@ const Diagnostics = () => {
 
   // Core dump filters (Step 2) and the node listing that previews them.
   const [coreSinceHours, setCoreSinceHours] = useState('');
-  const [coreProcesses, setCoreProcesses] = useState([]);
   // status: idle | loading | done | error
   const [corePreview, setCorePreview] = useState({ status: 'idle', data: null, error: '' });
   const corePreviewAbortRef = useRef(null);
@@ -128,7 +127,6 @@ const Diagnostics = () => {
     if (selected.includes('core-dumps')) {
       const since = sinceIso(coreSinceHours);
       if (since) params.set('core_since', since);
-      coreProcesses.forEach((name) => params.append('core_process', name));
     }
 
     fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
@@ -185,9 +183,6 @@ const Diagnostics = () => {
       })
       .then((data) => {
         setCorePreview({ status: 'done', data, error: '' });
-        // Drop ticked processes that no longer exist on the node.
-        const present = new Set((data.files || []).map((f) => f.process));
-        setCoreProcesses((prev) => prev.filter((name) => present.has(name)));
       })
       .catch((e) => {
         if (e.name === 'AbortError') return;
@@ -322,10 +317,6 @@ const Diagnostics = () => {
             umfDomainOptions={umfDomainOptions}
             coreSinceHours={coreSinceHours}
             setCoreSinceHours={setCoreSinceHours}
-            coreProcesses={coreProcesses}
-            setCoreProcesses={setCoreProcesses}
-            corePreview={corePreview}
-            onRefreshCorePreview={loadCorePreview}
             onBack={handleBackToConnect}
             onContinue={() => setStep(3)}
           />
@@ -337,7 +328,7 @@ const Diagnostics = () => {
             selectedServices={selectedServices}
             umfDomain={umfDomain}
             umfDuration={umfDuration}
-            coreFilters={{ sinceHours: coreSinceHours, processes: coreProcesses }}
+            coreFilters={{ sinceHours: coreSinceHours }}
             corePreview={corePreview}
             onEditConnection={() => setStep(1)}
             onEditServices={() => setStep(2)}

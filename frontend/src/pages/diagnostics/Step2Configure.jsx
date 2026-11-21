@@ -25,10 +25,6 @@ const Step2Configure = ({
   umfDomainOptions,
   coreSinceHours,
   setCoreSinceHours,
-  coreProcesses,
-  setCoreProcesses,
-  corePreview,
-  onRefreshCorePreview,
   onBack,
   onContinue,
 }) => {
@@ -88,18 +84,11 @@ const Step2Configure = ({
     },
     'core-dumps': {
       isValid: true,
-      summary: describeCoreFilters({
-        sinceHours: coreSinceHours,
-        processes: coreProcesses,
-      }),
+      summary: describeCoreFilters({ sinceHours: coreSinceHours }),
       fields: (
         <CoreDumpSettings
           sinceHours={coreSinceHours}
           setSinceHours={setCoreSinceHours}
-          processes={coreProcesses}
-          setProcesses={setCoreProcesses}
-          preview={corePreview}
-          onRefresh={onRefreshCorePreview}
         />
       ),
     },
