@@ -104,6 +104,7 @@ def _fetch_one(
             info, "w", force_zip64=size >= (1 << 31)
         ) as dst:
             while chunk := src.read(1024 * 1024):
+                tracker.check_cancelled()
                 dst.write(chunk)
         return CollectedCoreDump(
             file=f, archive_path=arcname, sha256=digest, status="collected"

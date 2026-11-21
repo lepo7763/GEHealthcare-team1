@@ -275,6 +275,28 @@ const Diagnostics = () => {
     }
   };
 
+  // Back from the Collect step: stop the running collection (server-side too, so
+  // its collector pods are cleaned up), then return to Review.
+  const handleBackFromCollect = async () => {
+    stopPolling();
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = null;
+    try {
+      // Resolves once the server has stopped and cleaned up, so a new run can start at once.
+      await fetch('/api/logs/cancel', { method: 'POST' });
+    } catch {
+      /* best effort: still leave the step */
+    }
+    if (downloadUrlRef.current) {
+      URL.revokeObjectURL(downloadUrlRef.current);
+      downloadUrlRef.current = null;
+    }
+    setCollect(null);
+    setCollectError('');
+    setDownload(null);
+    setStep(3);
+  };
+
   const handleBackToConnect = () => {
     setStep(1);
     resetCheck();
@@ -350,7 +372,7 @@ const Diagnostics = () => {
             collect={collect}
             collectError={collectError}
             download={download}
-            onBack={() => setStep(3)}
+            onBack={handleBackFromCollect}
           />
         )}
       </div>

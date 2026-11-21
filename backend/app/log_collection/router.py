@@ -1,11 +1,16 @@
 import io
+import time
 import zipfile
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 from app.core.k8s_client import get_batch_v1_api, get_core_v1_api
 from app.core_dumps.schemas import CoreDumpParams
-from app.diagnostics.service import CollectionInProgressError, collect_diagnostics
+from app.diagnostics.service import (
+    CollectionCancelledError,
+    CollectionInProgressError,
+    collect_diagnostics,
+)
 from app.log_collection.progress import tracker
 from app.log_collection.schemas import CollectionProgressResponse, LogCollectionParams
 from app.log_collection.service import ClusterUnreachableError
@@ -31,6 +36,21 @@ def _stream_and_close(temp_file, chunk_size: int = 64 * 1024):
 def get_collection_progress() -> dict:
     """Snapshot of the current/last collection, polled by the UI."""
     return tracker.snapshot()
+
+
+@router.post("/cancel")
+def cancel_collection() -> dict:
+    """Stop the running collection and wait until its collector Jobs are cleaned up.
+
+    Returns once nothing is running, so the caller can start a new collection
+    straight away. ``cancelled`` is False when nothing was running.
+    """
+    cancelled = tracker.request_cancel()
+    if cancelled:
+        deadline = time.monotonic() + 30
+        while tracker.running and time.monotonic() < deadline:
+            time.sleep(0.1)
+    return {"cancelled": cancelled, "running": tracker.running}
 
 
 @router.get("/zip")
@@ -78,6 +98,8 @@ def download_diagnostics(
                 since=core_since, until=core_until, processes=core_process
             ),
         )
+    except CollectionCancelledError as e:
+        raise HTTPException(status_code=499, detail=str(e))
     except CollectionInProgressError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ClusterUnreachableError as e:
