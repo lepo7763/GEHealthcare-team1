@@ -2,7 +2,8 @@ import { useState } from 'react';
 import {
   CORE_SINCE_OPTIONS,
   CUSTOM_RANGE,
-  isCustomRangeValid,
+  customRangeError,
+  dateKey,
 } from './coreDumps';
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -17,6 +18,7 @@ const RangeCalendar = ({ start, end, onChange }) => {
 
   const firstWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = dateKey();
   const cells = [
     ...Array(firstWeekday).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
@@ -60,12 +62,14 @@ const RangeCalendar = ({ start, end, onChange }) => {
           const key = toKey(year, month, day);
           const isEdge = key === start || key === end;
           const inRange = start && end && key > start && key < end;
+          const isFuture = key > today;
           return (
             <button
               key={key}
               type="button"
               className={`range-calendar-day${isEdge ? ' edge' : ''}${inRange ? ' in-range' : ''}`}
               aria-pressed={isEdge}
+              disabled={isFuture}
               onClick={() => pick(key)}
             >
               {day}
@@ -82,6 +86,9 @@ const CoreDumpSettings = ({ sinceHours, setSinceHours, customRange, setCustomRan
   const isCustom = sinceHours === CUSTOM_RANGE;
   const bothDates = Boolean(customRange.start && customRange.end);
   const patch = (changes) => setCustomRange({ ...customRange, ...changes });
+  const endIsToday = customRange.end === dateKey();
+  const useNow = endIsToday && customRange.endNow;
+  const rangeError = bothDates ? customRangeError(customRange) : '';
 
   return (
     <>
@@ -117,19 +124,41 @@ const CoreDumpSettings = ({ sinceHours, setSinceHours, customRange, setCustomRan
                   onChange={(e) => patch({ startTime: e.target.value })}
                 />
               </label>
-              <label className="field grow">
+              <div className="field grow">
                 <span>End time ({customRange.end})</span>
+                {endIsToday && (
+                  <div className="range-end-mode" role="radiogroup" aria-label="End time mode">
+                    <label>
+                      <input
+                        type="radio"
+                        name="core-end-mode"
+                        checked={useNow}
+                        onChange={() => patch({ endNow: true })}
+                      />{' '}
+                      Current time
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name="core-end-mode"
+                        checked={!useNow}
+                        onChange={() => patch({ endNow: false })}
+                      />{' '}
+                      Custom time
+                    </label>
+                  </div>
+                )}
                 <input
                   type="time"
                   value={customRange.endTime}
+                  disabled={useNow}
+                  max={endIsToday ? new Date().toTimeString().slice(0, 5) : undefined}
                   onChange={(e) => patch({ endTime: e.target.value })}
                 />
-              </label>
+              </div>
             </div>
           )}
-          {bothDates && !isCustomRangeValid(customRange) && (
-            <small className="field-error">Enter times so the start is before the end.</small>
-          )}
+          {rangeError && <small className="field-error">{rangeError}</small>}
         </>
       )}
     </>

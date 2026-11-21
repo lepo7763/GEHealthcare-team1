@@ -1163,3 +1163,16 @@ code {
   background: var(--eds-color-purple);
   color: #fff;
 }
+
+.range-calendar-day:disabled {
+  color: #b5b5b5;
+  background: none;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.range-end-mode {
+  display: flex;
+  gap: var(--eds-spacing-md);
+  margin: 4px 0;
+}

@@ -59,3 +59,14 @@ test('custom range filters by start and end', () => {
     '2026-11-10 00:00 – 2026-11-12 23:59',
   );
 });
+
+test('future times are rejected; "current time" end resolves to now', async () => {
+  const { customRangeError, dateKey } = await import('./coreDumps.js');
+  const now = Date.parse('2026-11-14T12:00:00');
+  const today = dateKey(now);
+  const range = { start: today, end: today, startTime: '09:00', endTime: '23:59', endNow: false };
+  assert.match(customRangeError(range, now), /future/);
+  assert.equal(customRangeError({ ...range, endNow: true }, now), '');
+  assert.equal(customRangeError({ ...range, endTime: '11:00' }, now), '');
+  assert.match(customRangeError({ ...range, startTime: '13:00', endTime: '11:00' }, now), /future/);
+});
