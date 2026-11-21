@@ -68,3 +68,12 @@ class CollectionProgressResponse(BaseModel):
     message: Optional[str] = None
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
+
+
+class PackageResponse(BaseModel):
+    """A finished diagnostic package kept on the backend; download it from ``url``."""
+
+    id: str
+    filename: str
+    size_bytes: int
+    url: str

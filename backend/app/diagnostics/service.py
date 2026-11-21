@@ -6,13 +6,18 @@ import shutil
 import tempfile
 import zipfile
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import BinaryIO, List, Optional
+
+from app.core.workdir import work_dir
 
 from app.core_dumps.config import CoreDumpConfig
 from app.core_dumps.schemas import CoreDumpParams
 from app.core_dumps.service import collect_core_dumps_into
 from app.firewall.config import FirewallConfig
 from app.firewall.service import collect_firewall_into
+from app.prometheus.config import PrometheusConfig
+from app.prometheus.schemas import PrometheusParams
+from app.prometheus.service import collect_prometheus_into
 from app.log_collection.progress import (
     CONTAINER_LOGS_LABEL,
     CONTAINER_LOGS_SERVICE_ID,
@@ -21,6 +26,8 @@ from app.log_collection.progress import (
     CollectionCancelled,
     FIREWALL_LABEL,
     FIREWALL_SERVICE_ID,
+    PROMETHEUS_LABEL,
+    PROMETHEUS_SERVICE_ID,
     UMF_RTI_LABEL,
     UMF_RTI_SERVICE_ID,
     ServiceProgress,
@@ -54,6 +61,7 @@ SUPPORTED_SERVICES = (
     UMF_RTI_SERVICE_ID,
     CORE_DUMPS_SERVICE_ID,
     FIREWALL_SERVICE_ID,
+    PROMETHEUS_SERVICE_ID,
 )
 
 
@@ -104,6 +112,14 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="MB",
                 )
             )
+        elif service_id == PROMETHEUS_SERVICE_ID:
+            progress_services.append(
+                ServiceProgress(
+                    id=PROMETHEUS_SERVICE_ID,
+                    label=PROMETHEUS_LABEL,
+                    unit="MB",
+                )
+            )
         else:
             progress_services.append(
                 ServiceProgress(
@@ -125,8 +141,14 @@ def collect_diagnostics(
     core_dump_params: Optional[CoreDumpParams] = None,
     core_dump_config: Optional[CoreDumpConfig] = None,
     firewall_config: Optional[FirewallConfig] = None,
-) -> tempfile.SpooledTemporaryFile:
+    prometheus_params: Optional[PrometheusParams] = None,
+    prometheus_config: Optional[PrometheusConfig] = None,
+    out: Optional[BinaryIO] = None,
+) -> BinaryIO:
     """Collect every selected service into one streaming zip.
+
+    Written to `out` if given, else to an anonymous file on disk (see
+    app.core.workdir); returned rewound. On failure the file is closed.
 
     Per-service failures are recorded in ``manifest.json`` and do not discard
     the other service's artifacts.  A cluster that cannot even list pods is
@@ -139,7 +161,7 @@ def collect_diagnostics(
             "A diagnostic collection is already in progress."
         )
 
-    temp_zip = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024, mode="w+b")
+    temp_zip = out if out is not None else tempfile.TemporaryFile(dir=work_dir())
     manifest = LogCollectionManifest(
         timestamp_utc=datetime.now(timezone.utc).isoformat(),
         total_logs_collected=0,
@@ -168,6 +190,15 @@ def collect_diagnostics(
                     )
                 elif service_id == FIREWALL_SERVICE_ID:
                     collect_firewall_into(zf, manifest, core, batch, firewall_config)
+                elif service_id == PROMETHEUS_SERVICE_ID:
+                    collect_prometheus_into(
+                        zf,
+                        manifest,
+                        core,
+                        batch,
+                        prometheus_params or PrometheusParams(),
+                        prometheus_config,
+                    )
 
             tracker.set_status("packaging")
             manifest.total_logs_collected = len(manifest.collected_files)

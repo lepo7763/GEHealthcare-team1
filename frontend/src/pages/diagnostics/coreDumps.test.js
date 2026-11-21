@@ -4,8 +4,8 @@ import {
   describeCoreFilters,
   estimateSelection,
   formatBytes,
-  sinceIso,
 } from './coreDumps.js';
+import { sinceIso } from './timeRange.js';
 
 const MB = 1024 * 1024;
 const file = (process, iso, size, signal = 'SIGABRT') => ({
@@ -61,7 +61,7 @@ test('custom range filters by start and end', () => {
 });
 
 test('future times are rejected; "current time" end resolves to now', async () => {
-  const { customRangeError, dateKey } = await import('./coreDumps.js');
+  const { customRangeError, dateKey } = await import('./timeRange.js');
   const now = Date.parse('2026-11-14T12:00:00');
   const today = dateKey(now);
   const range = { start: today, end: today, startTime: '09:00', endTime: '23:59', endNow: false };
