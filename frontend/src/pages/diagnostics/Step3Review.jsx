@@ -1,5 +1,6 @@
 import { summarizeAxone } from './axoneParams';
 import { describeCoreFilters, estimateSelection, formatBytes } from './coreDumps';
+import { describePromFilters } from './prometheus';
 
 const Step3Review = ({
   result,
@@ -9,6 +10,7 @@ const Step3Review = ({
   axoneParams,
   coreFilters,
   corePreview,
+  promFilters,
   onEditConnection,
   onEditServices,
   onBack,
@@ -24,6 +26,7 @@ const Step3Review = ({
   const coreEstimate = corePreview?.data
     ? estimateSelection(corePreview.data.files, coreFilters)
     : null;
+  const promSelected = selectedServices.some((service) => service.id === 'prometheus');
 
   return (
     <section className="section-narrow">
@@ -90,13 +93,25 @@ const Step3Review = ({
                   <div className="check-detail">
                     About {coreEstimate.count} core{coreEstimate.count === 1 ? '' : 's'} ·{' '}
                     {formatBytes(coreEstimate.bytes)}
-                    {coreEstimate.skipped > 0 && ` (${coreEstimate.skipped} skipped by the size cap)`}
                   </div>
                 )}
                 <div className="check-detail">
                   Read from the node by a short-lived, read-only Kubernetes Job (deleted
                   afterwards). Cores can contain process memory, including patient data —
                   handle the package accordingly.
+                </div>
+              </div>
+            </li>
+          )}
+          {promSelected && (
+            <li>
+              <div>
+                <div className="check-title">Prometheus database</div>
+                <div className="check-detail">{describePromFilters(promFilters)}</div>
+                <div className="check-detail">
+                  Whole TSDB blocks overlapping the window are copied from the node by a
+                  short-lived, read-only Kubernetes Job (deleted afterwards). Large windows
+                  can take a while and produce a multi-GB package.
                 </div>
               </div>
             </li>

@@ -9,6 +9,8 @@ from typing import Callable, List, Optional
 
 from kubernetes import client
 
+from app.core.workdir import work_dir
+
 from app.log_collection.progress import (
     CORE_DUMPS_LABEL,
     CORE_DUMPS_SERVICE_ID,
@@ -104,6 +106,7 @@ def _fetch_one(
             info, "w", force_zip64=size >= (1 << 31)
         ) as dst:
             while chunk := src.read(1024 * 1024):
+                tracker.check_cancelled()
                 dst.write(chunk)
         return CollectedCoreDump(
             file=f, archive_path=arcname, sha256=digest, status="collected"
@@ -142,7 +145,7 @@ def collect_core_dumps_into(
     )
     written: List[str] = []
     service_error: Optional[str] = None
-    workdir = tempfile.mkdtemp(prefix="core-dumps-")
+    workdir = tempfile.mkdtemp(prefix="core-dumps-", dir=work_dir())
 
     try:
         with session_factory(core, batch, config) as session:
@@ -151,7 +154,7 @@ def collect_core_dumps_into(
             files, summary.host_config = session.list_files()
             summary.available_count = len(files)
             summary.available_bytes = sum(f.size_bytes for f in files)
-            selected, summary.skipped = select_files(files, params)
+            selected = select_files(files, params)
 
             total_bytes = sum(f.size_bytes for f in selected)
             tracker.set_service_total(

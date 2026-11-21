@@ -22,6 +22,8 @@ from kubernetes.client.exceptions import ApiException
 from kubernetes.stream import stream
 from websocket import ABNF, WebSocketException
 
+from app.log_collection.progress import tracker
+
 # Kubernetes exec channel ids (first byte of every websocket frame).
 _STDOUT, _STDERR, _ERROR = 1, 2, 3
 _STDERR_KEEP = 4096
@@ -109,6 +111,7 @@ def exec_to_sink(
                 raise JobExecError(
                     f"Command in {pod} timed out after {timeout_seconds:.0f}s"
                 )
+            tracker.check_cancelled()
             opcode, frame = sock.recv_data_frame(True)
             if opcode == ABNF.OPCODE_CLOSE:
                 break
@@ -203,6 +206,7 @@ class JobExecSession:
         deadline = time.monotonic() + self.startup_timeout_seconds
         last_pod: Optional[str] = None
         while time.monotonic() < deadline:
+            tracker.check_cancelled()
             pods = self.core.list_namespaced_pod(
                 namespace=self.namespace, label_selector=selector
             ).items

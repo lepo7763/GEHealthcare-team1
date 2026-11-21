@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
-import CoreDumpSettings from './CoreDumpSettings';
 import AxoneLogSettings from './AxoneLogSettings';
 import { summarizeAxone, toAxoneQuery } from './axoneParams';
-import { describeCoreFilters, validateCoreMaxMb } from './coreDumps';
+import TimeRangeSettings from './TimeRangeSettings';
+import { CORE_SINCE_OPTIONS, describeCoreFilters } from './coreDumps';
+import { PROM_SINCE_OPTIONS, describePromFilters } from './prometheus';
+import { isTimeRangeValid } from './timeRange';
 
 // Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
 const MIN_DURATION = 10;
@@ -39,12 +41,12 @@ const Step2Configure = ({
   setAxoneParams,
   coreSinceHours,
   setCoreSinceHours,
-  coreProcesses,
-  setCoreProcesses,
-  coreMaxMb,
-  setCoreMaxMb,
-  corePreview,
-  onRefreshCorePreview,
+  coreCustomRange,
+  setCoreCustomRange,
+  promSinceHours,
+  setPromSinceHours,
+  promCustomRange,
+  setPromCustomRange,
   onBack,
   onContinue,
 }) => {
@@ -52,6 +54,8 @@ const Step2Configure = ({
   const domainValid = Boolean(domainOption);
   const durationValid = validateDuration(umfDuration);
   const axoneError = axoneIssue(axoneParams);
+  const promFilters = { sinceHours: promSinceHours, customRange: promCustomRange };
+  const promValid = isTimeRangeValid(promFilters);
 
   // Settings for each service that has any, keyed by service id. To give a new service
   // (e.g. Netshoot) its own settings, add an entry here: whether its values are valid,
@@ -111,22 +115,32 @@ const Step2Configure = ({
       ),
     },
     'core-dumps': {
-      isValid: validateCoreMaxMb(coreMaxMb),
-      summary: describeCoreFilters({
-        sinceHours: coreSinceHours,
-        processes: coreProcesses,
-        maxMb: coreMaxMb,
-      }),
+      isValid: isTimeRangeValid({ sinceHours: coreSinceHours, customRange: coreCustomRange }),
+      summary: describeCoreFilters({ sinceHours: coreSinceHours, customRange: coreCustomRange }),
       fields: (
-        <CoreDumpSettings
+        <TimeRangeSettings
+          label="Dumped since"
+          hint="Based on the crash time recorded in each core's filename."
+          options={CORE_SINCE_OPTIONS}
           sinceHours={coreSinceHours}
           setSinceHours={setCoreSinceHours}
-          processes={coreProcesses}
-          setProcesses={setCoreProcesses}
-          maxMb={coreMaxMb}
-          setMaxMb={setCoreMaxMb}
-          preview={corePreview}
-          onRefresh={onRefreshCorePreview}
+          customRange={coreCustomRange}
+          setCustomRange={setCoreCustomRange}
+        />
+      ),
+    },
+    prometheus: {
+      isValid: promValid,
+      summary: describePromFilters(promFilters),
+      fields: (
+        <TimeRangeSettings
+          label="Data from"
+          hint="Prometheus stores data in blocks of 2 hours or more, so whole blocks overlapping this window are exported."
+          options={PROM_SINCE_OPTIONS}
+          sinceHours={promSinceHours}
+          setSinceHours={setPromSinceHours}
+          customRange={promCustomRange}
+          setCustomRange={setPromCustomRange}
         />
       ),
     },
@@ -208,7 +222,6 @@ const Step2Configure = ({
                     role="region"
                     aria-label={`${service.name} settings`}
                   >
-                    <h4 className="service-options-title">{service.name} settings</h4>
                     {panel.fields}
                   </div>
                 )}

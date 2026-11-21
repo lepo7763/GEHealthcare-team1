@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from threading import Lock
+from threading import Event, Lock
 from typing import List, Optional
 
 # Service identifiers shared by the collector, orchestrator and UI.
@@ -9,15 +9,26 @@ UMF_RTI_SERVICE_ID = "umf-rti"
 AXONE_LOGS_SERVICE_ID = "axone-logs"
 CORE_DUMPS_SERVICE_ID = "core-dumps"
 FIREWALL_SERVICE_ID = "firewall"
+PROMETHEUS_SERVICE_ID = "prometheus"
 
 CONTAINER_LOGS_LABEL = "Container Log Collection"
 UMF_RTI_LABEL = "UMF RTI"
 AXONE_LOGS_LABEL = "Axone Logs"
 CORE_DUMPS_LABEL = "Core Dumps"
 FIREWALL_LABEL = "Firewall Settings"
+PROMETHEUS_LABEL = "Prometheus Database"
 
 # Statuses that mean a collection is actively running.
 RUNNING_STATUSES = frozenset({"listing", "collecting", "packaging"})
+
+
+class CollectionCancelled(BaseException):
+    """Raised inside the collection thread once the user cancels.
+
+    A BaseException on purpose: the collectors have many 'except Exception'
+    fallbacks that would otherwise swallow the cancel and keep going. 'finally'
+    blocks (which delete the collector Jobs) still run.
+    """
 
 
 def _utcnow() -> str:
@@ -71,13 +82,36 @@ class ProgressTracker:
     def __init__(self) -> None:
         self._lock = Lock()
         self._state = CollectionProgress()
+        self._cancel = Event()
 
     def reset(self) -> None:
         with self._lock:
             self._state = CollectionProgress()
+            self._cancel.clear()
+
+    def request_cancel(self) -> bool:
+        """Ask the running collection to stop. False if none is running."""
+        with self._lock:
+            if self._state.status not in RUNNING_STATUSES:
+                return False
+            self._cancel.set()
+            return True
+
+    def check_cancelled(self) -> None:
+        """Collectors call this at safe points; raises once a cancel was requested."""
+        if self._cancel.is_set():
+            raise CollectionCancelled()
+
+    def mark_cancelled(self) -> None:
+        with self._lock:
+            self._state.status = "cancelled"
+            self._state.message = "Collection cancelled."
+            self._state.finished_at = _utcnow()
+            self._cancel.clear()
 
     def begin(self, services: List[ServiceProgress]) -> None:
         with self._lock:
+            self._cancel.clear()
             self._state = CollectionProgress(
                 status="listing",
                 services=list(services),
@@ -94,6 +128,7 @@ class ProgressTracker:
         with self._lock:
             if self._state.status in RUNNING_STATUSES:
                 return False
+            self._cancel.clear()
             self._state = CollectionProgress(
                 status="listing",
                 services=list(services),

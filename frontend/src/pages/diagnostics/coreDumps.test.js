@@ -4,10 +4,8 @@ import {
   describeCoreFilters,
   estimateSelection,
   formatBytes,
-  groupByProcess,
-  sinceIso,
-  validateCoreMaxMb,
 } from './coreDumps.js';
+import { sinceIso } from './timeRange.js';
 
 const MB = 1024 * 1024;
 const file = (process, iso, size, signal = 'SIGABRT') => ({
@@ -24,31 +22,15 @@ const FILES = [
   file(null, '2026-11-11T00:00:00Z', 10),
 ];
 
-test('groups by process, most cores first, unrecognized names labelled', () => {
-  const groups = groupByProcess(FILES);
-  assert.equal(groups[0].process, 'xGate');
-  assert.equal(groups[0].count, 2);
-  assert.deepEqual(groups[0].signals, ['SIGABRT', 'SIGSEGV']);
-  assert.equal(groups[0].latest, '2026-11-12T22:06:36Z');
-  assert.ok(groups.some((g) => g.process === '(unrecognized name)'));
+test('estimate has no size cap: every matching core counts', () => {
+  const est = estimateSelection(FILES, { sinceHours: '' });
+  assert.deepEqual(est, { count: 4, bytes: 2 * MB + 10 });
 });
 
-test('estimate fills the cap newest-first and counts skipped', () => {
-  // 1 MB cap: xGate (newest, 0.5) fits, unrecognized (10 B) fits,
-  // journal (1 MB) overflows, old xGate (0.5) still overflows.
-  const est = estimateSelection(FILES, { sinceHours: '', processes: [], maxMb: '1' });
-  assert.equal(est.count, 2);
-  assert.equal(est.skipped, 2);
-});
-
-test('estimate applies since and process filters', () => {
+test('estimate applies the since filter', () => {
   const now = Date.parse('2026-11-13T00:00:00Z');
-  const est = estimateSelection(
-    FILES,
-    { sinceHours: '168', processes: ['xGate'], maxMb: '500' },
-    now,
-  );
-  assert.deepEqual(est, { count: 1, bytes: MB / 2, skipped: 0 });
+  const est = estimateSelection(FILES, { sinceHours: '168' }, now);
+  assert.deepEqual(est, { count: 3, bytes: 1.5 * MB + 10 });
 });
 
 test('sinceIso is null for "any time"', () => {
@@ -56,18 +38,35 @@ test('sinceIso is null for "any time"', () => {
   assert.equal(sinceIso('24', Date.parse('2026-11-13T00:00:00Z')), '2026-11-12T00:00:00.000Z');
 });
 
-test('max MB validation matches backend bounds', () => {
-  assert.ok(validateCoreMaxMb('500'));
-  assert.ok(validateCoreMaxMb(' 4096 '));
-  for (const bad of ['', '0', '4097', '1.5', 'abc']) assert.ok(!validateCoreMaxMb(bad), bad);
-});
-
 test('formatting helpers', () => {
   assert.equal(formatBytes(512), '512 B');
   assert.equal(formatBytes(509 * MB), '509 MB');
   assert.equal(formatBytes(1.5 * MB), '1.5 MB');
   assert.equal(
-    describeCoreFilters({ sinceHours: '24', processes: ['xGate'], maxMb: '50' }),
-    'Last 24 hours · xGate · up to 50 MB',
+    describeCoreFilters({ sinceHours: '24' }),
+    'Last 24 hours',
   );
+});
+
+test('custom range filters by start and end', () => {
+  const customRange = { start: '2026-11-10', end: '2026-11-12', startTime: '00:00', endTime: '23:59' };
+  const est = estimateSelection(FILES, { sinceHours: 'custom', customRange });
+  // 11-10 10:00Z and 11-11 00:00Z fall inside (timezone-dependent edges aside); 11-01 does not.
+  assert.ok(est.count >= 2 && est.count <= 3);
+  assert.equal(sinceIso('custom', Date.now(), { ...customRange, end: '' }), null);
+  assert.equal(
+    describeCoreFilters({ sinceHours: 'custom', customRange }),
+    '2026-11-10 00:00 – 2026-11-12 23:59',
+  );
+});
+
+test('future times are rejected; "current time" end resolves to now', async () => {
+  const { customRangeError, dateKey } = await import('./timeRange.js');
+  const now = Date.parse('2026-11-14T12:00:00');
+  const today = dateKey(now);
+  const range = { start: today, end: today, startTime: '09:00', endTime: '23:59', endNow: false };
+  assert.match(customRangeError(range, now), /future/);
+  assert.equal(customRangeError({ ...range, endNow: true }, now), '');
+  assert.equal(customRangeError({ ...range, endTime: '11:00' }, now), '');
+  assert.match(customRangeError({ ...range, startTime: '13:00', endTime: '11:00' }, now), /future/);
 });
