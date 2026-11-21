@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import './pages.css';
 
-import { STEPS, STEP_INFO, SERVICES, RUNNING_STATUSES, parseFilename } from './diagnostics/constants';
+import { STEPS, STEP_INFO, SERVICES, RUNNING_STATUSES } from './diagnostics/constants';
 import Step1Connect from './diagnostics/Step1Connect';
 import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
-import { EMPTY_CUSTOM_RANGE, sinceIso, untilIso } from './diagnostics/coreDumps';
+import { EMPTY_CUSTOM_RANGE, sinceIso, untilIso } from './diagnostics/timeRange';
+import { DEFAULT_PROM_SINCE } from './diagnostics/prometheus';
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -56,13 +57,16 @@ const Diagnostics = () => {
   const [corePreview, setCorePreview] = useState({ status: 'idle', data: null, error: '' });
   const corePreviewAbortRef = useRef(null);
 
+  // Prometheus time window (Step 2).
+  const [promSinceHours, setPromSinceHours] = useState(DEFAULT_PROM_SINCE);
+  const [promCustomRange, setPromCustomRange] = useState(EMPTY_CUSTOM_RANGE);
+
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
   const [collectError, setCollectError] = useState('');
   const [download, setDownload] = useState(null);
   const pollRef = useRef(null);
   const abortRef = useRef(null);
-  const downloadUrlRef = useRef(null);
 
   const isChecking = phase === 'checking';
   const info = STEP_INFO[step] || STEP_INFO[1];
@@ -97,10 +101,6 @@ const Diagnostics = () => {
     setCollectError('');
     setCollect(null);
     setDownload(null);
-    if (downloadUrlRef.current) {
-      URL.revokeObjectURL(downloadUrlRef.current);
-      downloadUrlRef.current = null;
-    }
 
     // Attach to a run that's already in progress instead of starting a second.
     let current = null;
@@ -131,8 +131,19 @@ const Diagnostics = () => {
       const until = untilIso(coreSinceHours, coreCustomRange);
       if (until) params.set('core_until', until);
     }
+    if (selected.includes('prometheus')) {
+      const since = sinceIso(promSinceHours, Date.now(), promCustomRange);
+      if (since) params.set('prom_since', since);
+      const until = untilIso(promSinceHours, promCustomRange);
+      if (until) params.set('prom_until', until);
+    }
 
-    fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
+    // The backend builds the package on its disk and answers with a link to it, so
+    // the browser downloads it like any file (straight to disk, any size).
+    fetch(`/api/logs/packages?${params.toString()}`, {
+      method: 'POST',
+      signal: controller.signal,
+    })
       .then(async (res) => {
         if (!res.ok) {
           let detail = `Collection failed (${res.status}).`;
@@ -144,17 +155,17 @@ const Diagnostics = () => {
           }
           throw new Error(detail);
         }
-        const filename =
-          parseFilename(res.headers.get('Content-Disposition')) || 'iomt_diagnostics.zip';
-        const blob = await res.blob();
-        return { blob, filename };
+        return res.json();
       })
-      .then(({ blob, filename }) => {
+      .then((pkg) => {
         stopPolling();
         pollProgress();
-        const url = URL.createObjectURL(blob);
-        downloadUrlRef.current = url;
-        setDownload({ url, filename });
+        setDownload({
+          id: pkg.id,
+          url: pkg.url,
+          filename: pkg.filename,
+          sizeBytes: pkg.size_bytes,
+        });
       })
       .catch((e) => {
         if (e.name === 'AbortError') return;
@@ -165,12 +176,13 @@ const Diagnostics = () => {
     startPolling();
   };
 
-  const loadCorePreview = () => {
-    if (corePreviewAbortRef.current) corePreviewAbortRef.current.abort();
+  // GET a node listing (core files, TSDB blocks) into one of the preview states.
+  const loadPreview = (url, abortRef, setPreview) => {
+    if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
-    corePreviewAbortRef.current = controller;
-    setCorePreview((prev) => ({ ...prev, status: 'loading', error: '' }));
-    fetch('/api/core-dumps', { signal: controller.signal })
+    abortRef.current = controller;
+    setPreview((prev) => ({ ...prev, status: 'loading', error: '' }));
+    fetch(url, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) {
           let detail = `Request failed (${res.status})`;
@@ -185,13 +197,15 @@ const Diagnostics = () => {
         return res.json();
       })
       .then((data) => {
-        setCorePreview({ status: 'done', data, error: '' });
+        setPreview({ status: 'done', data, error: '' });
       })
       .catch((e) => {
         if (e.name === 'AbortError') return;
-        setCorePreview((prev) => ({ ...prev, status: 'error', error: e.message }));
+        setPreview((prev) => ({ ...prev, status: 'error', error: e.message }));
       });
   };
+
+  const loadCorePreview = () => loadPreview('/api/core-dumps', corePreviewAbortRef, setCorePreview);
 
   // Load the UMF RTI domain options once.
   useEffect(() => {
@@ -213,7 +227,6 @@ const Diagnostics = () => {
       stopPolling();
       if (abortRef.current) abortRef.current.abort();
       if (corePreviewAbortRef.current) corePreviewAbortRef.current.abort();
-      if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
     };
   }, []);
 
@@ -322,6 +335,10 @@ const Diagnostics = () => {
             setCoreSinceHours={setCoreSinceHours}
             coreCustomRange={coreCustomRange}
             setCoreCustomRange={setCoreCustomRange}
+            promSinceHours={promSinceHours}
+            setPromSinceHours={setPromSinceHours}
+            promCustomRange={promCustomRange}
+            setPromCustomRange={setPromCustomRange}
             onBack={handleBackToConnect}
             onContinue={() => setStep(3)}
           />
@@ -335,6 +352,7 @@ const Diagnostics = () => {
             umfDuration={umfDuration}
             coreFilters={{ sinceHours: coreSinceHours, customRange: coreCustomRange }}
             corePreview={corePreview}
+            promFilters={{ sinceHours: promSinceHours, customRange: promCustomRange }}
             onEditConnection={() => setStep(1)}
             onEditServices={() => setStep(2)}
             onBack={() => setStep(2)}

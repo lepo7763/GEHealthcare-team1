@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
-import CoreDumpSettings from './CoreDumpSettings';
-import { CUSTOM_RANGE, describeCoreFilters, isCustomRangeValid } from './coreDumps';
+import TimeRangeSettings from './TimeRangeSettings';
+import { CORE_SINCE_OPTIONS, describeCoreFilters } from './coreDumps';
+import { PROM_SINCE_OPTIONS, describePromFilters } from './prometheus';
+import { isTimeRangeValid } from './timeRange';
 
 // Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
 const MIN_DURATION = 10;
@@ -27,12 +29,18 @@ const Step2Configure = ({
   setCoreSinceHours,
   coreCustomRange,
   setCoreCustomRange,
+  promSinceHours,
+  setPromSinceHours,
+  promCustomRange,
+  setPromCustomRange,
   onBack,
   onContinue,
 }) => {
   const domainOption = umfDomainOptions.find((option) => option.domain === Number(umfDomain));
   const domainValid = Boolean(domainOption);
   const durationValid = validateDuration(umfDuration);
+  const promFilters = { sinceHours: promSinceHours, customRange: promCustomRange };
+  const promValid = isTimeRangeValid(promFilters);
 
   // Settings for each service that has any, keyed by service id. To give a new service
   // (e.g. Netshoot) its own settings, add an entry here: whether its values are valid,
@@ -85,14 +93,32 @@ const Step2Configure = ({
       ),
     },
     'core-dumps': {
-      isValid: coreSinceHours !== CUSTOM_RANGE || isCustomRangeValid(coreCustomRange),
+      isValid: isTimeRangeValid({ sinceHours: coreSinceHours, customRange: coreCustomRange }),
       summary: describeCoreFilters({ sinceHours: coreSinceHours, customRange: coreCustomRange }),
       fields: (
-        <CoreDumpSettings
+        <TimeRangeSettings
+          label="Dumped since"
+          hint="Based on the crash time recorded in each core's filename."
+          options={CORE_SINCE_OPTIONS}
           sinceHours={coreSinceHours}
           setSinceHours={setCoreSinceHours}
           customRange={coreCustomRange}
           setCustomRange={setCoreCustomRange}
+        />
+      ),
+    },
+    prometheus: {
+      isValid: promValid,
+      summary: describePromFilters(promFilters),
+      fields: (
+        <TimeRangeSettings
+          label="Data from"
+          hint="Prometheus stores data in blocks of 2 hours or more, so whole blocks overlapping this window are exported."
+          options={PROM_SINCE_OPTIONS}
+          sinceHours={promSinceHours}
+          setSinceHours={setPromSinceHours}
+          customRange={promCustomRange}
+          setCustomRange={setPromCustomRange}
         />
       ),
     },

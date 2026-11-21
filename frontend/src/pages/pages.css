@@ -1104,7 +1104,7 @@ code {
   display: block;
 }
 
-/* Core dumps: custom date-range calendar */
+/* Time-range picker (Core Dumps, Prometheus): custom date-range calendar */
 .range-calendar {
   margin-top: var(--eds-spacing-sm);
   padding: var(--eds-spacing-sm);
