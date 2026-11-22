@@ -1,3 +1,4 @@
+import re
 import io
 import zipfile
 from datetime import datetime, timezone
@@ -36,7 +37,7 @@ def get_collection_progress() -> dict:
 
 @router.get("/zip")
 def download_diagnostics(
-    services: List[Literal["container-logs", "umf-rti", "core-dumps", "firewall", "netshoot"]] = Query(
+    services: List[Literal["container-logs", "umf-rti", "core-dumps", "firewall", "netshoot", "cms"]] = Query(
         default=["container-logs"],
         description=(
             "Repeat for each service: services=container-logs&services=umf-rti"
@@ -46,6 +47,14 @@ def download_diagnostics(
     log_params: LogCollectionParams = Depends(),
     umf_params: UmfRtiParams = Depends(),
     netshoot_params: NetshootCollectionParams = Depends(),
+    cms_start_datetime: Optional[str] = Query(
+        default=None,
+        description="CMS start time in UTC (YYYY-MM-DDTHH:MM:SS.mmm)",
+    ),
+    cms_end_datetime: Optional[str] = Query(
+        default=None,
+        description="CMS end time in UTC (YYYY-MM-DDTHH:MM:SS.mmm)",
+    ),
     core_since: Optional[datetime] = Query(
         default=None, description="Core dumps: only cores dumped at/after this time."
     ),
@@ -68,10 +77,46 @@ def download_diagnostics(
             detail="A diagnostic collection is already in progress.",
         )
     if not services:
+        if "cms" in services:
+            pattern = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}"
+
+            if not cms_start_datetime or not cms_end_datetime:
+                raise HTTPException(
+                    status_code=422,
+                    detail="CMS requires start and end timestamps.",
+                )
+
+            if not (
+                re.fullmatch(pattern, cms_start_datetime)
+                and re.fullmatch(pattern, cms_end_datetime)
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="CMS timestamps must use YYYY-MM-DDTHH:MM:SS.mmm.",
+                )
+
+            try:
+                start = datetime.strptime(
+                    cms_start_datetime, "%Y-%m-%dT%H:%M:%S.%f"
+                )
+                end = datetime.strptime(
+                    cms_end_datetime, "%Y-%m-%dT%H:%M:%S.%f"
+                )
+            except ValueError:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Invalid CMS date or time.",
+                )
+
+            if start >= end:
+                raise HTTPException(
+                    status_code=422,
+                    detail="CMS end time must be after start time.",
+                )
         raise HTTPException(
-            status_code=422,
-            detail="Select at least one diagnostic service.",
-        )
+                    status_code=422,
+                    detail="Select at least one diagnostic service.",
+                )
     try:
         temp_zip = collect_diagnostics(
             core=core,
@@ -83,6 +128,8 @@ def download_diagnostics(
             core_dump_params=CoreDumpParams(
                 since=core_since, processes=core_process, max_mb=core_max_mb
             ),
+            cms_start_datetime = cms_start_datetime,
+            cms_end_datetime = cms_end_datetime,     
         )
     except CollectionInProgressError as e:
         raise HTTPException(status_code=409, detail=str(e))

@@ -8,6 +8,7 @@ import zipfile
 from datetime import datetime, timezone
 from typing import List, Optional
 
+from app.cms.collector import collect_cms_into
 from app.core_dumps.config import CoreDumpConfig
 from app.core_dumps.schemas import CoreDumpParams
 from app.core_dumps.service import collect_core_dumps_into
@@ -30,6 +31,8 @@ from app.log_collection.progress import (
     tracker,
     NETSHOOT_LABEL,
     NETSHOOT_SERVICE_ID,
+    CMS_LABEL,
+    CMS_SERVICE_ID,
 )
 from app.log_collection.schemas import (
     CollectedService,
@@ -68,6 +71,7 @@ SUPPORTED_SERVICES = (
     CORE_DUMPS_SERVICE_ID,
     FIREWALL_SERVICE_ID,
     NETSHOOT_SERVICE_ID,
+    CMS_SERVICE_ID,
 )
 
 
@@ -122,12 +126,20 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="seconds",
                 )
             )
-        else:
+        elif service_id == NETSHOOT_SERVICE_ID:
             progress_services.append(
                 ServiceProgress(
                     id = NETSHOOT_SERVICE_ID,
                     label = NETSHOOT_LABEL,
                     unit = "sessions"
+                )
+            )
+        elif service_id == CMS_SERVICE_ID:
+            progress_services.append(
+                ServiceProgress(
+                    id = CMS_SERVICE_ID,
+                    label = CMS_LABEL,
+                    unit = "snapshots",
                 )
             )
     return tracker.try_begin(progress_services)
@@ -144,6 +156,8 @@ def collect_diagnostics(
     core_dump_params: Optional[CoreDumpParams] = None,
     core_dump_config: Optional[CoreDumpConfig] = None,
     firewall_config: Optional[FirewallConfig] = None,
+    cms_start_datetime: Optional[str] = None,
+    cms_end_datetime: Optional[str] = None,
 ) -> tempfile.SpooledTemporaryFile:
     """Collect every selected service into one streaming zip.
 
@@ -152,6 +166,11 @@ def collect_diagnostics(
     still a 503 at the HTTP layer (nothing useful can be collected).
     """
     selected = _dedupe_services(services)
+    if CMS_SERVICE_ID in selected:
+        if not cms_start_datetime or not cms_end_datetime:
+            raise ValueError(
+                "CMS collection require start and end timestamps"
+            )
     config = config or get_umf_rti_config()
 
     netshoot_params = netshoot_params or NetshootCollectionParams()
@@ -193,6 +212,14 @@ def collect_diagnostics(
                     )
                 elif service_id == FIREWALL_SERVICE_ID:
                     collect_firewall_into(zf, manifest, core, batch, firewall_config)
+                
+                elif service_id == CMS_SERVICE_ID:
+                    collect_cms_into(
+                        zf,
+                        manifest,
+                        cms_start_datetime,
+                        cms_end_datetime,
+                    )
 
             tracker.set_status("packaging")
             manifest.total_logs_collected = len(manifest.collected_files)
@@ -393,3 +420,4 @@ def _collect_netshoot(
             error=message,
         )
     )
+    
