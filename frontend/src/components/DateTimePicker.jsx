@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { TimeFields } from './TimeFields';
 import { normalizeTime } from '@/lib/time';
 
-export function DateTimePicker({ id, label, value, onChange, disabled = false, describedBy }) {
+export function DateTimePicker({ id, label, value, onChange, disabled = false, describedBy, timeHint = "Use the log service's local time", }) {
   const [isOpen, setIsOpen] = useState(false);
   const time = normalizeTime(value.time);
   const dateLabel = value.date ? format(value.date, 'MMM d, yyyy') : '';
@@ -37,14 +37,18 @@ export function DateTimePicker({ id, label, value, onChange, disabled = false, d
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-[320px] max-w-[calc(100vw-24px)] p-0"
+            className="w-[320px] max-w-[calc(100vw-24px)] max-h-(--radix-popover-content-available-height) overflow-y-auto overscroll-contain p-0"
             align="start"
             collisionPadding={12}
+            // Keep wheel/touch scrolling inside the popover so a short viewport can
+            // still reach the time fields, even when an ancestor locks scrolling.
+            onWheel={(event) => event.stopPropagation()}
+            onTouchMove={(event) => event.stopPropagation()}
             aria-labelledby={`${id}-popover-title`}
           >
             <div className="border-b border-border p-3">
               <div id={`${id}-popover-title`} className="text-sm font-semibold">{label} date and time</div>
-              <div className="mt-1 text-xs text-muted-foreground">Use the log service's local time.</div>
+              <div className="mt-1 text-xs text-muted-foreground">{timeHint}</div>
             </div>
             <div className="flex justify-center">
               <Calendar

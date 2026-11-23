@@ -1,4 +1,7 @@
+import { summarizeAxone } from './axoneParams';
 import { describeCoreFilters, estimateSelection, formatBytes } from './coreDumps';
+import { describePromFilters } from './prometheus';
+import { summarizeCms } from './cmsParams';
 
 const Step3Review = ({
   result,
@@ -6,8 +9,11 @@ const Step3Review = ({
   umfDomain,
   umfDuration,
   netshootDuration,
+  axoneParams,
+  cmsParams,
   coreFilters,
   corePreview,
+  promFilters,
   onEditConnection,
   onEditServices,
   onBack,
@@ -19,10 +25,13 @@ const Step3Review = ({
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
   const netshootSelected = selectedServices.some((service) => service.id === 'netshoot');
+  const axoneSelected = selectedServices.some((service) => service.id === 'axone-logs');
   const coreSelected = selectedServices.some((service) => service.id === 'core-dumps');
   const coreEstimate = corePreview?.data
     ? estimateSelection(corePreview.data.files, coreFilters)
     : null;
+  const promSelected = selectedServices.some((service) => service.id === 'prometheus');
+  const cmsSelected = selectedServices.some((service) => service.id === 'cms',);
 
   return (
     <section className="section-narrow">
@@ -85,6 +94,39 @@ const Step3Review = ({
               </div>
             </li>
           )}
+
+          {axoneSelected && (
+            <li>
+              <div>
+                <div className="check-title">Axone logs</div>
+                <div className="check-detail">
+                  {summarizeAxone(axoneParams)}
+                </div>
+                <div className="check-detail">
+                  Exported from the Axone log service and added
+                  to the diagnostic ZIP.
+                </div>
+              </div>
+            </li>
+          )}
+
+          {cmsSelected && (
+            <li>
+              <div>
+                <div className="check-title">CMS Snapshot</div>
+
+                <div className="check-detail">
+                  {summarizeCms(cmsParams)}
+                </div>
+
+                <div className="check-detail">
+                  Generates a CMS snapshot for the selected time range
+                  and includes it in the diagnostic ZIP.
+                </div>
+              </div>
+            </li>
+          )}
+
           {coreSelected && (
             <li>
               <div>
@@ -94,13 +136,25 @@ const Step3Review = ({
                   <div className="check-detail">
                     About {coreEstimate.count} core{coreEstimate.count === 1 ? '' : 's'} ·{' '}
                     {formatBytes(coreEstimate.bytes)}
-                    {coreEstimate.skipped > 0 && ` (${coreEstimate.skipped} skipped by the size cap)`}
                   </div>
                 )}
                 <div className="check-detail">
                   Read from the node by a short-lived, read-only Kubernetes Job (deleted
                   afterwards). Cores can contain process memory, including patient data —
                   handle the package accordingly.
+                </div>
+              </div>
+            </li>
+          )}
+          {promSelected && (
+            <li>
+              <div>
+                <div className="check-title">Prometheus database</div>
+                <div className="check-detail">{describePromFilters(promFilters)}</div>
+                <div className="check-detail">
+                  Whole TSDB blocks overlapping the window are copied from the node by a
+                  short-lived, read-only Kubernetes Job (deleted afterwards). Large windows
+                  can take a while and produce a multi-GB package.
                 </div>
               </div>
             </li>

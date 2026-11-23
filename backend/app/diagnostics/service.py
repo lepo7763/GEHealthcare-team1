@@ -6,7 +6,9 @@ import shutil
 import tempfile
 import zipfile
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import BinaryIO, List, Optional
+
+from app.core.workdir import work_dir
 
 from app.cms.collector import collect_cms_into
 from app.core_dumps.config import CoreDumpConfig
@@ -14,17 +16,21 @@ from app.core_dumps.schemas import CoreDumpParams
 from app.core_dumps.service import collect_core_dumps_into
 from app.firewall.config import FirewallConfig
 from app.firewall.service import collect_firewall_into
-from app.network_diagnostics.capture_service import (
-    collect_netshoot_captures,
-)
-from app.network_diagnostics.schemas import NetshootCollectionParams
+from app.prometheus.config import PrometheusConfig
+from app.prometheus.schemas import PrometheusParams
+from app.prometheus.service import collect_prometheus_into
 from app.log_collection.progress import (
+    AXONE_LOGS_LABEL,
+    AXONE_LOGS_SERVICE_ID,
     CONTAINER_LOGS_LABEL,
     CONTAINER_LOGS_SERVICE_ID,
     CORE_DUMPS_LABEL,
     CORE_DUMPS_SERVICE_ID,
+    CollectionCancelled,
     FIREWALL_LABEL,
     FIREWALL_SERVICE_ID,
+    PROMETHEUS_LABEL,
+    PROMETHEUS_SERVICE_ID,
     UMF_RTI_LABEL,
     UMF_RTI_SERVICE_ID,
     ServiceProgress,
@@ -44,6 +50,8 @@ from app.log_collection.service import (
     ClusterUnreachableError,
     collect_container_logs_into,
 )
+from app.log_export.schemas import AxoneLogParams
+from app.log_export.service import ExportError, fetch_axone_csv
 from app.umf_rti.config import UmfRtiConfig, get_umf_rti_config
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import (
@@ -68,11 +76,17 @@ from kubernetes import client
 SUPPORTED_SERVICES = (
     CONTAINER_LOGS_SERVICE_ID,
     UMF_RTI_SERVICE_ID,
+    AXONE_LOGS_SERVICE_ID,
     CORE_DUMPS_SERVICE_ID,
     FIREWALL_SERVICE_ID,
     NETSHOOT_SERVICE_ID,
     CMS_SERVICE_ID,
+    PROMETHEUS_SERVICE_ID,
 )
+
+
+class CollectionCancelledError(Exception):
+    """The user cancelled the collection (the Back button on the collect step)."""
 
 
 class CollectionInProgressError(Exception):
@@ -102,6 +116,22 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="containers",
                 )
             )
+        elif service_id == UMF_RTI_SERVICE_ID:
+            progress_services.append(
+                ServiceProgress(
+                    id=UMF_RTI_SERVICE_ID,
+                    label=UMF_RTI_LABEL,
+                    unit="seconds",
+                )
+            )
+        elif service_id == AXONE_LOGS_SERVICE_ID:
+            progress_services.append(
+                ServiceProgress(
+                    id=AXONE_LOGS_SERVICE_ID,
+                    label=AXONE_LOGS_LABEL,
+                    unit="files",
+                )
+            )
         elif service_id == FIREWALL_SERVICE_ID:
             progress_services.append(
                 ServiceProgress(
@@ -118,12 +148,12 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="MB",
                 )
             )
-        elif service_id == UMF_RTI_SERVICE_ID:
+        elif service_id == PROMETHEUS_SERVICE_ID:
             progress_services.append(
                 ServiceProgress(
-                    id=UMF_RTI_SERVICE_ID,
-                    label=UMF_RTI_LABEL,
-                    unit="seconds",
+                    id=PROMETHEUS_SERVICE_ID,
+                    label=PROMETHEUS_LABEL,
+                    unit="MB",
                 )
             )
         elif service_id == NETSHOOT_SERVICE_ID:
@@ -153,13 +183,20 @@ def collect_diagnostics(
     umf_params: UmfRtiParams,
     config: Optional[UmfRtiConfig] = None,
     netshoot_params: Optional[NetshootCollectionParams] = None,
+    axone_params: Optional[AxoneLogParams] = None,
     core_dump_params: Optional[CoreDumpParams] = None,
     core_dump_config: Optional[CoreDumpConfig] = None,
     firewall_config: Optional[FirewallConfig] = None,
+    prometheus_params: Optional[PrometheusParams] = None,
+    prometheus_config: Optional[PrometheusConfig] = None,
     cms_start_datetime: Optional[str] = None,
     cms_end_datetime: Optional[str] = None,
-) -> tempfile.SpooledTemporaryFile:
+    out: Optional[BinaryIO] = None,
+) -> BinaryIO:
     """Collect every selected service into one streaming zip.
+
+    Written to `out` if given, else to an anonymous file on disk (see
+    app.core.workdir); returned rewound. On failure the file is closed.
 
     Per-service failures are recorded in ``manifest.json`` and do not discard
     the other service's artifacts.  A cluster that cannot even list pods is
@@ -175,12 +212,13 @@ def collect_diagnostics(
 
     netshoot_params = netshoot_params or NetshootCollectionParams()
 
+    axone_params = axone_params or AxoneLogParams()
     if not _begin_progress(selected):
         raise CollectionInProgressError(
             "A diagnostic collection is already in progress."
         )
 
-    temp_zip = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024, mode="w+b")
+    temp_zip = out if out is not None else tempfile.TemporaryFile(dir=work_dir())
     manifest = LogCollectionManifest(
         timestamp_utc=datetime.now(timezone.utc).isoformat(),
         total_logs_collected=0,
@@ -191,6 +229,7 @@ def collect_diagnostics(
             temp_zip, mode="w", compression=zipfile.ZIP_DEFLATED
         ) as zf:
             for service_id in selected:
+                tracker.check_cancelled()
                 if service_id == CONTAINER_LOGS_SERVICE_ID:
                     _collect_container_logs(zf, manifest, core, log_params)
                 elif service_id == UMF_RTI_SERVICE_ID:
@@ -201,6 +240,8 @@ def collect_diagnostics(
                     _collect_netshoot(
                         zf, manifest, core, batch, netshoot_params
                     )
+                elif service_id == AXONE_LOGS_SERVICE_ID:
+                    _collect_axone_logs(zf, manifest, axone_params, selected)
                 elif service_id == CORE_DUMPS_SERVICE_ID:
                     collect_core_dumps_into(
                         zf,
@@ -220,6 +261,15 @@ def collect_diagnostics(
                         cms_start_datetime,
                         cms_end_datetime,
                     )
+                elif service_id == PROMETHEUS_SERVICE_ID:
+                    collect_prometheus_into(
+                        zf,
+                        manifest,
+                        core,
+                        batch,
+                        prometheus_params or PrometheusParams(),
+                        prometheus_config,
+                    )
 
             tracker.set_status("packaging")
             manifest.total_logs_collected = len(manifest.collected_files)
@@ -228,12 +278,21 @@ def collect_diagnostics(
         temp_zip.seek(0)
         tracker.finish()
         return temp_zip
+    except CollectionCancelled:
+        # The collectors' finally blocks have already deleted their Jobs.
+        tracker.mark_cancelled()
+        temp_zip.close()
+        raise CollectionCancelledError("Collection cancelled.") from None
     except ClusterUnreachableError as e:
         tracker.fail(str(e))
         temp_zip.close()
         raise
     except UmfRtiPrerequisiteError as e:
         tracker.fail(str(e))
+        temp_zip.close()
+        raise
+    except ExportError as e:
+        tracker.fail(e.detail)
         temp_zip.close()
         raise
     except Exception as e:
@@ -420,4 +479,61 @@ def _collect_netshoot(
             error=message,
         )
     )
-    
+
+
+def _collect_axone_logs(
+    zf: zipfile.ZipFile,
+    manifest: LogCollectionManifest,
+    params: AxoneLogParams,
+    selected: List[str],
+) -> None:
+    tracker.set_service_total(AXONE_LOGS_SERVICE_ID, 1, unit="files")
+    tracker.set_service_current(AXONE_LOGS_SERVICE_ID, "Requesting CSV export")
+    try:
+        content = fetch_axone_csv(params)
+    except ExportError as e:
+        message = f"Axone log export failed: {e.detail}"
+        tracker.fail_service(AXONE_LOGS_SERVICE_ID, message)
+        if selected == [AXONE_LOGS_SERVICE_ID]:
+            # Nothing else was requested, so surface the actionable error.
+            raise
+        _record_axone_failure(manifest, message)
+        return
+    except Exception as e:
+        message = f"Axone log export failed: {e}"
+        tracker.fail_service(AXONE_LOGS_SERVICE_ID, message)
+        _record_axone_failure(manifest, message)
+        return
+
+    path = f"axone/axone_{params.axone_scope}_logs.csv"
+    zf.writestr(path, content)
+    manifest.collected_files.append(path)
+    tracker.increment_service(AXONE_LOGS_SERVICE_ID, current=path)
+    manifest.services.append(
+        CollectedService(
+            id=AXONE_LOGS_SERVICE_ID,
+            label=AXONE_LOGS_LABEL,
+            status="done",
+            files=[path],
+        )
+    )
+
+
+def _record_axone_failure(manifest: LogCollectionManifest, message: str) -> None:
+    manifest.errors.append(
+        LogErrorEntry(
+            namespace="(axone)",
+            pod="(log-export)",
+            container="(all)",
+            reason=message,
+            service=AXONE_LOGS_SERVICE_ID,
+        )
+    )
+    manifest.services.append(
+        CollectedService(
+            id=AXONE_LOGS_SERVICE_ID,
+            label=AXONE_LOGS_LABEL,
+            status="error",
+            error=message,
+        )
+    )

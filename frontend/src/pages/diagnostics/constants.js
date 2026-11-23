@@ -21,6 +21,16 @@ export const SERVICES = [
       'Captures network traffic from Kubernetes pods and collects PCAP files for offline analytics',
   },
   {
+    id: 'axone-logs',
+    name: 'Axone Logs',
+    description: 'Exports stored Axone device and system events as CSV.',
+  },
+  {
+    id: 'cms',
+    name: 'CMS Snapshot',
+    description: 'Generates and downloads CMS diagnostic logs for a selected UTC time range.',
+  },
+  {
     id: 'core-dumps',
     name: 'Core Dumps',
     description:
@@ -31,6 +41,12 @@ export const SERVICES = [
     name: 'Firewall Settings',
     description:
       'Read-only snapshot of firewalld zones and policies, iptables, nftables and ipsets on the node, with a printable report.',
+  },
+  {
+    id: 'prometheus',
+    name: 'Prometheus Database',
+    description:
+      'Raw Prometheus TSDB blocks for a chosen time window. Can be several GB.',
   },
 ];
 
@@ -70,10 +86,4 @@ export const SERVICE_STATUS_LABEL = {
   collecting: 'Collecting',
   done: 'Complete',
   error: 'Failed',
-};
-
-export const parseFilename = (disposition) => {
-  if (!disposition) return null;
-  const match = disposition.match(/filename="?([^"]+)"?/i);
-  return match ? match[1] : null;
 };

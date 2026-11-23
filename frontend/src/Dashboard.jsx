@@ -3,7 +3,6 @@ import './Dashboard.css';
 
 import Overview from './pages/Overview';
 import Diagnostics from './pages/Diagnostics';
-import AxoneLogs from './pages/AxoneLogs';
 import DiagnosticPackages from './pages/DiagnosticPackages';
 import LogAnalysis from './pages/LogAnalysis';
 import PrivacyScan from './pages/PrivacyScan';
@@ -32,17 +31,6 @@ const NAV_ITEMS = [
         <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
         <polyline points="2 17 12 22 22 17"></polyline>
         <polyline points="2 12 12 17 22 12"></polyline>
-      </svg>
-    ),
-  },
-  {
-    id: 'axone_logs',
-    label: 'Axone Logs',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-        <polyline points="14 2 14 8 20 8"></polyline>
-        <path d="M12 12v6m-3-3 3 3 3-3"></path>
       </svg>
     ),
   },
@@ -132,8 +120,6 @@ const Dashboard = ({ user, onSignOut }) => {
         return <Overview onNavigate={setActiveTab} />;
       case 'diagnostics':
         return <Diagnostics onNavigate={setActiveTab} />;
-      case 'axone_logs':
-        return <AxoneLogs />;
       case 'diagnostic_packages':
         return <DiagnosticPackages />;
       case 'log_analysis':
@@ -161,15 +147,15 @@ const Dashboard = ({ user, onSignOut }) => {
         aria-label="Application Navigation"
       >
         <div className="eds-drawer-header">
-          <div className="eds-drawer-brand">
-            <div className="eds-brand-logo-circle" aria-label="GE Logo">GE</div>
-            {!isDrawerCollapsed && (
+          {!isDrawerCollapsed && (
+            <div className="eds-drawer-brand">
+              <div className="eds-brand-logo-circle" aria-label="GE Logo">GE</div>
               <div className="eds-brand-text-group">
                 <span className="eds-brand-title">IoMT Analysis Tool</span>
                 <span className="eds-brand-tag">Workstation Portal</span>
               </div>
-            )}
-          </div>
+            </div>
+          )}
           <button
             className="eds-drawer-toggle-btn"
             onClick={() => setIsDrawerCollapsed(!isDrawerCollapsed)}
@@ -205,17 +191,17 @@ const Dashboard = ({ user, onSignOut }) => {
         </nav>
 
         <div className="eds-drawer-footer">
-          <div className="eds-user-profile">
-            <div className="eds-user-avatar" title={`User ID: ${user?.id || '12345'}`}>
-              {user?.id ? user.id.slice(0, 2).toUpperCase() : '12'}
-            </div>
-            {!isDrawerCollapsed && (
+          {!isDrawerCollapsed && (
+            <div className="eds-user-profile">
+              <div className="eds-user-avatar" title={`User ID: ${user?.id || '12345'}`}>
+                {user?.id ? user.id.slice(0, 2).toUpperCase() : '12'}
+              </div>
               <div className="eds-user-meta">
                 <span className="eds-user-name">User #{user?.id || '12345'}</span>
                 <span className="eds-user-role">Specialist</span>
               </div>
-            )}
-          </div>
+            </div>
+          )}
           <button
             className="eds-btn-signout"
             onClick={onSignOut}
@@ -238,10 +224,6 @@ const Dashboard = ({ user, onSignOut }) => {
             <h1 className="eds-topbar-title">{currentItem.label}</h1>
           </div>
           <div className="eds-topbar-right">
-            <div className="eds-status-pill">
-              <span className="eds-status-indicator-dot" aria-hidden="true"></span>
-              <span>Cluster: <strong>HOSP-US-EAST-01</strong> • TLS 1.3 Active</span>
-            </div>
             <div className="eds-topbar-corner-actions" aria-label="Utility navigation">
               {CORNER_ITEMS.map((item) => {
                 const isActive = activeTab === item.id;

@@ -338,6 +338,86 @@ def test_cms_fastapi_endpoint(monkeypatch):
     finally:
         logs_router.tracker.reset()
 
+def test_cms_package_endpoint(monkeypatch, tmp_path):
+    """Verify CMS works through the frontend's package download endpoint."""
+
+    received = {}
+
+    # Store test packages in pytest's temporary directory.
+    monkeypatch.setenv("IOMT_WORK_DIR", str(tmp_path))
+
+    def fake_collect_diagnostics(out=None, **kwargs):
+        received.update(kwargs)
+
+        # The /packages endpoint provides an open file to write into.
+        assert out is not None
+
+        with zipfile.ZipFile(out, "w") as archive:
+            archive.writestr(
+                "cms/snapshot.zip",
+                b"Simulated CMS snapshot",
+            )
+
+        return out
+
+    monkeypatch.setattr(
+        logs_router,
+        "collect_diagnostics",
+        fake_collect_diagnostics,
+    )
+
+    app = FastAPI()
+    app.include_router(logs_router.router)
+
+    # Avoid contacting a real Kubernetes cluster.
+    app.dependency_overrides[logs_router.get_core_v1_api] = lambda: None
+    app.dependency_overrides[logs_router.get_batch_v1_api] = lambda: None
+
+    logs_router.tracker.reset()
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/logs/packages",
+                params={
+                    "services": "cms",
+                    "cms_start_datetime": "2026-11-19T00:00:00.000",
+                    "cms_end_datetime": "2026-11-19T00:05:00.000",
+                },
+            )
+
+            assert response.status_code == 200
+
+            package = response.json()
+
+            # Verify CMS received the selected configuration.
+            assert received["services"] == ["cms"]
+            assert received["cms_start_datetime"] == (
+                "2026-11-19T00:00:00.000"
+            )
+            assert received["cms_end_datetime"] == (
+                "2026-11-19T00:05:00.000"
+            )
+
+            # Verify the endpoint returned a downloadable package.
+            assert package["id"]
+            assert package["url"].startswith("/api/logs/packages/")
+            assert package["size_bytes"] > 0
+
+            # Download the package using the URL returned to the frontend.
+            download = client.get(package["url"])
+
+            assert download.status_code == 200
+
+            # Verify that the downloaded ZIP contains the CMS snapshot.
+            with zipfile.ZipFile(io.BytesIO(download.content)) as archive:
+                assert archive.read("cms/snapshot.zip") == (
+                    b"Simulated CMS snapshot"
+                )
+
+    finally:
+        logs_router.tracker.reset()
+
 
 def test_cms_cleanup_warning_preserves_archive(monkeypatch, tmp_path):
     warning = "CMS cleanup failed: server-side snapshot may remain"

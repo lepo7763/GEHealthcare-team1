@@ -14,14 +14,14 @@ import secrets
 import tarfile
 import time
 import uuid
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, Iterable, List, Tuple
 
 from kubernetes import client
 
 from app.core.job_exec import JobExecError, JobExecSession
 
 from .config import FirewallConfig
-from .parsing import build_script, parse_framed
+from .parsing import COMMANDS, FirewallCommand, build_script, parse_framed
 
 CONTAINER_NAME = "collector"
 _HOST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -99,10 +99,12 @@ class FirewallSession(JobExecSession):
         )
         self.config = config
 
-    def run_commands(self) -> Dict[str, Tuple[str, int]]:
-        """Run every command in one exec on the host; {id: (output, exit code)}."""
+    def run_commands(
+        self, commands: Iterable[FirewallCommand] = COMMANDS
+    ) -> Dict[str, Tuple[str, int]]:
+        """Run the commands in one exec on the host; {id: (output, exit code)}."""
         token = f"@@FW-{secrets.token_hex(8)}@@"
-        script = f"export PATH={_HOST_PATH}\nexport LC_ALL=C\n" + build_script()
+        script = f"export PATH={_HOST_PATH}\nexport LC_ALL=C\n" + build_script(commands)
         command: List[str] = [
             "nsenter", "-t", "1", "-m", "-n", "-p", "--",
             "sh", "-c", script, "sh", token,

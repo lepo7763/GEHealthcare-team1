@@ -1,19 +1,35 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
-import CoreDumpSettings from './CoreDumpSettings';
-import { describeCoreFilters, validateCoreMaxMb } from './coreDumps';
+import AxoneLogSettings from './AxoneLogSettings';
+import { summarizeAxone, toAxoneQuery } from './axoneParams';
+import TimeRangeSettings from './TimeRangeSettings';
+import { CORE_SINCE_OPTIONS, describeCoreFilters } from './coreDumps';
+import { PROM_SINCE_OPTIONS, describePromFilters } from './prometheus';
+import { isTimeRangeValid } from './timeRange';
+import CmsSettings from './cmsSettings';
+import { summarizeCms, toCmsQuery } from './cmsParams';
 
 // Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
 const MIN_DURATION = 10;
 const MAX_DURATION = 600;
 const NETSHOOT_MIN_DURATION = 1;
 
-const validateDuration = (value, minimum = MIN_DURATION) => {
+const validateDuration = (value, minDuration = MIN_DURATION) => {
   const text = String(value ?? '').trim();
   const number = Number(text);
   return (
-    text !== '' && Number.isInteger(number) && number >= minimum && number <= MAX_DURATION
+    text !== '' && Number.isInteger(number) && number >= minDuration && number <= MAX_DURATION
   );
+};
+
+// Validation message for the Axone settings, or null when they're complete.
+const axoneIssue = (value) => {
+  try {
+    toAxoneQuery(value);
+    return null;
+  } catch (e) {
+    return e.message;
+  }
 };
 
 const Step2Configure = ({
@@ -26,14 +42,18 @@ const Step2Configure = ({
   umfDomainOptions,
   netshootDuration,
   setNetshootDuration,
+  axoneParams,
+  setAxoneParams,
+  cmsParams,
+  setCmsParams,
   coreSinceHours,
   setCoreSinceHours,
-  coreProcesses,
-  setCoreProcesses,
-  coreMaxMb,
-  setCoreMaxMb,
-  corePreview,
-  onRefreshCorePreview,
+  coreCustomRange,
+  setCoreCustomRange,
+  promSinceHours,
+  setPromSinceHours,
+  promCustomRange,
+  setPromCustomRange,
   onBack,
   onContinue,
 }) => {
@@ -41,6 +61,17 @@ const Step2Configure = ({
   const domainValid = Boolean(domainOption);
   const durationValid = validateDuration(umfDuration);
   const netshootDurationValid = validateDuration(netshootDuration, NETSHOOT_MIN_DURATION);
+  const axoneError = axoneIssue(axoneParams);
+  const promFilters = { sinceHours: promSinceHours, customRange: promCustomRange };
+  const promValid = isTimeRangeValid(promFilters);
+  const cmsError = (() => {
+    try {
+      toCmsQuery(cmsParams);
+      return null;
+    } catch (e) {
+      return e.message;
+    }
+  })();
 
   // Settings for each service that has any, keyed by service id. To give a new service
   // (e.g. Netshoot) its own settings, add an entry here: whether its values are valid,
@@ -120,27 +151,55 @@ const Step2Configure = ({
         </div>
       ),
     },
-
-    'core-dumps': {
-      isValid: validateCoreMaxMb(coreMaxMb),
-      summary: describeCoreFilters({
-        sinceHours: coreSinceHours,
-        processes: coreProcesses,
-        maxMb: coreMaxMb,
-      }),
+    'axone-logs': {
+      isValid: !axoneError,
+      summary: summarizeAxone(axoneParams),
       fields: (
-        <CoreDumpSettings
-          sinceHours={coreSinceHours}
-          setSinceHours={setCoreSinceHours}
-          processes={coreProcesses}
-          setProcesses={setCoreProcesses}
-          maxMb={coreMaxMb}
-          setMaxMb={setCoreMaxMb}
-          preview={corePreview}
-          onRefresh={onRefreshCorePreview}
+        <AxoneLogSettings value={axoneParams} onChange={setAxoneParams} issue={axoneError} />
+      ),
+    },
+    cms: {
+      isValid: !cmsError,
+      summary: summarizeCms(cmsParams),
+      fields: (
+        <CmsSettings
+          value={cmsParams}
+          onChange={setCmsParams}
+          issue={cmsError}
         />
       ),
     },
+    'core-dumps': {
+      isValid: isTimeRangeValid({ sinceHours: coreSinceHours, customRange: coreCustomRange }),
+      summary: describeCoreFilters({ sinceHours: coreSinceHours, customRange: coreCustomRange }),
+      fields: (
+        <TimeRangeSettings
+          label="Dumped since"
+          hint="Based on the crash time recorded in each core's filename."
+          options={CORE_SINCE_OPTIONS}
+          sinceHours={coreSinceHours}
+          setSinceHours={setCoreSinceHours}
+          customRange={coreCustomRange}
+          setCustomRange={setCoreCustomRange}
+        />
+      ),
+    },
+    prometheus: {
+      isValid: promValid,
+      summary: describePromFilters(promFilters),
+      fields: (
+        <TimeRangeSettings
+          label="Data from"
+          hint="Prometheus stores data in blocks of 2 hours or more, so whole blocks overlapping this window are exported."
+          options={PROM_SINCE_OPTIONS}
+          sinceHours={promSinceHours}
+          setSinceHours={setPromSinceHours}
+          customRange={promCustomRange}
+          setCustomRange={setPromCustomRange}
+        />
+      ),
+    },
+
   };
 
   // Only one service's settings are open at a time, so the boxes don't stack up.
@@ -219,7 +278,6 @@ const Step2Configure = ({
                     role="region"
                     aria-label={`${service.name} settings`}
                   >
-                    <h4 className="service-options-title">{service.name} settings</h4>
                     {panel.fields}
                   </div>
                 )}
