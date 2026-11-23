@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
+import AxoneLogSettings from './AxoneLogSettings';
+import { summarizeAxone, toAxoneQuery } from './axoneParams';
 import TimeRangeSettings from './TimeRangeSettings';
 import { CORE_SINCE_OPTIONS, describeCoreFilters } from './coreDumps';
 import { PROM_SINCE_OPTIONS, describePromFilters } from './prometheus';
@@ -17,6 +19,16 @@ const validateDuration = (value) => {
   );
 };
 
+// Validation message for the Axone settings, or null when they're complete.
+const axoneIssue = (value) => {
+  try {
+    toAxoneQuery(value);
+    return null;
+  } catch (e) {
+    return e.message;
+  }
+};
+
 const Step2Configure = ({
   selected,
   onToggleService,
@@ -25,6 +37,8 @@ const Step2Configure = ({
   umfDuration,
   setUmfDuration,
   umfDomainOptions,
+  axoneParams,
+  setAxoneParams,
   coreSinceHours,
   setCoreSinceHours,
   coreCustomRange,
@@ -39,6 +53,7 @@ const Step2Configure = ({
   const domainOption = umfDomainOptions.find((option) => option.domain === Number(umfDomain));
   const domainValid = Boolean(domainOption);
   const durationValid = validateDuration(umfDuration);
+  const axoneError = axoneIssue(axoneParams);
   const promFilters = { sinceHours: promSinceHours, customRange: promCustomRange };
   const promValid = isTimeRangeValid(promFilters);
 
@@ -90,6 +105,13 @@ const Step2Configure = ({
             </label>
           </div>
         </>
+      ),
+    },
+    'axone-logs': {
+      isValid: !axoneError,
+      summary: summarizeAxone(axoneParams),
+      fields: (
+        <AxoneLogSettings value={axoneParams} onChange={setAxoneParams} issue={axoneError} />
       ),
     },
     'core-dumps': {

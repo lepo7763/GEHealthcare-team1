@@ -15,6 +15,11 @@ export const SERVICES = [
       'Captures UMF RTI discovery and QoS data from the live platform. No sample values are read.',
   },
   {
+    id: 'axone-logs',
+    name: 'Axone Logs',
+    description: 'Exports stored Axone device and system events as CSV.',
+  },
+  {
     id: 'core-dumps',
     name: 'Core Dumps',
     description:

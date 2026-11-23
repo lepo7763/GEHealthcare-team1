@@ -1,3 +1,4 @@
+import { summarizeAxone } from './axoneParams';
 import { describeCoreFilters, estimateSelection, formatBytes } from './coreDumps';
 import { describePromFilters } from './prometheus';
 
@@ -6,6 +7,7 @@ const Step3Review = ({
   selectedServices,
   umfDomain,
   umfDuration,
+  axoneParams,
   coreFilters,
   corePreview,
   promFilters,
@@ -19,6 +21,7 @@ const Step3Review = ({
       ? selectedServices.map((service) => service.name).join(', ')
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
+  const axoneSelected = selectedServices.some((service) => service.id === 'axone-logs');
   const coreSelected = selectedServices.some((service) => service.id === 'core-dumps');
   const coreEstimate = corePreview?.data
     ? estimateSelection(corePreview.data.files, coreFilters)
@@ -66,6 +69,17 @@ const Step3Review = ({
                 <div className="check-detail">
                   Captures live RTI telemetry in a short-lived Kubernetes Job (deleted
                   afterwards) and bundles it into the diagnostic zip.
+                </div>
+              </div>
+            </li>
+          )}
+          {axoneSelected && (
+            <li>
+              <div>
+                <div className="check-title">Axone logs</div>
+                <div className="check-detail">{summarizeAxone(axoneParams)}</div>
+                <div className="check-detail">
+                  Exported from the Axone log service and added to the diagnostic zip.
                 </div>
               </div>
             </li>

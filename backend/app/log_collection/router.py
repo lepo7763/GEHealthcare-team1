@@ -20,6 +20,8 @@ from app.log_collection.schemas import (
     PackageResponse,
 )
 from app.log_collection.service import ClusterUnreachableError
+from app.log_export.schemas import AxoneLogParams
+from app.log_export.service import ExportError, validate_axone_params
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import UmfRtiPrerequisiteError
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -61,17 +63,21 @@ def cancel_collection() -> dict:
 
 def collection_request(
     services: List[
-        Literal["container-logs", "umf-rti", "core-dumps", "firewall", "prometheus"]
+        Literal[
+            "container-logs", "umf-rti", "axone-logs", "core-dumps", "firewall", "prometheus"
+        ]
     ] = Query(
         default=["container-logs"],
         description=(
             "Repeat for each service: services=container-logs&services=umf-rti"
-            "&services=core-dumps&services=firewall&services=prometheus."
+            "&services=axone-logs&services=core-dumps&services=firewall"
+            "&services=prometheus."
             " At least one service is required."
         ),
     ),
     log_params: LogCollectionParams = Depends(),
     umf_params: UmfRtiParams = Depends(),
+    axone_params: AxoneLogParams = Depends(),
     core_since: Optional[datetime] = Query(
         default=None, description="Core dumps: only cores dumped at/after this time."
     ),
@@ -93,6 +99,7 @@ def collection_request(
         services=list(services),
         log_params=log_params,
         umf_params=umf_params,
+        axone_params=axone_params,
         core_dump_params=CoreDumpParams(
             since=core_since, until=core_until, processes=core_process
         ),
@@ -112,6 +119,12 @@ def _collect(request: dict, core, batch, out=None):
             status_code=422,
             detail="Select at least one diagnostic service.",
         )
+    if "axone-logs" in request["services"]:
+        # Fail fast on bad Axone filters, before any other service runs.
+        try:
+            validate_axone_params(request["axone_params"])
+        except ExportError as e:
+            raise HTTPException(status_code=422, detail=e.detail)
     try:
         return collect_diagnostics(core=core, batch=batch, out=out, **request)
     except CollectionCancelledError as e:
@@ -122,6 +135,8 @@ def _collect(request: dict, core, batch, out=None):
         raise HTTPException(status_code=503, detail=str(e))
     except UmfRtiPrerequisiteError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except ExportError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -137,7 +152,8 @@ def download_diagnostics(
     core: client.CoreV1Api = Depends(get_core_v1_api),
     batch: client.BatchV1Api = Depends(get_batch_v1_api),
 ):
-    """Collect container logs, a UMF RTI capture, node core dumps, firewall settings
+    """Collect container logs, a UMF RTI capture, an Axone log CSV export, node
+    core dumps, firewall settings
     and/or a time slice of the Prometheus database into one zip, returned in the
     response. The UI uses POST /packages instead, so large packages go straight
     to disk on the browser side too."""
