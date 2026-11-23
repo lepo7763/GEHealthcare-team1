@@ -27,6 +27,12 @@ export const SERVICES = [
       'Read-only snapshot of firewalld zones and policies, iptables, nftables and ipsets on the node, with a printable report.',
   },
   {
+    id: 'prometheus',
+    name: 'Prometheus Database',
+    description:
+      'Raw Prometheus TSDB blocks for a chosen time window. Can be several GB.',
+  },
+  {
     id: 'netshoot',
     name: 'Netshoot packet capture',
     description: 'Captures network traffic (pcap) from pods and/or the host on every node.',
@@ -69,10 +75,4 @@ export const SERVICE_STATUS_LABEL = {
   collecting: 'Collecting',
   done: 'Complete',
   error: 'Failed',
-};
-
-export const parseFilename = (disposition) => {
-  if (!disposition) return null;
-  const match = disposition.match(/filename="?([^"]+)"?/i);
-  return match ? match[1] : null;
 };

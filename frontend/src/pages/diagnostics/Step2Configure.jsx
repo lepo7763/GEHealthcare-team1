@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { SERVICES } from './constants';
-import CoreDumpSettings from './CoreDumpSettings';
-import { describeCoreFilters, validateCoreMaxMb } from './coreDumps';
+import TimeRangeSettings from './TimeRangeSettings';
+import { CORE_SINCE_OPTIONS, describeCoreFilters } from './coreDumps';
+import { PROM_SINCE_OPTIONS, describePromFilters } from './prometheus';
+import { isTimeRangeValid } from './timeRange';
 import {
   NETSHOOT_DEFAULT_SCOPE,
   NETSHOOT_MAX_DURATION,
@@ -30,12 +32,12 @@ const Step2Configure = ({
   umfDomainOptions,
   coreSinceHours,
   setCoreSinceHours,
-  coreProcesses,
-  setCoreProcesses,
-  coreMaxMb,
-  setCoreMaxMb,
-  corePreview,
-  onRefreshCorePreview,
+  coreCustomRange,
+  setCoreCustomRange,
+  promSinceHours,
+  setPromSinceHours,
+  promCustomRange,
+  setPromCustomRange,
   netshootScope,
   setNetshootScope,
   netshootDuration,
@@ -46,7 +48,8 @@ const Step2Configure = ({
   const domainOption = umfDomainOptions.find((option) => option.domain === Number(umfDomain));
   const domainValid = Boolean(domainOption);
   const durationValid = validateDuration(umfDuration);
-
+  const promFilters = { sinceHours: promSinceHours, customRange: promCustomRange };
+  const promValid = isTimeRangeValid(promFilters);
   const netshootScopeValid = Boolean(NETSHOOT_SCOPE_TEXT[netshootScope]);
   const netshootDurationValid = validateDuration(
     netshootDuration,
@@ -102,6 +105,36 @@ const Step2Configure = ({
             </label>
           </div>
         </>
+      ),
+    },
+    'core-dumps': {
+      isValid: isTimeRangeValid({ sinceHours: coreSinceHours, customRange: coreCustomRange }),
+      summary: describeCoreFilters({ sinceHours: coreSinceHours, customRange: coreCustomRange }),
+      fields: (
+        <TimeRangeSettings
+          label="Dumped since"
+          hint="Based on the crash time recorded in each core's filename."
+          options={CORE_SINCE_OPTIONS}
+          sinceHours={coreSinceHours}
+          setSinceHours={setCoreSinceHours}
+          customRange={coreCustomRange}
+          setCustomRange={setCoreCustomRange}
+        />
+      ),
+    },
+    prometheus: {
+      isValid: promValid,
+      summary: describePromFilters(promFilters),
+      fields: (
+        <TimeRangeSettings
+          label="Data from"
+          hint="Prometheus stores data in blocks of 2 hours or more, so whole blocks overlapping this window are exported."
+          options={PROM_SINCE_OPTIONS}
+          sinceHours={promSinceHours}
+          setSinceHours={setPromSinceHours}
+          customRange={promCustomRange}
+          setCustomRange={setPromCustomRange}
+        />
       ),
     },
     netshoot: {
@@ -160,26 +193,6 @@ const Step2Configure = ({
             </label>
           </div>
         </>
-      ),
-    },
-    'core-dumps': {
-      isValid: validateCoreMaxMb(coreMaxMb),
-      summary: describeCoreFilters({
-        sinceHours: coreSinceHours,
-        processes: coreProcesses,
-        maxMb: coreMaxMb,
-      }),
-      fields: (
-        <CoreDumpSettings
-          sinceHours={coreSinceHours}
-          setSinceHours={setCoreSinceHours}
-          processes={coreProcesses}
-          setProcesses={setCoreProcesses}
-          maxMb={coreMaxMb}
-          setMaxMb={setCoreMaxMb}
-          preview={corePreview}
-          onRefresh={onRefreshCorePreview}
-        />
       ),
     },
   };
@@ -260,7 +273,6 @@ const Step2Configure = ({
                     role="region"
                     aria-label={`${service.name} settings`}
                   >
-                    <h4 className="service-options-title">{service.name} settings</h4>
                     {panel.fields}
                   </div>
                 )}

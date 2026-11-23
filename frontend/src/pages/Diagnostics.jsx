@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import './pages.css';
 
-import { STEPS, STEP_INFO, SERVICES, RUNNING_STATUSES, parseFilename } from './diagnostics/constants';
+import { STEPS, STEP_INFO, SERVICES, RUNNING_STATUSES } from './diagnostics/constants';
 import Step1Connect from './diagnostics/Step1Connect';
 import Step2Configure from './diagnostics/Step2Configure';
 import Step3Review from './diagnostics/Step3Review';
 import Step4Collect from './diagnostics/Step4Collect';
-import { CORE_DEFAULT_MB, sinceIso } from './diagnostics/coreDumps';
+import { EMPTY_CUSTOM_RANGE, sinceIso, untilIso } from './diagnostics/timeRange';
+import { DEFAULT_PROM_SINCE } from './diagnostics/prometheus';
 import { NETSHOOT_DEFAULT_SCOPE, startNetshootCapture } from './diagnostics/netshootApi';
 
 // # GEHealthcare-team1
@@ -42,7 +43,7 @@ const Diagnostics = () => {
   const [phase, setPhase] = useState('idle');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  const [selected, setSelected] = useState(['container-logs']);
+  const [selected, setSelected] = useState([]);
 
   // UMF RTI capture settings (Step 2). Domain options come from the backend so they
   // stay in sync with the domains it accepts; the fallback mirrors its defaults.
@@ -52,11 +53,14 @@ const Diagnostics = () => {
 
   // Core dump filters (Step 2) and the node listing that previews them.
   const [coreSinceHours, setCoreSinceHours] = useState('');
-  const [coreProcesses, setCoreProcesses] = useState([]);
-  const [coreMaxMb, setCoreMaxMb] = useState(CORE_DEFAULT_MB);
+  const [coreCustomRange, setCoreCustomRange] = useState(EMPTY_CUSTOM_RANGE);
   // status: idle | loading | done | error
   const [corePreview, setCorePreview] = useState({ status: 'idle', data: null, error: '' });
   const corePreviewAbortRef = useRef(null);
+
+  // Prometheus time window (Step 2).
+  const [promSinceHours, setPromSinceHours] = useState(DEFAULT_PROM_SINCE);
+  const [promCustomRange, setPromCustomRange] = useState(EMPTY_CUSTOM_RANGE);
 
   // Netshoot packet capture settings (Step 2) and run state (Step 4).
   const [netshootScope, setNetshootScope] = useState(NETSHOOT_DEFAULT_SCOPE);
@@ -67,10 +71,10 @@ const Diagnostics = () => {
   // Collection (Step 4) state.
   const [collect, setCollect] = useState(null);
   const [collectError, setCollectError] = useState('');
+  const cancelRef = useRef(null);
   const [download, setDownload] = useState(null);
   const pollRef = useRef(null);
   const abortRef = useRef(null);
-  const downloadUrlRef = useRef(null);
 
   const isChecking = phase === 'checking';
   const info = STEP_INFO[step] || STEP_INFO[1];
@@ -101,11 +105,20 @@ const Diagnostics = () => {
     pollRef.current = setInterval(pollProgress, 600);
   };
 
-  // Netshoot runs as its own capture (POST /api/network/captures), next to the log zip.
-  const startNetshoot = () => {
+  // Stop the (simulated) Netshoot capture and drop its result.
+  const resetNetshoot = () => {
     netshootHandleRef.current?.dispose();
-    if (netshootCapture?.download) URL.revokeObjectURL(netshootCapture.download.url);
-    setNetshootCapture(null);
+    netshootHandleRef.current = null;
+    setNetshootCapture((previous) => {
+      if (previous?.download) URL.revokeObjectURL(previous.download.url);
+      return null;
+    });
+  };
+
+  // Netshoot runs as its own capture next to the log zip (frontend mock for now, see
+  // diagnostics/netshootApi.js).
+  const startNetshoot = () => {
+    resetNetshoot();
     if (!selected.includes('netshoot')) return;
     netshootHandleRef.current = startNetshootCapture(
       { scope: netshootScope, durationSeconds: Number(netshootDuration) },
@@ -118,14 +131,16 @@ const Diagnostics = () => {
     setCollectError('');
     setCollect(null);
     setDownload(null);
-    if (downloadUrlRef.current) {
-      URL.revokeObjectURL(downloadUrlRef.current);
-      downloadUrlRef.current = null;
-    }
 
     // Netshoot isn't part of the log zip; skip the zip when it's the only service.
     const zipServices = selected.filter((serviceId) => serviceId !== 'netshoot');
     if (zipServices.length === 0) return;
+
+    // A cancel from the Back button may still be finishing on the server.
+    if (cancelRef.current) {
+      await cancelRef.current;
+      cancelRef.current = null;
+    }
 
     // Attach to a run that's already in progress instead of starting a second.
     let current = null;
@@ -151,13 +166,24 @@ const Diagnostics = () => {
       params.set('umf_duration_seconds', String(umfDuration).trim());
     }
     if (selected.includes('core-dumps')) {
-      const since = sinceIso(coreSinceHours);
+      const since = sinceIso(coreSinceHours, Date.now(), coreCustomRange);
       if (since) params.set('core_since', since);
-      coreProcesses.forEach((name) => params.append('core_process', name));
-      params.set('core_max_mb', String(coreMaxMb).trim());
+      const until = untilIso(coreSinceHours, coreCustomRange);
+      if (until) params.set('core_until', until);
+    }
+    if (selected.includes('prometheus')) {
+      const since = sinceIso(promSinceHours, Date.now(), promCustomRange);
+      if (since) params.set('prom_since', since);
+      const until = untilIso(promSinceHours, promCustomRange);
+      if (until) params.set('prom_until', until);
     }
 
-    fetch(`/api/logs/zip?${params.toString()}`, { signal: controller.signal })
+    // The backend builds the package on its disk and answers with a link to it, so
+    // the browser downloads it like any file (straight to disk, any size).
+    fetch(`/api/logs/packages?${params.toString()}`, {
+      method: 'POST',
+      signal: controller.signal,
+    })
       .then(async (res) => {
         if (!res.ok) {
           let detail = `Collection failed (${res.status}).`;
@@ -169,17 +195,17 @@ const Diagnostics = () => {
           }
           throw new Error(detail);
         }
-        const filename =
-          parseFilename(res.headers.get('Content-Disposition')) || 'iomt_diagnostics.zip';
-        const blob = await res.blob();
-        return { blob, filename };
+        return res.json();
       })
-      .then(({ blob, filename }) => {
+      .then((pkg) => {
         stopPolling();
         pollProgress();
-        const url = URL.createObjectURL(blob);
-        downloadUrlRef.current = url;
-        setDownload({ url, filename });
+        setDownload({
+          id: pkg.id,
+          url: pkg.url,
+          filename: pkg.filename,
+          sizeBytes: pkg.size_bytes,
+        });
       })
       .catch((e) => {
         if (e.name === 'AbortError') return;
@@ -190,12 +216,13 @@ const Diagnostics = () => {
     startPolling();
   };
 
-  const loadCorePreview = () => {
-    if (corePreviewAbortRef.current) corePreviewAbortRef.current.abort();
+  // GET a node listing (core files, TSDB blocks) into one of the preview states.
+  const loadPreview = (url, abortRef, setPreview) => {
+    if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
-    corePreviewAbortRef.current = controller;
-    setCorePreview((prev) => ({ ...prev, status: 'loading', error: '' }));
-    fetch('/api/core-dumps', { signal: controller.signal })
+    abortRef.current = controller;
+    setPreview((prev) => ({ ...prev, status: 'loading', error: '' }));
+    fetch(url, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) {
           let detail = `Request failed (${res.status})`;
@@ -210,16 +237,15 @@ const Diagnostics = () => {
         return res.json();
       })
       .then((data) => {
-        setCorePreview({ status: 'done', data, error: '' });
-        // Drop ticked processes that no longer exist on the node.
-        const present = new Set((data.files || []).map((f) => f.process));
-        setCoreProcesses((prev) => prev.filter((name) => present.has(name)));
+        setPreview({ status: 'done', data, error: '' });
       })
       .catch((e) => {
         if (e.name === 'AbortError') return;
-        setCorePreview((prev) => ({ ...prev, status: 'error', error: e.message }));
+        setPreview((prev) => ({ ...prev, status: 'error', error: e.message }));
       });
   };
+
+  const loadCorePreview = () => loadPreview('/api/core-dumps', corePreviewAbortRef, setCorePreview);
 
   // Load the UMF RTI domain options once.
   useEffect(() => {
@@ -241,7 +267,6 @@ const Diagnostics = () => {
       stopPolling();
       if (abortRef.current) abortRef.current.abort();
       if (corePreviewAbortRef.current) corePreviewAbortRef.current.abort();
-      if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
       netshootHandleRef.current?.dispose();
     };
   }, []);
@@ -304,6 +329,33 @@ const Diagnostics = () => {
     }
   };
 
+  // Back from the Collect step: leave right away and stop the run in the background
+  // (server-side too, so its collector pods get cleaned up). startCollection waits for
+  // that to finish before starting a new run, so it never attaches to the old one.
+  const handleBackFromCollect = () => {
+    resetNetshoot();
+    stopPolling();
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = null;
+    cancelRef.current = (async () => {
+      try {
+        // Each call returns once the server is idle, or after ~30 s if it is stuck in a
+        // long cluster call; keep asking until it is really idle.
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const res = await fetch('/api/logs/cancel', { method: 'POST' });
+          const body = res.ok ? await res.json() : null;
+          if (!body || !body.running) break;
+        }
+      } catch {
+        /* best effort */
+      }
+    })();
+    setCollect(null);
+    setCollectError('');
+    setDownload(null);
+    setStep(3);
+  };
+
   const handleBackToConnect = () => {
     setStep(1);
     resetCheck();
@@ -349,12 +401,12 @@ const Diagnostics = () => {
             umfDomainOptions={umfDomainOptions}
             coreSinceHours={coreSinceHours}
             setCoreSinceHours={setCoreSinceHours}
-            coreProcesses={coreProcesses}
-            setCoreProcesses={setCoreProcesses}
-            coreMaxMb={coreMaxMb}
-            setCoreMaxMb={setCoreMaxMb}
-            corePreview={corePreview}
-            onRefreshCorePreview={loadCorePreview}
+            coreCustomRange={coreCustomRange}
+            setCoreCustomRange={setCoreCustomRange}
+            promSinceHours={promSinceHours}
+            setPromSinceHours={setPromSinceHours}
+            promCustomRange={promCustomRange}
+            setPromCustomRange={setPromCustomRange}
             netshootScope={netshootScope}
             setNetshootScope={setNetshootScope}
             netshootDuration={netshootDuration}
@@ -370,8 +422,9 @@ const Diagnostics = () => {
             selectedServices={selectedServices}
             umfDomain={umfDomain}
             umfDuration={umfDuration}
-            coreFilters={{ sinceHours: coreSinceHours, processes: coreProcesses, maxMb: coreMaxMb }}
+            coreFilters={{ sinceHours: coreSinceHours, customRange: coreCustomRange }}
             corePreview={corePreview}
+            promFilters={{ sinceHours: promSinceHours, customRange: promCustomRange }}
             netshootScope={netshootScope}
             netshootDuration={netshootDuration}
             onEditConnection={() => setStep(1)}
@@ -392,7 +445,7 @@ const Diagnostics = () => {
             showLogCollection={selected.some((serviceId) => serviceId !== 'netshoot')}
             netshootCapture={netshootCapture}
             onCancelNetshoot={() => netshootHandleRef.current?.cancel()}
-            onBack={() => setStep(3)}
+            onBack={handleBackFromCollect}
           />
         )}
       </div>
