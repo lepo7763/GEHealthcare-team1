@@ -83,6 +83,55 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
     }
   };
 
+  // Save the package through the browser's "Save as" dialog so the user picks the
+  // folder (e.g. a USB drive) every time. Uses the File System Access API
+  // (Chrome/Edge, secure context only: https or localhost) and streams the response
+  // straight to the chosen file, so large packages never sit in memory.
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [savedTo, setSavedTo] = useState('');
+
+  const saveDownload = async (event) => {
+    if (typeof window.showSaveFilePicker !== 'function') {
+      // Firefox/Safari or plain http: fall back to the normal <a download>. Those
+      // browsers only show a picker if "Always ask where to save files" is enabled.
+      return;
+    }
+    event.preventDefault();
+    setSaveError('');
+    setSavedTo('');
+
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: download.filename,
+        types: [{ description: 'Zip archive', accept: { 'application/zip': ['.zip'] } }],
+      });
+    } catch (err) {
+      if (err.name !== 'AbortError') setSaveError(err.message || 'Could not open the save dialog.');
+      return; // AbortError = user cancelled the dialog
+    }
+
+    setIsSaving(true);
+    let writable;
+    try {
+      const res = await fetch(download.url);
+      if (!res.ok || !res.body) throw new Error(`Download failed (${res.status}).`);
+      writable = await handle.createWritable();
+      await res.body.pipeTo(writable); // closes the writable on success
+      setSavedTo(handle.name);
+    } catch (err) {
+      try {
+        await writable?.abort();
+      } catch {
+        /* already closed/aborted */
+      }
+      setSaveError(err.message || 'Saving the package failed.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const services = collect?.services || [];
   const collectStatus = collect?.status || 'idle';
   const collectFailed =
@@ -158,8 +207,18 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
 
           {download && (
             <div className="action-row">
-              <a className="btn btn-primary" href={download.url} download={download.filename}>
-                Download diagnostic package ({formatBytes(download.sizeBytes)})
+              <a
+                className="btn btn-primary"
+                href={download.url}
+                download={download.filename}
+                onClick={saveDownload}
+                aria-disabled={isSaving}
+                aria-busy={isSaving}
+                style={isSaving ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
+              >
+                {isSaving
+                  ? 'Saving…'
+                  : `Download diagnostic package (${formatBytes(download.sizeBytes)})`}
               </a>
               <button
                 type="button"
@@ -170,6 +229,20 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
               >
                 {isAnalyzing ? 'Analyzing…' : 'Analyze logs'}
               </button>
+            </div>
+          )}
+
+          {savedTo && (
+            <div className="alert alert-success" role="status">
+              <strong>Package saved</strong>
+              <span>Saved as {savedTo}.</span>
+            </div>
+          )}
+
+          {saveError && (
+            <div className="alert alert-error" role="alert">
+              <strong>Save failed</strong>
+              <span>{saveError}</span>
             </div>
           )}
 
