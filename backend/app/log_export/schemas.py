@@ -10,7 +10,7 @@ class AxoneLogParams(BaseModel):
 
     Everything is optional at the HTTP layer because the params are only
     meaningful when the ``axone-logs`` service is selected; the router validates
-    them (via ``validate_export``) before the collection starts. 
+    them (via ``validate_export``) before the collection starts.
     """
 
     axone_scope: Literal["device", "all"] = Field(

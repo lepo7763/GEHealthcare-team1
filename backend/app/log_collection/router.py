@@ -1,3 +1,4 @@
+import re
 import io
 import time
 import zipfile
@@ -14,6 +15,8 @@ from app.diagnostics.service import (
 )
 from app.prometheus.schemas import PrometheusParams
 from app.log_collection.progress import tracker
+from app.log_collection.schemas import CollectionProgressResponse, LogCollectionParams
+from app.network_diagnostics.schemas import NetshootCollectionParams
 from app.log_collection.schemas import (
     CollectionProgressResponse,
     LogCollectionParams,
@@ -64,7 +67,7 @@ def cancel_collection() -> dict:
 def collection_request(
     services: List[
         Literal[
-            "container-logs", "umf-rti", "axone-logs", "core-dumps", "firewall", "prometheus"
+            "container-logs", "umf-rti", "axone-logs", "core-dumps", "firewall", "prometheus", "netshoot", "cms"
         ]
     ] = Query(
         default=["container-logs"],
@@ -77,6 +80,15 @@ def collection_request(
     ),
     log_params: LogCollectionParams = Depends(),
     umf_params: UmfRtiParams = Depends(),
+    netshoot_params: NetshootCollectionParams = Depends(),
+    cms_start_datetime: Optional[str] = Query(
+        default=None,
+        description="CMS start time in UTC (YYYY-MM-DDTHH:MM:SS.mmm)",
+    ),
+    cms_end_datetime: Optional[str] = Query(
+        default=None,
+        description="CMS end time in UTC (YYYY-MM-DDTHH:MM:SS.mmm)",
+    ),
     axone_params: AxoneLogParams = Depends(),
     core_since: Optional[datetime] = Query(
         default=None, description="Core dumps: only cores dumped at/after this time."
@@ -99,34 +111,93 @@ def collection_request(
         services=list(services),
         log_params=log_params,
         umf_params=umf_params,
+        netshoot_params=netshoot_params,
         axone_params=axone_params,
+        cms_start_datetime=cms_start_datetime,
+        cms_end_datetime=cms_end_datetime,
         core_dump_params=CoreDumpParams(
-            since=core_since, until=core_until, processes=core_process
+            since=core_since,
+            until=core_until,
+            processes=core_process,
         ),
-        prometheus_params=PrometheusParams(since=prom_since, until=prom_until),
+        prometheus_params=PrometheusParams(
+            since=prom_since,
+            until=prom_until,
+        ),
     )
 
 
 def _collect(request: dict, core, batch, out=None):
     """Run collect_diagnostics, mapping its errors to HTTP status codes."""
+
     if tracker.running:
         raise HTTPException(
             status_code=409,
             detail="A diagnostic collection is already in progress.",
         )
+
     if not request["services"]:
         raise HTTPException(
             status_code=422,
             detail="Select at least one diagnostic service.",
         )
+
+    # Validate CMS timestamps only when CMS is selected.
+    if "cms" in request["services"]:
+        cms_start_datetime = request["cms_start_datetime"]
+        cms_end_datetime = request["cms_end_datetime"]
+
+        pattern = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}"
+
+        if not cms_start_datetime or not cms_end_datetime:
+            raise HTTPException(
+                status_code=422,
+                detail="CMS requires start and end timestamps.",
+            )
+
+        if not (
+            re.fullmatch(pattern, cms_start_datetime)
+            and re.fullmatch(pattern, cms_end_datetime)
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="CMS timestamps must use YYYY-MM-DDTHH:MM:SS.mmm.",
+            )
+
+        try:
+            start = datetime.strptime(
+                cms_start_datetime, "%Y-%m-%dT%H:%M:%S.%f"
+            )
+            end = datetime.strptime(
+                cms_end_datetime, "%Y-%m-%dT%H:%M:%S.%f"
+            )
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid CMS date or time.",
+            )
+
+        if start >= end:
+            raise HTTPException(
+                status_code=422,
+                detail="CMS end time must be after start time.",
+            )
+
+    # Validate Axone filters only when Axone is selected.
     if "axone-logs" in request["services"]:
-        # Fail fast on bad Axone filters, before any other service runs.
         try:
             validate_axone_params(request["axone_params"])
         except ExportError as e:
             raise HTTPException(status_code=422, detail=e.detail)
+
+    # Run the diagnostic collection.
     try:
-        return collect_diagnostics(core=core, batch=batch, out=out, **request)
+        return collect_diagnostics(
+            core=core,
+            batch=batch,
+            out=out,
+            **request
+        )
     except CollectionCancelledError as e:
         raise HTTPException(status_code=499, detail=str(e))
     except CollectionInProgressError as e:

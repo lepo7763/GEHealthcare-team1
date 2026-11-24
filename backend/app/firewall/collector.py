@@ -144,4 +144,3 @@ class FirewallSession(JobExecSession):
         except tarfile.TarError as e:
             raise FirewallCollectionError(f"Could not read /etc/firewalld archive: {e}")
         return files
-

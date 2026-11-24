@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from kubernetes import client
 
 from app.main import app
-from app.core.k8s_client import get_core_v1_api
+from app.core.k8s_client import get_core_v1_api, get_batch_v1_api
 from app.log_analysis.service import classify_line, normalize_error
 
 test_client = TestClient(app)
@@ -286,6 +286,7 @@ def test_zip_from_log_collection_endpoint_can_be_analyzed():
 
     mock_api.read_namespaced_pod_log.side_effect = fake_read_log
     app.dependency_overrides[get_core_v1_api] = lambda: mock_api
+    app.dependency_overrides[get_batch_v1_api] = (lambda: MagicMock(spec=client.BatchV1Api))
     try:
         collected = test_client.get("/api/logs/zip?throttle_delay_ms=0")
     finally:

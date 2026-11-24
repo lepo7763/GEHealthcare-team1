@@ -97,6 +97,19 @@ def build_tcpdump_command(pid: int, output_path: str) -> list[str]:
         "-w", output_path,
     ]
 
+def resolve_capture_pid(
+    target: dict,
+    resolver: Callable[[str, str], int],
+) -> int:
+    """Resolve the PID associated with a capture target."""
+
+    if target.get("host_network", False):
+        return 1
+
+    return resolver(
+        target["uid"],
+        target["namespace"],
+    )
 
 def start_capture_processes(
     targets: list[dict],
@@ -115,7 +128,7 @@ def start_capture_processes(
     for index, target in enumerate(targets, start=1):
         try:
             # Resolve immediately before launching the capture.
-            pid = resolver(target["uid"], target["namespace"])
+            pid = resolve_capture_pid(target, resolver)
 
             pcap_path = capture_dir / f"capture-{index}.pcap"
             log_path = capture_dir / f"capture-{index}.log"
@@ -123,6 +136,10 @@ def start_capture_processes(
             command = build_tcpdump_command(
                 pid, str(pcap_path)
             )
+
+            #accomodate heavier traffic on shared host level captures
+            if target.get("host_network", False):
+                command.extend(["-B", "8192"])
 
             with log_path.open("wb") as log_file:
                 process = popen_factory(

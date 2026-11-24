@@ -1,7 +1,7 @@
 """Orchestrates the selected diagnostic services into one zip package."""
-
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 import zipfile
@@ -10,6 +10,7 @@ from typing import BinaryIO, List, Optional
 
 from app.core.workdir import work_dir
 
+from app.cms.collector import collect_cms_into
 from app.core_dumps.config import CoreDumpConfig
 from app.core_dumps.schemas import CoreDumpParams
 from app.core_dumps.service import collect_core_dumps_into
@@ -34,6 +35,10 @@ from app.log_collection.progress import (
     UMF_RTI_SERVICE_ID,
     ServiceProgress,
     tracker,
+    NETSHOOT_LABEL,
+    NETSHOOT_SERVICE_ID,
+    CMS_LABEL,
+    CMS_SERVICE_ID,
 )
 from app.log_collection.schemas import (
     CollectedService,
@@ -58,6 +63,14 @@ from app.umf_rti.service import (
     write_failure_artifacts,
 )
 
+from app.network_diagnostics.capture_service import (
+    NetshootCaptureError,
+    collect_netshoot_captures
+)
+from app.network_diagnostics.schemas import (
+    NetshootCollectionParams
+)
+
 from kubernetes import client
 
 SUPPORTED_SERVICES = (
@@ -66,6 +79,8 @@ SUPPORTED_SERVICES = (
     AXONE_LOGS_SERVICE_ID,
     CORE_DUMPS_SERVICE_ID,
     FIREWALL_SERVICE_ID,
+    NETSHOOT_SERVICE_ID,
+    CMS_SERVICE_ID,
     PROMETHEUS_SERVICE_ID,
 )
 
@@ -141,6 +156,22 @@ def _begin_progress(selected: List[str]) -> bool:
                     unit="MB",
                 )
             )
+        elif service_id == NETSHOOT_SERVICE_ID:
+            progress_services.append(
+                ServiceProgress(
+                    id = NETSHOOT_SERVICE_ID,
+                    label = NETSHOOT_LABEL,
+                    unit = "sessions"
+                )
+            )
+        elif service_id == CMS_SERVICE_ID:
+            progress_services.append(
+                ServiceProgress(
+                    id = CMS_SERVICE_ID,
+                    label = CMS_LABEL,
+                    unit = "snapshots",
+                )
+            )
     return tracker.try_begin(progress_services)
 
 
@@ -151,12 +182,15 @@ def collect_diagnostics(
     log_params: LogCollectionParams,
     umf_params: UmfRtiParams,
     config: Optional[UmfRtiConfig] = None,
+    netshoot_params: Optional[NetshootCollectionParams] = None,
     axone_params: Optional[AxoneLogParams] = None,
     core_dump_params: Optional[CoreDumpParams] = None,
     core_dump_config: Optional[CoreDumpConfig] = None,
     firewall_config: Optional[FirewallConfig] = None,
     prometheus_params: Optional[PrometheusParams] = None,
     prometheus_config: Optional[PrometheusConfig] = None,
+    cms_start_datetime: Optional[str] = None,
+    cms_end_datetime: Optional[str] = None,
     out: Optional[BinaryIO] = None,
 ) -> BinaryIO:
     """Collect every selected service into one streaming zip.
@@ -169,7 +203,15 @@ def collect_diagnostics(
     still a 503 at the HTTP layer (nothing useful can be collected).
     """
     selected = _dedupe_services(services)
+    if CMS_SERVICE_ID in selected:
+        if not cms_start_datetime or not cms_end_datetime:
+            raise ValueError(
+                "CMS collection require start and end timestamps"
+            )
     config = config or get_umf_rti_config()
+
+    netshoot_params = netshoot_params or NetshootCollectionParams()
+
     axone_params = axone_params or AxoneLogParams()
     if not _begin_progress(selected):
         raise CollectionInProgressError(
@@ -194,6 +236,10 @@ def collect_diagnostics(
                     _collect_umf_rti(
                         zf, manifest, core, batch, umf_params, config, selected
                     )
+                elif service_id == NETSHOOT_SERVICE_ID:
+                    _collect_netshoot(
+                        zf, manifest, core, batch, netshoot_params
+                    )
                 elif service_id == AXONE_LOGS_SERVICE_ID:
                     _collect_axone_logs(zf, manifest, axone_params, selected)
                 elif service_id == CORE_DUMPS_SERVICE_ID:
@@ -207,6 +253,14 @@ def collect_diagnostics(
                     )
                 elif service_id == FIREWALL_SERVICE_ID:
                     collect_firewall_into(zf, manifest, core, batch, firewall_config)
+                
+                elif service_id == CMS_SERVICE_ID:
+                    collect_cms_into(
+                        zf,
+                        manifest,
+                        cms_start_datetime,
+                        cms_end_datetime,
+                    )
                 elif service_id == PROMETHEUS_SERVICE_ID:
                     collect_prometheus_into(
                         zf,
@@ -324,6 +378,117 @@ def _collect_umf_rti(
         # The recording was pulled to a local temp dir; drop it now it's zipped.
         if result is not None and result.recording_dir:
             shutil.rmtree(result.recording_dir, ignore_errors=True)
+
+def _collect_netshoot(
+    zf: zipfile.ZipFile,
+    manifest: LogCollectionManifest,
+    core: client.CoreV1Api,
+    batch: client.BatchV1Api,
+    params: NetshootCollectionParams,
+) -> None:
+
+    files = []
+    failures = []
+
+    tracker.set_service_total(
+        NETSHOOT_SERVICE_ID, 1, unit="sessions"
+    )
+
+    tracker.set_service_current(
+        NETSHOOT_SERVICE_ID,
+        "Collecting network traffic",
+    )
+
+    test_namespace = os.getenv("IOMT_NETSHOOT_TEST_NAMESPACE")
+    namespaces = [test_namespace] if test_namespace else None
+
+    try:
+
+        if test_namespace and params.netshoot_scope != "pod":
+            raise NetshootCaptureError(
+                "Host-network capture is unavailable in namespace-restricted "
+                "test mode. Select Pod traffic only."
+        )
+
+        with tempfile.TemporaryDirectory(
+            prefix="netshoot-"
+        ) as directory:
+
+            archives, errors, cleanup_errors = (
+                collect_netshoot_captures(
+                    core_api=core,
+                    batch_api=batch,
+                    namespaces=namespaces,
+                    destination_dir=directory,
+                    duration_seconds=(
+                        params.netshoot_duration_seconds
+                    ),
+                    scope = params.netshoot_scope,
+                )
+            )
+
+            for node, archive in archives.items():
+                archive_name = (
+                    f"netshoot/{node}/{archive.name}"
+                )
+
+                zf.write(
+                    archive,
+                    arcname=archive_name,
+                    compress_type=zipfile.ZIP_STORED,
+                )
+
+                files.append(archive_name)
+                manifest.collected_files.append(
+                    archive_name
+                )
+
+            for node, error in errors.items():
+                failures.append(
+                    f"Node {node}: {error}"
+                )
+
+            for job, error in cleanup_errors.items():
+                failures.append(
+                    f"Cleanup failed for Job {job}: {error}"
+                )
+
+    except Exception as exc:
+        failures.append(
+            f"Netshoot collection failed: {exc}"
+        )
+
+    for failure in failures:
+        manifest.errors.append(
+            LogErrorEntry(
+                namespace="(cluster)",
+                pod="(multiple)",
+                container="netshoot",
+                reason=failure,
+                service=NETSHOOT_SERVICE_ID,
+            )
+        )
+
+    message = "; ".join(failures) if failures else None
+
+    if failures:
+        tracker.fail_service(
+            NETSHOOT_SERVICE_ID, message
+        )
+    else:
+        tracker.set_service_completed(
+            NETSHOOT_SERVICE_ID, 1
+        )
+
+    manifest.services.append(
+        CollectedService(
+            id=NETSHOOT_SERVICE_ID,
+            label=NETSHOOT_LABEL,
+            status="error" if failures else "done",
+            files=files,
+            error=message,
+        )
+    )
 
 
 def _collect_axone_logs(

@@ -1,22 +1,11 @@
-from app.network_diagnostics.job_service import build_netshoot_job
-from app.network_diagnostics.job_service import submit_netshoot_job
-from app.network_diagnostics.job_service import get_netshoot_job_status
-from app.network_diagnostics.job_service import discover_capture_targets
-from app.network_diagnostics.job_service import schedule_capture_jobs
-from app.network_diagnostics.job_service import (discover_targets_across_namespaces,)
-from app.network_diagnostics.job_service import find_ready_sandbox_id
-from app.network_diagnostics.job_service import extract_sandbox_pid
-from app.network_diagnostics.job_service import resolve_pod_pid
-from app.network_diagnostics.job_service import CRI_SOCKET_PATH
+from app.network_diagnostics.job_service import (discover_targets_across_namespaces, build_netshoot_job, submit_netshoot_job, get_netshoot_job_status, 
+                                                 discover_capture_targets,schedule_capture_jobs, find_ready_sandbox_id, extract_sandbox_pid, resolve_pod_pid,
+                                                 CRI_SOCKET_PATH, CaptureSchedulingCleanupError)
 
-from app.network_diagnostics.capture_worker import load_capture_targets
-from app.network_diagnostics.capture_worker import resolve_capture_targets
-from app.network_diagnostics.capture_worker import build_tcpdump_command
-from app.network_diagnostics.capture_worker import start_capture_processes
-from app.network_diagnostics.capture_worker import finish_capture_processes
-from app.network_diagnostics.capture_worker import inspect_pcap_file
-from app.network_diagnostics.capture_worker import summarize_capture_results
-from app.network_diagnostics.capture_worker import run_capture_session
+
+from app.network_diagnostics.capture_worker import (load_capture_targets, resolve_capture_targets, build_tcpdump_command, start_capture_processes, 
+                                                    finish_capture_processes, inspect_pcap_file, summarize_capture_results, run_capture_session)
+
 
 from app.network_diagnostics import worker_main
 
@@ -28,12 +17,14 @@ from app.network_diagnostics.artifact_upload import (upload_capture_archive,)
 
 from app.network_diagnostics.artifact_receiver import artifact_router
 
+from kubernetes.client.exceptions import ApiException
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import json
 import pytest
@@ -54,7 +45,7 @@ def test_build_netshoot_job():
     container = pod_spec.containers[0]
 
     assert container.name == "netshoot"
-    assert container.resources.limits["cpu"] == "250m"
+    assert container.resources.limits["cpu"] == "1000m"
     assert job.spec.backoff_limit == 0
 
 
@@ -930,6 +921,9 @@ def test_worker_main_reads_environment(monkeypatch, tmp_path):
         fake_archive,
     )
 
+    mock_sleep = Mock()
+    monkeypatch.setattr(worker_main, "sleep", mock_sleep)
+
     result = worker_main.main()
 
     assert result == 0
@@ -938,6 +932,8 @@ def test_worker_main_reads_environment(monkeypatch, tmp_path):
     assert received["output_dir"] == str(tmp_path)
     assert received["archive_source"] == str(tmp_path)
     assert received["archive_path"] == str(tmp_path / "job-artifacts.zip")
+    assert (tmp_path / ".done").exists()
+    mock_sleep.assert_called_once_with(360)
 
 
 def test_worker_main_rejects_missing_targets(monkeypatch):
@@ -964,6 +960,7 @@ def test_build_netshoot_job_worker_configuration():
     env = {item.name: item.value for item in container.env}
     assert env["CAPTURE_DURATION_SECONDS"] == "60"
     assert env["CAPTURE_OUTPUT_DIR"] == "/captures"
+    assert env["CAPTURE_COLLECT_GRACE_SECONDS"] == "360"
 
     assert container.security_context.privileged is True
     assert any(
@@ -971,7 +968,7 @@ def test_build_netshoot_job_worker_configuration():
         and volume.host_path.path == CRI_SOCKET_PATH
         for volume in pod.volumes
     )
-    assert job.spec.active_deadline_seconds == 360
+    assert job.spec.active_deadline_seconds == 660
 
 
 def test_create_capture_archive(tmp_path):
@@ -1067,7 +1064,12 @@ def test_worker_main_archive_failure(monkeypatch, tmp_path):
         fake_archive,
     )
 
+    mock_sleep = Mock()
+    monkeypatch.setattr(worker_main, "sleep", mock_sleep)
+
     assert worker_main.main() == 1
+    assert not (tmp_path / ".done").exists()
+    mock_sleep.assert_not_called()
 
 
 def test_upload_capture_archive_success(tmp_path):
@@ -1243,3 +1245,415 @@ def test_receive_archive_unauthorized(tmp_path, monkeypatch):
 
     assert response.status_code == 401
     assert not (tmp_path / "session-1" / "job-1.zip").exists()
+
+def test_schedule_capture_jobs_forwards_duration():
+    """Verify requested duration reaches the Kubernetes Job."""
+
+    mock_core = Mock()
+    mock_batch = Mock()
+
+    mock_core.list_namespaced_pod.return_value = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                metadata=SimpleNamespace(
+                    name="http-test-1",
+                    uid="uid-1",
+                    deletion_timestamp=None,
+                ),
+                spec=SimpleNamespace(
+                    node_name="test-node",
+                    host_network=False,
+                ),
+                status=SimpleNamespace(
+                    phase="Running",
+                    pod_ip="10.0.0.1",
+                ),
+            )
+        ]
+    )
+
+    mock_batch.create_namespaced_job.return_value.metadata.name = "test-job"
+
+    schedule_capture_jobs(
+        core_api=mock_core,
+        batch_api=mock_batch,
+        namespaces=["iomt-dev-1"],
+        duration_seconds=120,
+    )
+
+    job = mock_batch.create_namespaced_job.call_args.kwargs["body"]
+    container = job.spec.template.spec.containers[0]
+
+    env = {item.name: item.value for item in container.env}
+
+    assert env["CAPTURE_DURATION_SECONDS"] == "120"
+
+def test_schedule_capture_jobs_rolls_back_on_failure():
+    """Previously created Jobs are deleted if later scheduling fails."""
+
+    mock_core = Mock()
+    mock_batch = Mock()
+
+    def make_pod(name, node):
+        return SimpleNamespace(
+            metadata=SimpleNamespace(
+                name=name,
+                uid=f"uid-{name}",
+                deletion_timestamp=None,
+            ),
+            spec=SimpleNamespace(
+                node_name=node,
+                host_network=False,
+            ),
+            status=SimpleNamespace(
+                phase="Running",
+                pod_ip="10.0.0.1",
+            ),
+        )
+
+    mock_core.list_namespaced_pod.return_value = SimpleNamespace(
+        items=[
+            make_pod("pod-a", "node-A"),
+            make_pod("pod-b", "node-B"),
+        ]
+    )
+
+    mock_batch.create_namespaced_job.side_effect = [
+        SimpleNamespace(
+            metadata=SimpleNamespace(name="job-A")
+        ),
+        ApiException(status=503, reason="Scheduling failed"),
+    ]
+
+    with pytest.raises(ApiException) as exc:
+        schedule_capture_jobs(
+            core_api=mock_core,
+            batch_api=mock_batch,
+            namespaces=["iomt-dev-1"],
+            duration_seconds=30,
+        )
+
+    assert exc.value.status == 503
+
+    mock_batch.delete_namespaced_job.assert_called_once_with(
+        name="job-A",
+        namespace="iomt-integration",
+        propagation_policy="Foreground",
+        _request_timeout=10,
+    )
+
+def test_schedule_capture_jobs_reports_failed_rollback():
+    """Report Job names when rollback cannot remove created Jobs."""
+
+    mock_core = Mock()
+    mock_batch = Mock()
+
+    # Simulate Kubernetes refusing to delete the first Job.
+    mock_batch.delete_namespaced_job.side_effect = ApiException(
+        status=403,
+        reason="Forbidden",
+    )
+
+    targets = {
+        "node-A": [{"name": "pod-a"}],
+        "node-B": [{"name": "pod-b"}],
+    }
+
+    with patch(
+        "app.network_diagnostics.job_service.discover_targets_across_namespaces",
+        return_value=targets,
+    ), patch(
+        "app.network_diagnostics.job_service.submit_netshoot_job",
+        side_effect=[
+            "job-A",
+            ApiException(status=503, reason="Scheduling failed"),
+        ],
+    ):
+        with pytest.raises(CaptureSchedulingCleanupError) as exc:
+            schedule_capture_jobs(
+                core_api=mock_core,
+                batch_api=mock_batch,
+                namespaces=["iomt-dev-1"],
+                duration_seconds=30,
+            )
+
+    assert exc.value.job_names == ["job-A"]
+
+    mock_batch.delete_namespaced_job.assert_called_once()
+
+def test_discover_all_namespaces():
+    mock_core = Mock()
+
+    def make_pod(
+        name, namespace, uid, node,
+        phase="Running", host_network=False,
+        labels=None, deletion_timestamp=None,
+    ):
+        return SimpleNamespace(
+            metadata=SimpleNamespace(
+                name=name,
+                namespace=namespace,
+                uid=uid,
+                deletion_timestamp=deletion_timestamp,
+                labels=labels or {},
+            ),
+            spec=SimpleNamespace(
+                node_name=node,
+                host_network=host_network,
+            ),
+            status=SimpleNamespace(
+                phase=phase,
+                pod_ip="10.0.0.1",
+            ),
+        )
+
+    mock_core.list_pod_for_all_namespaces.return_value = (
+        SimpleNamespace(items=[
+            make_pod("http-test", "iomt-dev-1", "uid-1", "node-A"),
+            make_pod("database", "pm", "uid-2", "node-A"),
+            make_pod("backend", "compute", "uid-3", "node-B"),
+            make_pod("coredns", "kube-system", "uid-4", "node-B"),
+            make_pod(
+                "pending", "pm", "uid-5", "node-A",
+                phase="Pending",
+            ),
+            make_pod(
+                "host-pod", "kube-system", "uid-6", "node-A",
+                host_network=True,
+            ),
+            make_pod(
+                "worker", "iomt-integration", "uid-7", "node-A",
+                labels={"app": "netshoot-diagnostics"},
+            ),
+            make_pod(
+                "terminating", "pm", "uid-8", "node-B",
+                deletion_timestamp="terminating",
+            ),
+            make_pod(
+                "host-pod-2", "compute", "uid-9", "node-A",
+                host_network=True,
+            ),
+            make_pod(
+                "host-pod-3", "compute", "uid-10", "node-B",
+                host_network=True,
+            ),
+        ])
+    )
+
+    result = discover_targets_across_namespaces(
+        mock_core,
+        namespaces=None,
+    )
+
+    assert len(result) == 2
+    assert len(result["node-A"]) == 3
+    assert len(result["node-B"]) == 3
+
+    assert {
+        target["namespace"]
+        for targets in result.values()
+        for target in targets
+    } == {
+        "iomt-dev-1", "pm", "compute", "kube-system"
+    }
+
+    assert {
+        target["uid"]
+        for targets in result.values()
+        for target in targets
+    } == {"uid-1", "uid-2", "uid-3", "uid-4", "uid-6", "uid-10"}
+
+    host_a = next(
+    target for target in result["node-A"]
+    if target.get("host_network")
+)
+
+    host_b = next(
+        target for target in result["node-B"]
+        if target.get("host_network")
+    )
+
+    assert len(host_a["host_network_pods"]) == 2
+    assert len(host_b["host_network_pods"]) == 1
+
+    assert {
+        pod["uid"] for pod in host_a["host_network_pods"]
+    } == {"uid-6", "uid-9"}
+
+    mock_core.list_pod_for_all_namespaces.assert_called_once_with(
+        _request_timeout=10,
+    )
+
+    mock_core.list_namespaced_pod.assert_not_called()
+
+def test_direct_host_network_capture(tmp_path):
+    first = {
+        "name": "host-pod-1",
+        "namespace": "compute",
+        "uid": "uid-1",
+    }
+
+    second = {
+        "name": "host-pod-2",
+        "namespace": "kube-system",
+        "uid": "uid-2",
+    }
+
+    target = {
+        **first,
+        "host_network": True,
+        "host_network_pods": [first, second],
+    }
+
+    resolver = Mock(
+        side_effect=[
+            ValueError("Sandbox unavailable"),
+            1002,
+        ]
+    )
+
+    popen = Mock(
+        return_value=SimpleNamespace(pid=2001)
+    )
+
+    result = start_capture_processes(
+        [target],
+        str(tmp_path),
+        resolver=resolver,
+        popen_factory=popen,
+    )
+
+    assert len(result["running"]) == 1
+    assert len(result["unavailable"]) == 0
+    resolver.assert_not_called()
+
+    popen.assert_called_once()
+
+    command = popen.call_args.args[0]
+
+    assert command[:4] == [
+        "nsenter", "-t", "1", "-n"
+    ]
+
+    assert "-B" in command
+    assert command[command.index("-B") + 1] == "8192"
+
+def test_discover_node_without_host_network_pods():
+    mock_core = Mock()
+
+    pod = SimpleNamespace(
+        metadata=SimpleNamespace(
+            name="regular-pod",
+            namespace="compute",
+            uid="uid-1",
+            deletion_timestamp=None,
+            labels={},
+        ),
+        spec=SimpleNamespace(
+            node_name="node-A",
+            host_network=False,
+        ),
+        status=SimpleNamespace(
+            phase="Running",
+            pod_ip="10.0.0.1",
+        ),
+    )
+
+    mock_core.list_pod_for_all_namespaces.return_value = (
+        SimpleNamespace(items=[pod])
+    )
+
+    result = discover_targets_across_namespaces(
+        mock_core,
+        namespaces=None,
+    )
+
+    assert len(result) == 1
+    assert len(result["node-A"]) == 2
+
+    host_target = next(
+        target for target in result["node-A"]
+        if target.get("host_network")
+    )
+
+    assert host_target["uid"] == "host:node-A"
+    assert host_target["host_network_pods"] == []
+
+def test_netshoot_capture_scope_filtering():
+    from app.network_diagnostics.job_service import (
+        filter_capture_targets_by_scope,
+    )
+
+    targets = {
+        "node-a": [
+            {"name": "app-pod", "host_network": False},
+            {"name": "host-network", "host_network": True},
+        ]
+    }
+
+    both = filter_capture_targets_by_scope(targets, "both")
+    pod = filter_capture_targets_by_scope(targets, "pod")
+    host = filter_capture_targets_by_scope(targets, "host")
+
+    assert len(both["node-a"]) == 2
+    assert [t["name"] for t in pod["node-a"]] == ["app-pod"]
+    assert [t["name"] for t in host["node-a"]] == ["host-network"]
+
+
+def test_netshoot_rejects_invalid_scope():
+    import pytest
+    from app.network_diagnostics.job_service import (
+        filter_capture_targets_by_scope,
+    )
+
+    with pytest.raises(ValueError):
+        filter_capture_targets_by_scope({}, "invalid")
+
+@pytest.mark.parametrize(
+    "scope, expected",
+    [
+        ("both", ["app-pod", "host-network"]),
+        ("pod", ["app-pod"]),
+        ("host", ["host-network"]),
+    ],
+)
+def test_schedule_capture_jobs_respects_scope(
+    monkeypatch, scope, expected
+):
+    from app.network_diagnostics import job_service
+
+    targets = {
+        "test-node": [
+            {"name": "app-pod", "host_network": False},
+            {"name": "host-network", "host_network": True},
+        ]
+    }
+
+    mock_discover = Mock(return_value=targets)
+    mock_submit = Mock(return_value="netshoot-test-job")
+
+    monkeypatch.setattr(
+        job_service,
+        "discover_targets_across_namespaces",
+        mock_discover,
+    )
+    monkeypatch.setattr(
+        job_service,
+        "submit_netshoot_job",
+        mock_submit,
+    )
+
+    jobs = job_service.schedule_capture_jobs(
+        core_api=Mock(),
+        batch_api=Mock(),
+        namespaces=None,
+        duration_seconds=15,
+        scope=scope,
+    )
+
+    submitted_targets = mock_submit.call_args.kwargs["targets"]
+
+    assert [target["name"] for target in submitted_targets] == expected
+    assert mock_submit.call_args.kwargs["duration_seconds"] == 15
+    assert jobs["test-node"]["targets"] == submitted_targets
+    mock_submit.assert_called_once()

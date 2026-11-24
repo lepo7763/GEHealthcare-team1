@@ -6,16 +6,24 @@ import TimeRangeSettings from './TimeRangeSettings';
 import { CORE_SINCE_OPTIONS, describeCoreFilters } from './coreDumps';
 import { PROM_SINCE_OPTIONS, describePromFilters } from './prometheus';
 import { isTimeRangeValid } from './timeRange';
+import CmsSettings from './cmsSettings';
+import { summarizeCms, toCmsQuery } from './cmsParams';
+import {
+  NETSHOOT_SCOPES,
+  NETSHOOT_SCOPE_TEXT,
+  NETSHOOT_DEFAULT_SCOPE,
+} from './netshootSettings';
 
 // Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
 const MIN_DURATION = 10;
 const MAX_DURATION = 600;
+const NETSHOOT_MIN_DURATION = 1;
 
-const validateDuration = (value) => {
+const validateDuration = (value, minDuration = MIN_DURATION) => {
   const text = String(value ?? '').trim();
   const number = Number(text);
   return (
-    text !== '' && Number.isInteger(number) && number >= MIN_DURATION && number <= MAX_DURATION
+    text !== '' && Number.isInteger(number) && number >= minDuration && number <= MAX_DURATION
   );
 };
 
@@ -37,8 +45,14 @@ const Step2Configure = ({
   umfDuration,
   setUmfDuration,
   umfDomainOptions,
+  netshootDuration,
+  setNetshootDuration,
+  netshootScope,
+  setNetshootScope,
   axoneParams,
   setAxoneParams,
+  cmsParams,
+  setCmsParams,
   coreSinceHours,
   setCoreSinceHours,
   coreCustomRange,
@@ -53,9 +67,19 @@ const Step2Configure = ({
   const domainOption = umfDomainOptions.find((option) => option.domain === Number(umfDomain));
   const domainValid = Boolean(domainOption);
   const durationValid = validateDuration(umfDuration);
+  const netshootDurationValid = validateDuration(netshootDuration, NETSHOOT_MIN_DURATION);
+  const netshootScopeValid = Boolean(NETSHOOT_SCOPE_TEXT[netshootScope]);
   const axoneError = axoneIssue(axoneParams);
   const promFilters = { sinceHours: promSinceHours, customRange: promCustomRange };
   const promValid = isTimeRangeValid(promFilters);
+  const cmsError = (() => {
+    try {
+      toCmsQuery(cmsParams);
+      return null;
+    } catch (e) {
+      return e.message;
+    }
+  })();
 
   // Settings for each service that has any, keyed by service id. To give a new service
   // (e.g. Netshoot) its own settings, add an entry here: whether its values are valid,
@@ -107,11 +131,90 @@ const Step2Configure = ({
         </>
       ),
     },
+    'netshoot': {
+      isValid: netshootDurationValid && netshootScopeValid,
+
+      summary: `${NETSHOOT_SCOPE_TEXT[netshootScope] || '—'} · ${String(netshootDuration).trim() || '—'} s`,
+
+      fields: (
+        <>
+          <fieldset className="scope-field">
+            <legend>Capture scope</legend>
+
+            <div className="scope-options">
+              {NETSHOOT_SCOPES.map((option) => (
+                <label
+                  key={option.value}
+                  className={`scope-option ${netshootScope === option.value ? 'selected' : ''
+                    }`}
+                >
+                  <input
+                    type="radio"
+                    name="netshoot-scope"
+                    value={option.value}
+                    checked={netshootScope === option.value}
+                    onChange={() => setNetshootScope(option.value)}
+                  />
+
+                  <span>
+                    <strong>{option.label}</strong>
+                    {option.detail && ` — ${option.detail}`}
+                    {option.value === NETSHOOT_DEFAULT_SCOPE && ' (default)'}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <small>
+              Choose whether to capture pod network traffic,
+              host network traffic, or both.
+            </small>
+          </fieldset>
+
+          <div className="form-row">
+            <label className="field grow">
+              <span>Capture duration (seconds)</span>
+
+              <input
+                type="number"
+                min={NETSHOOT_MIN_DURATION}
+                max={MAX_DURATION}
+                step="1"
+                value={netshootDuration}
+                onChange={(e) => setNetshootDuration(e.target.value)}
+                aria-invalid={!netshootDurationValid}
+              />
+
+              <small>
+                Between {NETSHOOT_MIN_DURATION} and {MAX_DURATION} seconds.
+              </small>
+
+              {!netshootDurationValid && (
+                <small className="field-error">
+                  Enter a whole number from 1 to 600.
+                </small>
+              )}
+            </label>
+          </div>
+        </>
+      ),
+    },
     'axone-logs': {
       isValid: !axoneError,
       summary: summarizeAxone(axoneParams),
       fields: (
         <AxoneLogSettings value={axoneParams} onChange={setAxoneParams} issue={axoneError} />
+      ),
+    },
+    cms: {
+      isValid: !cmsError,
+      summary: summarizeCms(cmsParams),
+      fields: (
+        <CmsSettings
+          value={cmsParams}
+          onChange={setCmsParams}
+          issue={cmsError}
+        />
       ),
     },
     'core-dumps': {
@@ -144,6 +247,7 @@ const Step2Configure = ({
         />
       ),
     },
+
   };
 
   // Only one service's settings are open at a time, so the boxes don't stack up.

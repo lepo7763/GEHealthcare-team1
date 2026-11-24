@@ -1,13 +1,18 @@
 import { summarizeAxone } from './axoneParams';
 import { describeCoreFilters, estimateSelection, formatBytes } from './coreDumps';
 import { describePromFilters } from './prometheus';
+import { summarizeCms } from './cmsParams';
+import { NETSHOOT_SCOPE_TEXT } from './netshootSettings';
 
 const Step3Review = ({
   result,
   selectedServices,
   umfDomain,
   umfDuration,
+  netshootDuration,
+  netshootScope,
   axoneParams,
+  cmsParams,
   coreFilters,
   corePreview,
   promFilters,
@@ -21,12 +26,14 @@ const Step3Review = ({
       ? selectedServices.map((service) => service.name).join(', ')
       : 'None selected';
   const umfSelected = selectedServices.some((service) => service.id === 'umf-rti');
+  const netshootSelected = selectedServices.some((service) => service.id === 'netshoot');
   const axoneSelected = selectedServices.some((service) => service.id === 'axone-logs');
   const coreSelected = selectedServices.some((service) => service.id === 'core-dumps');
   const coreEstimate = corePreview?.data
     ? estimateSelection(corePreview.data.files, coreFilters)
     : null;
   const promSelected = selectedServices.some((service) => service.id === 'prometheus');
+  const cmsSelected = selectedServices.some((service) => service.id === 'cms',);
 
   return (
     <section className="section-narrow">
@@ -73,17 +80,58 @@ const Step3Review = ({
               </div>
             </li>
           )}
-          {axoneSelected && (
+          {netshootSelected && (
             <li>
               <div>
-                <div className="check-title">Axone logs</div>
-                <div className="check-detail">{summarizeAxone(axoneParams)}</div>
+                <div className="check-title">
+                  Netshoot Network Capture
+                </div>
                 <div className="check-detail">
-                  Exported from the Axone log service and added to the diagnostic zip.
+                  Capture scope: {NETSHOOT_SCOPE_TEXT[netshootScope]}
+                </div>
+                <div className="check-detail">
+                  Capture duration: {String(netshootDuration).trim()} s
+                </div>
+                <div className="check-detail">
+                  Captures network traffic using temporary Kubernetes
+                  Jobs and bundles the PCAP files into the diagnostic ZIP.
                 </div>
               </div>
             </li>
           )}
+
+          {axoneSelected && (
+            <li>
+              <div>
+                <div className="check-title">Axone logs</div>
+                <div className="check-detail">
+                  {summarizeAxone(axoneParams)}
+                </div>
+                <div className="check-detail">
+                  Exported from the Axone log service and added
+                  to the diagnostic ZIP.
+                </div>
+              </div>
+            </li>
+          )}
+
+          {cmsSelected && (
+            <li>
+              <div>
+                <div className="check-title">CMS Snapshot</div>
+
+                <div className="check-detail">
+                  {summarizeCms(cmsParams)}
+                </div>
+
+                <div className="check-detail">
+                  Generates a CMS snapshot for the selected time range
+                  and includes it in the diagnostic ZIP.
+                </div>
+              </div>
+            </li>
+          )}
+
           {coreSelected && (
             <li>
               <div>

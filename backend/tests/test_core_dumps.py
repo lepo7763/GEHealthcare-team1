@@ -456,4 +456,3 @@ def test_zip_endpoint_passes_core_dump_filters(no_k8s, monkeypatch):
     p = seen["core_dump_params"]
     assert p.processes == ["xGate", "systemd-journal"]
     assert p.since == datetime(2026, 11, 1, tzinfo=timezone.utc)
-
