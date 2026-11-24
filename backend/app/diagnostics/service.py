@@ -399,7 +399,16 @@ def _collect_netshoot(
         "Collecting network traffic",
     )
 
+    test_namespace = os.getenv("IOMT_NETSHOOT_TEST_NAMESPACE")
+    namespaces = [test_namespace] if test_namespace else None
+
     try:
+
+        if test_namespace and params.netshoot_scope != "pod":
+            raise NetshootCaptureError(
+                "Host-network capture is unavailable in namespace-restricted "
+                "test mode. Select Pod traffic only."
+        )
 
         with tempfile.TemporaryDirectory(
             prefix="netshoot-"
@@ -409,11 +418,12 @@ def _collect_netshoot(
                 collect_netshoot_captures(
                     core_api=core,
                     batch_api=batch,
-                    namespaces=None,
+                    namespaces=namespaces,
                     destination_dir=directory,
                     duration_seconds=(
                         params.netshoot_duration_seconds
                     ),
+                    scope = params.netshoot_scope,
                 )
             )
 

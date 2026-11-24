@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-
+from typing import Literal
 
 class PodInfo(BaseModel):
     name: str
@@ -62,4 +62,9 @@ class NetshootCollectionParams(BaseModel):
         ge=1,
         le=600,
         description="Packet capture duration in seconds",
+    )
+
+    netshoot_scope: Literal["both", "pod", "host"] = Field(
+        default="both",
+        description="Capture pod traffic, host traffic, or both",
     )

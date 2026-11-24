@@ -8,6 +8,11 @@ import { PROM_SINCE_OPTIONS, describePromFilters } from './prometheus';
 import { isTimeRangeValid } from './timeRange';
 import CmsSettings from './cmsSettings';
 import { summarizeCms, toCmsQuery } from './cmsParams';
+import {
+  NETSHOOT_SCOPES,
+  NETSHOOT_SCOPE_TEXT,
+  NETSHOOT_DEFAULT_SCOPE,
+} from './netshootSettings';
 
 // Must match the backend's UmfRtiParams.umf_duration_seconds bounds.
 const MIN_DURATION = 10;
@@ -42,6 +47,8 @@ const Step2Configure = ({
   umfDomainOptions,
   netshootDuration,
   setNetshootDuration,
+  netshootScope,
+  setNetshootScope,
   axoneParams,
   setAxoneParams,
   cmsParams,
@@ -61,6 +68,7 @@ const Step2Configure = ({
   const domainValid = Boolean(domainOption);
   const durationValid = validateDuration(umfDuration);
   const netshootDurationValid = validateDuration(netshootDuration, NETSHOOT_MIN_DURATION);
+  const netshootScopeValid = Boolean(NETSHOOT_SCOPE_TEXT[netshootScope]);
   const axoneError = axoneIssue(axoneParams);
   const promFilters = { sinceHours: promSinceHours, customRange: promCustomRange };
   const promValid = isTimeRangeValid(promFilters);
@@ -124,31 +132,71 @@ const Step2Configure = ({
       ),
     },
     'netshoot': {
-      isValid: netshootDurationValid,
-      summary: `${String(netshootDuration).trim() || '—'} s`,
+      isValid: netshootDurationValid && netshootScopeValid,
+
+      summary: `${NETSHOOT_SCOPE_TEXT[netshootScope] || '—'} · ${String(netshootDuration).trim() || '—'} s`,
+
       fields: (
-        <div className="form-row">
-          <label className="field grow">
-            <span>Capture duration (seconds)</span>
-            <input
-              type="number"
-              min={NETSHOOT_MIN_DURATION}
-              max={MAX_DURATION}
-              step="1"
-              value={netshootDuration}
-              onChange={(e) => setNetshootDuration(e.target.value)}
-              aria-invalid={!netshootDurationValid}
-            />
+        <>
+          <fieldset className="scope-field">
+            <legend>Capture scope</legend>
+
+            <div className="scope-options">
+              {NETSHOOT_SCOPES.map((option) => (
+                <label
+                  key={option.value}
+                  className={`scope-option ${netshootScope === option.value ? 'selected' : ''
+                    }`}
+                >
+                  <input
+                    type="radio"
+                    name="netshoot-scope"
+                    value={option.value}
+                    checked={netshootScope === option.value}
+                    onChange={() => setNetshootScope(option.value)}
+                  />
+
+                  <span>
+                    <strong>{option.label}</strong>
+                    {option.detail && ` — ${option.detail}`}
+                    {option.value === NETSHOOT_DEFAULT_SCOPE && ' (default)'}
+                  </span>
+                </label>
+              ))}
+            </div>
+
             <small>
-              Between {NETSHOOT_MIN_DURATION} and {MAX_DURATION} seconds.
+              Choose whether to capture pod network traffic,
+              host network traffic, or both.
             </small>
-            {!netshootDurationValid && (
-              <small className="field-error">
-                Enter a whole number from 1 to 600.
+          </fieldset>
+
+          <div className="form-row">
+            <label className="field grow">
+              <span>Capture duration (seconds)</span>
+
+              <input
+                type="number"
+                min={NETSHOOT_MIN_DURATION}
+                max={MAX_DURATION}
+                step="1"
+                value={netshootDuration}
+                onChange={(e) => setNetshootDuration(e.target.value)}
+                aria-invalid={!netshootDurationValid}
+              />
+
+              <small>
+                Between {NETSHOOT_MIN_DURATION} and {MAX_DURATION} seconds.
               </small>
-            )}
-          </label>
-        </div>
+
+              {!netshootDurationValid && (
+                <small className="field-error">
+                  Enter a whole number from 1 to 600.
+                </small>
+              )}
+            </label>
+          </div>
+        </>
       ),
     },
     'axone-logs': {

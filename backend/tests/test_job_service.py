@@ -1578,3 +1578,82 @@ def test_discover_node_without_host_network_pods():
 
     assert host_target["uid"] == "host:node-A"
     assert host_target["host_network_pods"] == []
+
+def test_netshoot_capture_scope_filtering():
+    from app.network_diagnostics.job_service import (
+        filter_capture_targets_by_scope,
+    )
+
+    targets = {
+        "node-a": [
+            {"name": "app-pod", "host_network": False},
+            {"name": "host-network", "host_network": True},
+        ]
+    }
+
+    both = filter_capture_targets_by_scope(targets, "both")
+    pod = filter_capture_targets_by_scope(targets, "pod")
+    host = filter_capture_targets_by_scope(targets, "host")
+
+    assert len(both["node-a"]) == 2
+    assert [t["name"] for t in pod["node-a"]] == ["app-pod"]
+    assert [t["name"] for t in host["node-a"]] == ["host-network"]
+
+
+def test_netshoot_rejects_invalid_scope():
+    import pytest
+    from app.network_diagnostics.job_service import (
+        filter_capture_targets_by_scope,
+    )
+
+    with pytest.raises(ValueError):
+        filter_capture_targets_by_scope({}, "invalid")
+
+@pytest.mark.parametrize(
+    "scope, expected",
+    [
+        ("both", ["app-pod", "host-network"]),
+        ("pod", ["app-pod"]),
+        ("host", ["host-network"]),
+    ],
+)
+def test_schedule_capture_jobs_respects_scope(
+    monkeypatch, scope, expected
+):
+    from app.network_diagnostics import job_service
+
+    targets = {
+        "test-node": [
+            {"name": "app-pod", "host_network": False},
+            {"name": "host-network", "host_network": True},
+        ]
+    }
+
+    mock_discover = Mock(return_value=targets)
+    mock_submit = Mock(return_value="netshoot-test-job")
+
+    monkeypatch.setattr(
+        job_service,
+        "discover_targets_across_namespaces",
+        mock_discover,
+    )
+    monkeypatch.setattr(
+        job_service,
+        "submit_netshoot_job",
+        mock_submit,
+    )
+
+    jobs = job_service.schedule_capture_jobs(
+        core_api=Mock(),
+        batch_api=Mock(),
+        namespaces=None,
+        duration_seconds=15,
+        scope=scope,
+    )
+
+    submitted_targets = mock_submit.call_args.kwargs["targets"]
+
+    assert [target["name"] for target in submitted_targets] == expected
+    assert mock_submit.call_args.kwargs["duration_seconds"] == 15
+    assert jobs["test-node"]["targets"] == submitted_targets
+    mock_submit.assert_called_once()

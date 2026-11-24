@@ -279,3 +279,87 @@ def test_netshoot_api_invalid_duration(api_client, duration):
     )
 
     assert response.status_code == 422
+
+@pytest.mark.parametrize("scope", ["both", "host"])
+def test_netshoot_restricted_namespace_rejects_host_capture(
+    monkeypatch, scope
+):
+    monkeypatch.setenv(
+        "IOMT_NETSHOOT_TEST_NAMESPACE",
+        "iomt-dev-1",
+    )
+
+    mock_collect = Mock()
+
+    monkeypatch.setattr(
+        service,
+        "collect_netshoot_captures",
+        mock_collect,
+    )
+
+    with service.collect_diagnostics(
+        core=Mock(),
+        batch=Mock(),
+        services=["netshoot"],
+        log_params=LogCollectionParams(),
+        umf_params=UmfRtiParams(),
+        netshoot_params=NetshootCollectionParams(
+            netshoot_scope=scope,
+        ),
+    ) as result:
+
+        with zipfile.ZipFile(result) as archive:
+            manifest = json.loads(
+                archive.read("manifest.json")
+            )
+
+            assert manifest["services"][0]["status"] == "error"
+            assert "namespace-restricted" in (
+                manifest["errors"][0]["reason"]
+            )
+
+    mock_collect.assert_not_called()
+
+def test_netshoot_restricted_namespace_allows_pod_capture(monkeypatch):
+    monkeypatch.setenv(
+        "IOMT_NETSHOOT_TEST_NAMESPACE",
+        "iomt-dev-1",
+    )
+
+    def fake_collect(**kwargs):
+        directory = Path(kwargs["destination_dir"])
+        archive_path = directory / "test-capture.zip"
+
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("capture-1.pcap", b"test data")
+
+        return {"test-node": archive_path}, {}, {}
+
+    mock_collect = Mock(side_effect=fake_collect)
+
+    monkeypatch.setattr(
+        service,
+        "collect_netshoot_captures",
+        mock_collect,
+    )
+
+    with service.collect_diagnostics(
+        core=Mock(),
+        batch=Mock(),
+        services=["netshoot"],
+        log_params=LogCollectionParams(),
+        umf_params=UmfRtiParams(),
+        netshoot_params=NetshootCollectionParams(
+            netshoot_duration_seconds=15,
+            netshoot_scope="pod",
+        ),
+    ) as result:
+        with zipfile.ZipFile(result) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+            assert manifest["services"][0]["status"] == "done"
+
+    kwargs = mock_collect.call_args.kwargs
+
+    assert kwargs["namespaces"] == ["iomt-dev-1"]
+    assert kwargs["scope"] == "pod"
+    assert kwargs["duration_seconds"] == 15

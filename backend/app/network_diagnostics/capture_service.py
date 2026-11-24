@@ -415,6 +415,7 @@ def collect_netshoot_captures(
     namespaces: list[str] | None,
     destination_dir: Path,
     duration_seconds: int = 30,
+    scope: str = "both",
 ) -> tuple[
     dict[str, Path],
     dict[str, str],
@@ -427,6 +428,7 @@ def collect_netshoot_captures(
         batch_api=batch_api,
         namespaces=namespaces,
         duration_seconds=duration_seconds,
+        scope = scope,
     )
 
     if not jobs_by_node:

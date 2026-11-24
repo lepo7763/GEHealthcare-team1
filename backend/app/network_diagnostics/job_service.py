@@ -313,19 +313,56 @@ def group_capture_targets(
 
     return targets_by_node
 
+def filter_capture_targets_by_scope(
+    targets_by_node: dict,
+    scope: str,
+) -> dict:
+    """Keep only the targets matching the requested capture scope."""
 
+    if scope not in ("both", "pod", "host"):
+        raise ValueError("Invalid Netshoot capture scope")
+
+    filtered_by_node = {}
+
+    for node_name, targets in targets_by_node.items():
+
+        if scope == "pod":
+            selected = [
+                target for target in targets
+                if not target.get("host_network", False)
+            ]
+
+        elif scope == "host":
+            selected = [
+                target for target in targets
+                if target.get("host_network", False)
+            ]
+
+        else:
+            selected = targets
+
+        if selected:
+            filtered_by_node[node_name] = selected
+
+    return filtered_by_node
 
 def schedule_capture_jobs(
     core_api: client.CoreV1Api,
     batch_api: client.BatchV1Api,
     namespaces: list[str] | None,
     duration_seconds: int = 60,
+    scope: str = "both",
 ) -> dict:
     """Schedule one Job per node, rolling back on partial failure."""
 
     targets_by_node = discover_targets_across_namespaces(
         core_api,
         namespaces,
+    )
+
+    targets_by_node = filter_capture_targets_by_scope(
+        targets_by_node,
+        scope,
     )
 
     scheduled_jobs = {}

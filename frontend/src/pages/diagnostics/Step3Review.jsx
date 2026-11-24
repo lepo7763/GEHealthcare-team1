@@ -2,6 +2,7 @@ import { summarizeAxone } from './axoneParams';
 import { describeCoreFilters, estimateSelection, formatBytes } from './coreDumps';
 import { describePromFilters } from './prometheus';
 import { summarizeCms } from './cmsParams';
+import { NETSHOOT_SCOPE_TEXT } from './netshootSettings';
 
 const Step3Review = ({
   result,
@@ -9,6 +10,7 @@ const Step3Review = ({
   umfDomain,
   umfDuration,
   netshootDuration,
+  netshootScope,
   axoneParams,
   cmsParams,
   coreFilters,
@@ -83,6 +85,9 @@ const Step3Review = ({
               <div>
                 <div className="check-title">
                   Netshoot Network Capture
+                </div>
+                <div className="check-detail">
+                  Capture scope: {NETSHOOT_SCOPE_TEXT[netshootScope]}
                 </div>
                 <div className="check-detail">
                   Capture duration: {String(netshootDuration).trim()} s

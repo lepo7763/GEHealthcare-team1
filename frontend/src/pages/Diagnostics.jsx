@@ -10,6 +10,7 @@ import Step4Collect from './diagnostics/Step4Collect';
 import { EMPTY_CUSTOM_RANGE, sinceIso, untilIso } from './diagnostics/timeRange';
 import { DEFAULT_PROM_SINCE } from './diagnostics/prometheus';
 import { DEFAULT_AXONE_PARAMS, toAxoneQuery } from './diagnostics/axoneParams';
+import { NETSHOOT_DEFAULT_SCOPE } from './diagnostics/netshootSettings';
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -54,6 +55,7 @@ const Diagnostics = () => {
 
   // Netshoot capture duration (seconds).
   const [netshootDuration, setNetshootDuration] = useState('30');
+  const [netshootScope, setNetshootScope] = useState(NETSHOOT_DEFAULT_SCOPE);
   // Axone log export filters (Step 2): scope, device, time range, event category.
   const [axoneParams, setAxoneParams] = useState(DEFAULT_AXONE_PARAMS);
 
@@ -162,6 +164,7 @@ const Diagnostics = () => {
         'netshoot_duration_seconds',
         String(netshootDuration).trim()
       );
+      params.set('netshoot_scope', netshootScope);
     }
     if (selected.includes('core-dumps')) {
       const since = sinceIso(coreSinceHours, Date.now(), coreCustomRange);
@@ -400,6 +403,8 @@ const Diagnostics = () => {
             umfDomainOptions={umfDomainOptions}
             netshootDuration={netshootDuration}
             setNetshootDuration={setNetshootDuration}
+            netshootScope={netshootScope}
+            setNetshootScope={setNetshootScope}
             axoneParams={axoneParams}
             setAxoneParams={setAxoneParams}
             cmsParams={cmsParams}
@@ -424,6 +429,7 @@ const Diagnostics = () => {
             umfDomain={umfDomain}
             umfDuration={umfDuration}
             netshootDuration={netshootDuration}
+            netshootScope={netshootScope}
             axoneParams={axoneParams}
             cmsParams={cmsParams}
             coreFilters={{

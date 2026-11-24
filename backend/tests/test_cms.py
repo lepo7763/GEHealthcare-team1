@@ -2,6 +2,7 @@ import io
 import json
 import zipfile
 import pytest
+import gzip
 
 from app.cms import service
 from app.cms import collector
@@ -164,7 +165,7 @@ def test_cms_added_to_diagnostic_zip(monkeypatch, tmp_path):
         with zipfile.ZipFile(destination, "w") as archive:
             archive.writestr(
                 "compute-pods.log.gz",
-                b"Example CMS log data",
+                gzip.compress(b"Example CMS log data"),
             )
         return destination
 
@@ -195,20 +196,20 @@ def test_cms_added_to_diagnostic_zip(monkeypatch, tmp_path):
             manifest.model_dump_json(),
         )
 
-    # Verify the final ZIP and nested CMS archive
+        # Verify the final ZIP contains directly readable CMS logs
     with zipfile.ZipFile(output, "r") as zf:
-        assert "cms/snapshot.zip" in zf.namelist()
+        assert "cms/snapshot.zip" not in zf.namelist()
 
-        cms_data = zf.read("cms/snapshot.zip")
-
-        with zipfile.ZipFile(io.BytesIO(cms_data)) as cms_zip:
-            assert cms_zip.read("compute-pods.log.gz") == (
-                b"Example CMS log data"
-            )
+        assert zf.read("cms/logs/compute-pods.log") == (
+            b"Example CMS log data"
+        )
 
         manifest_data = json.loads(zf.read("manifest.json"))
 
-        assert "cms/snapshot.zip" in manifest_data["collected_files"]
+        assert "cms/logs/compute-pods.log" in (
+            manifest_data["collected_files"]
+        )
+
         assert any(
             item["id"] == "cms" and item["status"] == "done"
             for item in manifest_data["services"]
@@ -227,7 +228,7 @@ def test_cms_through_diagnostics_orchestrator(monkeypatch):
         with zipfile.ZipFile(destination, "w") as archive:
             archive.writestr(
                 "compute-pods.log.gz",
-                b"Example CMS logs",
+                gzip.compress(b"Example CMS logs"),
             )
 
         return destination
@@ -255,7 +256,11 @@ def test_cms_through_diagnostics_orchestrator(monkeypatch):
 
         # Inspect the resulting diagnostic ZIP
         with zipfile.ZipFile(result) as archive:
-            assert "cms/snapshot.zip" in archive.namelist()
+            assert "cms/logs/compute-pods.log" in archive.namelist()
+            assert archive.read("cms/logs/compute-pods.log") == (
+                b"Example CMS logs"
+            )
+            assert "cms/snapshot.zip" not in archive.namelist()
 
             manifest = json.loads(
                 archive.read("manifest.json")
@@ -425,7 +430,10 @@ def test_cms_cleanup_warning_preserves_archive(monkeypatch, tmp_path):
     def fake_collect(start, end, destination, on_cleanup_warning=None):
         # Simulate downloading a valid CMS archive
         with zipfile.ZipFile(destination, "w") as archive:
-            archive.writestr("compute-pods.log.gz", b"Example CMS logs")
+            archive.writestr(
+                "compute-pods.log.gz",
+                gzip.compress(b"Example CMS logs"),
+            )
 
         # Simulate the server-side DELETE request failing
         if on_cleanup_warning is not None:
@@ -452,7 +460,10 @@ def test_cms_cleanup_warning_preserves_archive(monkeypatch, tmp_path):
 
     # The valid CMS archive must still be included
     with zipfile.ZipFile(output) as zf:
-        assert "cms/snapshot.zip" in zf.namelist()
+        assert "cms/logs/compute-pods.log" in zf.namelist()
+        assert zf.read("cms/logs/compute-pods.log") == (
+            b"Example CMS logs"
+        )
 
     # CMS collection should be marked successful
     cms_result = next(
@@ -467,3 +478,124 @@ def test_cms_cleanup_warning_preserves_archive(monkeypatch, tmp_path):
         for item in manifest.errors
         if item.service == "cms"
     )
+
+def test_cms_logs_extracted_into_diagnostic_zip(
+    monkeypatch, tmp_path
+):
+    import gzip
+
+    def fake_collect(
+        start, end, destination, on_cleanup_warning=None
+    ):
+        with zipfile.ZipFile(destination, "w") as archive:
+            archive.writestr(
+                "compute-pods.log.gz",
+                gzip.compress(b"Example CMS log data\n"),
+            )
+
+        return destination
+
+    monkeypatch.setattr(
+        collector,
+        "collect_snapshot",
+        fake_collect,
+    )
+
+    manifest = LogCollectionManifest(
+        timestamp_utc="2026-11-19T00:00:00Z",
+        total_logs_collected=0,
+    )
+
+    output = tmp_path / "diagnostics.zip"
+
+    with zipfile.ZipFile(output, "w") as archive:
+        collector.collect_cms_into(
+            archive,
+            manifest,
+            "2026-11-19T00:00:00.000",
+            "2026-11-19T00:05:00.000",
+        )
+
+    with zipfile.ZipFile(output) as archive:
+        assert "cms/logs/compute-pods.log" in archive.namelist()
+
+        assert archive.read(
+            "cms/logs/compute-pods.log"
+        ) == b"Example CMS log data\n"
+
+        assert "cms/snapshot.zip" not in archive.namelist()
+
+    assert "cms/logs/compute-pods.log" in manifest.collected_files
+
+def test_cms_rejects_unsafe_archive_path(monkeypatch, tmp_path):
+    def fake_collect(start, end, destination, on_cleanup_warning=None):
+        with zipfile.ZipFile(destination, "w") as archive:
+            archive.writestr(
+                "../outside.log.gz",
+                gzip.compress(b"Unsafe log data"),
+            )
+        return destination
+
+    monkeypatch.setattr(collector, "collect_snapshot", fake_collect)
+
+    manifest = LogCollectionManifest(
+        timestamp_utc="2026-11-19T00:00:00Z",
+        total_logs_collected=0,
+    )
+
+    output = tmp_path / "diagnostics.zip"
+
+    with zipfile.ZipFile(output, "w") as archive:
+        collector.collect_cms_into(
+            archive,
+            manifest,
+            "2026-11-19T00:00:00.000",
+            "2026-11-19T00:05:00.000",
+        )
+
+    with zipfile.ZipFile(output) as archive:
+        assert not any(
+            name.startswith("cms/logs/")
+            for name in archive.namelist()
+        )
+
+    assert manifest.services[0].status == "error"
+    assert "Unsafe CMS archive path" in manifest.errors[0].reason
+
+def test_cms_rejects_oversized_log(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        collector,
+        "MAX_CMS_FILE_BYTES",
+        16,
+    )
+
+    def fake_collect(start, end, destination, on_cleanup_warning=None):
+        with zipfile.ZipFile(destination, "w") as archive:
+            archive.writestr(
+                "large.log.gz",
+                gzip.compress(b"x" * 100),
+            )
+        return destination
+
+    monkeypatch.setattr(collector, "collect_snapshot", fake_collect)
+
+    manifest = LogCollectionManifest(
+        timestamp_utc="2026-11-19T00:00:00Z",
+        total_logs_collected=0,
+    )
+
+    output = tmp_path / "diagnostics.zip"
+
+    with zipfile.ZipFile(output, "w") as archive:
+        collector.collect_cms_into(
+            archive,
+            manifest,
+            "2026-11-19T00:00:00.000",
+            "2026-11-19T00:05:00.000",
+        )
+
+    with zipfile.ZipFile(output) as archive:
+        assert "cms/logs/large.log" not in archive.namelist()
+
+    assert manifest.services[0].status == "error"
+    assert "file size limit" in manifest.errors[0].reason
