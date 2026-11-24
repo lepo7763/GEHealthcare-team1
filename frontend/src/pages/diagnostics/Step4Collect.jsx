@@ -83,91 +83,6 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
     }
   };
 
-  // Save the package through the browser's "Save as" dialog so the user picks the
-  // folder (e.g. a USB drive) every time. Uses the File System Access API
-  // (Chrome/Edge, secure context only: https or localhost) and streams the response
-  // straight to the chosen file, so large packages never sit in memory.
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const [savedTo, setSavedTo] = useState('');
-
-  const canPickLocation = typeof window.showSaveFilePicker === 'function';
-
-  // The plain browser download (default Downloads folder, or the browser's own
-  // "ask where to save" dialog if that setting is on). Always the fallback.
-  const plainDownload = () => {
-    const a = document.createElement('a');
-    a.href = download.url;
-    a.download = download.filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  };
-
-  const saveDownload = async () => {
-    setSaveError('');
-    setSavedTo('');
-    if (!canPickLocation) {
-      plainDownload();
-      return;
-    }
-
-    let handle;
-    try {
-      handle = await window.showSaveFilePicker({
-        suggestedName: download.filename,
-        types: [{ description: 'Zip archive', accept: { 'application/zip': ['.zip'] } }],
-      });
-    } catch (err) {
-      if (err.name === 'AbortError') return; // user cancelled the dialog
-      // Picker blocked (e.g. permissions policy): don't leave the user with nothing.
-      console.warn('Save dialog unavailable, using a normal download.', err);
-      plainDownload();
-      return;
-    }
-
-    setIsSaving(true);
-    let writable;
-    try {
-      const res = await fetch(download.url);
-      if (!res.ok || !res.body) throw new Error(`Download failed (${res.status}).`);
-      writable = await handle.createWritable();
-      // Write chunk by chunk and close explicitly. Chrome writes to a temporary
-      // "<name>.crswap" file and only puts the real file in place on close().
-      const reader = res.body.getReader();
-      let written = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        await writable.write(value);
-        written += value.byteLength;
-      }
-      await writable.close();
-      writable = null;
-
-      // Confirm the file really landed with all its bytes.
-      const saved = await handle.getFile();
-      if (saved.size !== written || (download.sizeBytes && written !== download.sizeBytes)) {
-        throw new Error(
-          `Saved file is incomplete (${formatBytes(saved.size)} of ${formatBytes(download.sizeBytes || written)}).`,
-        );
-      }
-      setSavedTo(`${handle.name} (${formatBytes(saved.size)})`);
-    } catch (err) {
-      try {
-        await writable?.abort();
-      } catch {
-        /* already closed/aborted */
-      }
-      console.error('Saving to the chosen location failed.', err);
-      setSaveError(
-        `${err.message || 'Saving the package failed.'} Use "Save to Downloads folder" instead.`,
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const services = collect?.services || [];
   const collectStatus = collect?.status || 'idle';
   const collectFailed =
@@ -243,22 +158,12 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
 
           {download && (
             <div className="action-row">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={saveDownload}
-                disabled={isSaving}
-                aria-busy={isSaving}
-              >
-                {isSaving
-                  ? 'Saving…'
-                  : `Download diagnostic package (${formatBytes(download.sizeBytes)})`}
-              </button>
-              {canPickLocation && (
-                <a className="btn btn-secondary" href={download.url} download={download.filename}>
-                  Save to Downloads folder
-                </a>
-              )}
+              {/* Plain link download: the browser saves it straight to disk (any size)
+                  and, with "Ask where to save each file" on, asks for the folder
+                  (e.g. a USB drive) every time. */}
+              <a className="btn btn-primary" href={download.url} download={download.filename}>
+                Download diagnostic package ({formatBytes(download.sizeBytes)})
+              </a>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -268,20 +173,6 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
               >
                 {isAnalyzing ? 'Analyzing…' : 'Analyze logs'}
               </button>
-            </div>
-          )}
-
-          {savedTo && (
-            <div className="alert alert-success" role="status">
-              <strong>Package saved</strong>
-              <span>Saved as {savedTo}.</span>
-            </div>
-          )}
-
-          {saveError && (
-            <div className="alert alert-error" role="alert">
-              <strong>Save failed</strong>
-              <span>{saveError}</span>
             </div>
           )}
 
