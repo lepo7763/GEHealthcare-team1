@@ -1,4 +1,4 @@
-const Step1Connect = ({ host, setHost, phase, result, error, isChecking, onCheck, onSkip }) => {
+const Step1Connect = ({ host, setHost, phase, result, error, isChecking, onCheck }) => {
   return (
     <section className="section-narrow">
       <div className="card">
@@ -30,17 +30,6 @@ const Step1Connect = ({ host, setHost, phase, result, error, isChecking, onCheck
             {isChecking && <span className="btn-spinner" aria-hidden="true" />}
             {isChecking ? 'Checking…' : 'Check Kubernetes & access'}
           </button>
-          {/* Dev-only shortcut: Vite strips this from production builds. */}
-          {import.meta.env.DEV && onSkip && (
-            <button
-              className="btn btn-secondary"
-              onClick={onSkip}
-              disabled={isChecking}
-              title="Development only — skips the connectivity check"
-            >
-              Skip (dev)
-            </button>
-          )}
         </div>
 
         {isChecking && (

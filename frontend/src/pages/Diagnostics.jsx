@@ -365,10 +365,6 @@ const Diagnostics = () => {
             error={error}
             isChecking={isChecking}
             onCheck={handleCheck}
-            onSkip={() => {
-              resetCheck();
-              setStep(2);
-            }}
           />
         )}
 
