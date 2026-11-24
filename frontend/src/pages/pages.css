@@ -1183,3 +1183,12 @@ code {
   white-space: nowrap;
   cursor: pointer;
 }
+
+/* Discovered topology */
+.topo-panel { display: flex; flex-direction: column; align-items: center; gap: var(--eds-spacing-md); padding: var(--eds-spacing-lg); background: var(--eds-color-purple-subtle); border-radius: var(--eds-radius-md); }
+.topo-group { width: 100%; display: flex; flex-direction: column; align-items: center; gap: var(--eds-spacing-xs); border-top: 1px solid var(--eds-color-gray-100); padding-top: var(--eds-spacing-md); }
+.topo-group-label { font-size: var(--eds-font-size-xs); font-weight: var(--eds-font-weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--eds-color-purple); }
+.topo-row { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--eds-spacing-md); }
+.topo-node { display: flex; align-items: center; justify-content: space-between; gap: var(--eds-spacing-md); min-width: 190px; padding: var(--eds-spacing-sm) var(--eds-spacing-md); background: var(--eds-color-white); border: 1.5px solid var(--eds-color-purple); border-radius: var(--eds-radius-md); }
+.topo-root { border-color: var(--eds-color-gray-200); }
+.status-dot-off { background: var(--eds-color-error); }

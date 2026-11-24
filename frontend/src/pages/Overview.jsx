@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import './pages.css';
+import PasswordInput from '../components/PasswordInput';
 
 const STATS = [
   { value: '92%', label: 'Environment readiness', badge: '1 advisory', tone: 'success' },
@@ -26,7 +28,80 @@ const SESSIONS = [
   { id: 'SES-240927-1612', tag: 'Partial results preserved', meta: 'Netshoot · tshark', time: '64% complete' },
 ];
 
+const KIND_ORDER = ['viewer', 'hub', 'backend', 'node', 'service'];
+const KIND_LABEL = {
+  viewer: 'Viewer',
+  hub: 'Hub',
+  backend: 'Backend',
+  node: 'Kubernetes node',
+  service: 'Service',
+};
+
+const errorText = async (response) => {
+  let detail = `Request failed (${response.status}).`;
+  try {
+    const body = await response.json();
+    if (typeof body?.detail === 'string') detail = body.detail;
+    else if (Array.isArray(body?.detail)) detail = body.detail.map((d) => d.msg).join(', ');
+  } catch {
+    // Non-JSON body; keep generic message.
+  }
+  return detail;
+};
+
+const TopologyNode = ({ c }) => (
+  <div className="topo-node" title={c.detail || ''}>
+    <div>
+      <div className="check-title">{c.name}</div>
+      <div className="mono">{c.address || 'no address'}</div>
+    </div>
+    <span
+      className={`status-dot ${c.online ? '' : 'status-dot-off'}`}
+      aria-label={c.online ? 'Online' : 'Offline'}
+    />
+  </div>
+);
+
 const Overview = ({ onNavigate }) => {
+  const [host, setHost] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [discovering, setDiscovering] = useState(false);
+  const [discovery, setDiscovery] = useState(null);
+  const [error, setError] = useState('');
+
+  const handleDiscover = async (e) => {
+    e.preventDefault();
+    setDiscovering(true);
+    setError('');
+    setDiscovery(null);
+    try {
+      const response = await fetch('/api/environments/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: host.trim(),
+          username: username.trim() || null,
+          password: password || null,
+        }),
+      });
+      if (!response.ok) throw new Error(await errorText(response));
+      setDiscovery(await response.json());
+    } catch (err) {
+      setError(err.message || 'Discovery failed.');
+    } finally {
+      setPassword('');
+      setDiscovering(false);
+    }
+  };
+
+  const components = discovery?.ok ? discovery.components : [];
+  const online = components.filter((c) => c.online).length;
+  const groups = KIND_ORDER.map((kind) => ({
+    kind,
+    items: components.filter((c) => c.kind === kind),
+  })).filter((g) => g.items.length);
+
   return (
     <div className="page-stack">
       <section className="page-hero">
@@ -41,6 +116,110 @@ const Overview = ({ onNavigate }) => {
           Start diagnostic session
         </button>
       </section>
+
+      <section className="card">
+        <h3 className="card-title">Connect to platform</h3>
+        <p className="card-subtitle">
+          Provide the platform address and credentials. The platform's Kubernetes nodes are
+          discovered automatically.
+          Leave credentials empty to use <code>~/.kube/config</code> on this machine.
+        </p>
+        <form onSubmit={handleDiscover} autoComplete="off">
+          <div className="form-row">
+            <label className="field grow">
+              <span>Platform IP or hostname</span>
+              <input
+                value={host}
+                placeholder="192.168.0.3"
+                disabled={discovering}
+                onChange={(e) => setHost(e.target.value)}
+              />
+            </label>
+            <label className="field grow">
+              <span>Username</span>
+              <input
+                value={username}
+                autoComplete="off"
+                disabled={discovering}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </label>
+            <label className="field grow">
+              <span>Password</span>
+              <PasswordInput
+                value={password}
+                autoComplete="new-password"
+                disabled={discovering}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="action-row" style={{ marginTop: '1.15rem' }}>
+            <button className="btn btn-primary" type="submit" disabled={discovering || !host.trim()}>
+              {discovering && <span className="btn-spinner" aria-hidden="true" />}
+              {discovering ? 'Discovering…' : 'Connect & discover'}
+            </button>
+          </div>
+        </form>
+        {discovering && (
+          <div className="progress progress-indeterminate" role="progressbar" aria-label="Discovering components">
+            <div className="progress-fill" />
+          </div>
+        )}
+        {error && (
+          <div className="alert alert-error">
+            <strong>Discovery failed</strong>
+            <span>{error}</span>
+          </div>
+        )}
+        {discovery && !discovery.ok && (
+          <div className="alert alert-error">
+            <strong>Could not discover components</strong>
+            <span>{discovery.message}</span>
+          </div>
+        )}
+      </section>
+
+      {discovery?.ok && (
+        <section className="card">
+          <div className="card-header">
+            <div>
+              <h3 className="card-title">Discovered topology</h3>
+              <p className="card-subtitle">
+                Components found on {discovery.host}. Addresses can be overridden before deployment.
+              </p>
+            </div>
+            <span className="badge badge-success">
+              {online} of {components.length} online
+            </span>
+          </div>
+          {groups.length === 0 ? (
+            <p className="card-subtitle">No components were reported by the platform.</p>
+          ) : (
+            <div className="topo-panel">
+              <div className="topo-node topo-root">
+                <div>
+                  <div className="check-title">Platform</div>
+                  <div className="mono">{discovery.host}</div>
+                </div>
+                <span className="status-dot" aria-label="Reachable" />
+              </div>
+              {groups.map((g) => (
+                <div className="topo-group" key={g.kind}>
+                  <div className="topo-group-label">
+                    {KIND_LABEL[g.kind]} · {g.items.length}
+                  </div>
+                  <div className="topo-row">
+                    {g.items.map((c) => (
+                      <TopologyNode c={c} key={`${c.kind}-${c.name}`} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="stat-grid">
         {STATS.map((s) => (

@@ -41,6 +41,34 @@ class AuthenticationResult(BaseModel):
     user: Optional[str] = None
 
 
+class DiscoverRequest(BaseModel):
+    host: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=253),
+    ] = Field(..., description="IP address or hostname of the platform")
+    port: int = Field(default=6443, ge=1, le=65535)
+    username: Optional[str] = Field(default=None, max_length=256)
+    password: Optional[str] = Field(default=None, max_length=1024, repr=False)
+
+
+class DiscoveredComponent(BaseModel):
+    name: str
+    # viewer | hub | backend | node | service
+    kind: str
+    address: Optional[str] = None
+    online: bool = True
+    detail: Optional[str] = None
+
+
+class DiscoverResponse(BaseModel):
+    ok: bool
+    host: str
+    port: int
+    message: str
+    reachability: ReachabilityResult
+    components: list[DiscoveredComponent] = []
+
+
 class EnvironmentCheckResponse(BaseModel):
     ok: bool
     host: str

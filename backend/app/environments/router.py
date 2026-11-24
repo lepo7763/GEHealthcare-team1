@@ -1,7 +1,12 @@
 from fastapi import APIRouter
 
-from .schemas import EnvironmentCheckRequest, EnvironmentCheckResponse
-from .service import check_authentication, check_reachability
+from .schemas import (
+    DiscoverRequest,
+    DiscoverResponse,
+    EnvironmentCheckRequest,
+    EnvironmentCheckResponse,
+)
+from .service import check_authentication, check_reachability, discover_components
 
 router = APIRouter(prefix="/api/environments", tags=["Environments"])
 
@@ -25,3 +30,9 @@ def check_environment(req: EnvironmentCheckRequest) -> EnvironmentCheckResponse:
         reachability=reachability,
         authentication=authentication,
     )
+
+
+@router.post("/discover", response_model=DiscoverResponse)
+def discover_environment(req: DiscoverRequest) -> DiscoverResponse:
+    """Connects to the platform and lists its nodes and services."""
+    return discover_components(req.host, req.port, req.username, req.password)

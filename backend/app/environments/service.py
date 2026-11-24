@@ -5,7 +5,12 @@ from typing import Any, Dict, Optional, Tuple, cast
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 
-from .schemas import AuthenticationResult, ReachabilityResult
+from .schemas import (
+    AuthenticationResult,
+    DiscoveredComponent,
+    DiscoverResponse,
+    ReachabilityResult,
+)
 
 DEFAULT_K8S_PORT = 6443
 # Keep the two phases bounded so the whole check finishes in roughly 5 seconds,
@@ -218,4 +223,126 @@ def check_authentication(timeout: float = AUTH_TIMEOUT_SECONDS) -> Authenticatio
         context=context,
         server=server,
         user=user,
+    )
+
+
+# --- Component discovery -----------------------------------------------------
+
+_KIND_KEYWORDS = (
+    ("viewer", "viewer"),
+    ("hub", "hub"),
+    ("miniedge", "backend"),
+)
+
+
+def _classify(name: str) -> str:
+    lowered = name.lower()
+    for keyword, kind in _KIND_KEYWORDS:
+        if keyword in lowered:
+            return kind
+    return "service"
+
+
+def _list_components(
+    configuration: client.Configuration, timeout: float
+) -> list[DiscoveredComponent]:
+    components: list[DiscoveredComponent] = []
+    core = client.CoreV1Api(api_client=client.ApiClient(configuration=configuration))
+    for node in core.list_node(_request_timeout=timeout).items:
+        addresses = {a.type: a.address for a in (node.status.addresses or [])}
+        ready = any(
+            c.type == "Ready" and c.status == "True"
+            for c in (node.status.conditions or [])
+        )
+        components.append(
+            DiscoveredComponent(
+                name=node.metadata.name,
+                kind="node",
+                address=addresses.get("InternalIP"),
+                online=ready,
+                detail="Kubernetes node",
+            )
+        )
+    return components
+
+
+def discover_components(
+    host: str,
+    port: int = DEFAULT_K8S_PORT,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    timeout: float = AUTH_TIMEOUT_SECONDS,
+) -> DiscoverResponse:
+    """
+    Probes the platform and lists its Kubernetes nodes (pod names are not collected).
+
+    If a username/password is supplied they are used for basic auth against
+    `host:port`; otherwise the local ~/.kube/config is used. Credentials are
+    never logged or echoed back in the response.
+    """
+    reachability = check_reachability(host, port)
+    if not reachability.ok:
+        return DiscoverResponse(
+            ok=False, host=host, port=port, message=reachability.message,
+            reachability=reachability,
+        )
+
+    def fail(message: str) -> DiscoverResponse:
+        return DiscoverResponse(
+            ok=False, host=host, port=port, message=message, reachability=reachability
+        )
+
+    def kubeconfig_configuration() -> client.Configuration:
+        configuration = client.Configuration()
+        config.load_kube_config(client_configuration=configuration)
+        return configuration
+
+    note = ""
+    components: list[DiscoveredComponent] = []
+    try:
+        if username and password:
+            configuration = client.Configuration()
+            configuration.host = f"https://{host}:{port}"
+            configuration.username = username
+            configuration.password = password
+            configuration.verify_ssl = False
+            configuration.retries = 0
+            try:
+                components = _list_components(configuration, timeout)
+            except ApiException as e:
+                if e.status not in (401, 403):
+                    raise
+                # Most clusters disable username/password auth, so fall back.
+                try:
+                    configuration = kubeconfig_configuration()
+                except Exception:
+                    return fail(
+                        f"The cluster rejected the username/password (HTTP {e.status}); "
+                        "Kubernetes usually does not accept basic auth. Add a valid "
+                        "~/.kube/config on this machine and try again."
+                    )
+                configuration.retries = 0
+                components = _list_components(configuration, timeout)
+                note = " (username/password were rejected; used ~/.kube/config instead)"
+        else:
+            try:
+                configuration = kubeconfig_configuration()
+            except Exception as e:
+                return fail(
+                    f"No credentials supplied and ~/.kube/config could not be loaded: {e}"
+                )
+            configuration.retries = 0
+            components = _list_components(configuration, timeout)
+    except ApiException as e:
+        return fail(
+            f"Cluster rejected the request (HTTP {e.status}). "
+            "Check the credentials in ~/.kube/config."
+        )
+    except Exception as e:
+        return fail(f"Could not query the cluster: {e}")
+
+    return DiscoverResponse(
+        ok=True, host=host, port=port,
+        message=f"Discovered {len(components)} components{note}.",
+        reachability=reachability, components=components,
     )
