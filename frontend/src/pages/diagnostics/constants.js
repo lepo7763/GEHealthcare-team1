@@ -15,9 +15,20 @@ export const SERVICES = [
       'Captures UMF RTI discovery and QoS data from the live platform. No sample values are read.',
   },
   {
+    id: 'netshoot',
+    name: 'Netshoot Network Capture',
+    description:
+      'Captures network traffic from Kubernetes pods and collects PCAP files for offline analytics',
+  },
+  {
     id: 'axone-logs',
     name: 'Axone Logs',
     description: 'Exports stored Axone device and system events as CSV.',
+  },
+  {
+    id: 'cms',
+    name: 'CMS Snapshot',
+    description: 'Generates and downloads CMS diagnostic logs for a selected UTC time range.',
   },
   {
     id: 'core-dumps',

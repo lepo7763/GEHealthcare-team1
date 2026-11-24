@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import './pages.css';
 
+import { DEFAULT_CMS_PARAMS, toCmsQuery } from './diagnostics/cmsParams';
 import { STEPS, STEP_INFO, SERVICES, RUNNING_STATUSES } from './diagnostics/constants';
 import Step1Connect from './diagnostics/Step1Connect';
 import Step2Configure from './diagnostics/Step2Configure';
@@ -9,6 +10,7 @@ import Step4Collect from './diagnostics/Step4Collect';
 import { EMPTY_CUSTOM_RANGE, sinceIso, untilIso } from './diagnostics/timeRange';
 import { DEFAULT_PROM_SINCE } from './diagnostics/prometheus';
 import { DEFAULT_AXONE_PARAMS, toAxoneQuery } from './diagnostics/axoneParams';
+import { NETSHOOT_DEFAULT_SCOPE } from './diagnostics/netshootSettings';
 
 // # GEHealthcare-team1
 // The color requrements:
@@ -51,9 +53,14 @@ const Diagnostics = () => {
   const [umfDuration, setUmfDuration] = useState('60');
   const [umfDomainOptions, setUmfDomainOptions] = useState(FALLBACK_UMF_DOMAINS);
 
+  // Netshoot capture duration (seconds).
+  const [netshootDuration, setNetshootDuration] = useState('30');
+  const [netshootScope, setNetshootScope] = useState(NETSHOOT_DEFAULT_SCOPE);
   // Axone log export filters (Step 2): scope, device, time range, event category.
   const [axoneParams, setAxoneParams] = useState(DEFAULT_AXONE_PARAMS);
 
+  // CMS snapshot time range.
+  const [cmsParams, setCmsParams] = useState(DEFAULT_CMS_PARAMS);
   // Core dump filters (Step 2) and the node listing that previews them.
   const [coreSinceHours, setCoreSinceHours] = useState('');
   const [coreCustomRange, setCoreCustomRange] = useState(EMPTY_CUSTOM_RANGE);
@@ -138,9 +145,26 @@ const Diagnostics = () => {
         return;
       }
     }
+    if (selected.includes('cms')) {
+      try {
+        toCmsQuery(cmsParams).forEach((value, key) => {
+          params.set(key, value);
+        });
+      } catch (e) {
+        setCollectError(e.message);
+        return;
+      }
+    }
     if (selected.includes('umf-rti')) {
       params.set('umf_domain_id', String(umfDomain));
       params.set('umf_duration_seconds', String(umfDuration).trim());
+    }
+    if (selected.includes('netshoot')) {
+      params.set(
+        'netshoot_duration_seconds',
+        String(netshootDuration).trim()
+      );
+      params.set('netshoot_scope', netshootScope);
     }
     if (selected.includes('core-dumps')) {
       const since = sinceIso(coreSinceHours, Date.now(), coreCustomRange);
@@ -377,8 +401,14 @@ const Diagnostics = () => {
             umfDuration={umfDuration}
             setUmfDuration={setUmfDuration}
             umfDomainOptions={umfDomainOptions}
+            netshootDuration={netshootDuration}
+            setNetshootDuration={setNetshootDuration}
+            netshootScope={netshootScope}
+            setNetshootScope={setNetshootScope}
             axoneParams={axoneParams}
             setAxoneParams={setAxoneParams}
+            cmsParams={cmsParams}
+            setCmsParams={setCmsParams}
             coreSinceHours={coreSinceHours}
             setCoreSinceHours={setCoreSinceHours}
             coreCustomRange={coreCustomRange}
@@ -398,8 +428,14 @@ const Diagnostics = () => {
             selectedServices={selectedServices}
             umfDomain={umfDomain}
             umfDuration={umfDuration}
+            netshootDuration={netshootDuration}
+            netshootScope={netshootScope}
             axoneParams={axoneParams}
-            coreFilters={{ sinceHours: coreSinceHours, customRange: coreCustomRange }}
+            cmsParams={cmsParams}
+            coreFilters={{
+              sinceHours: coreSinceHours,
+              customRange: coreCustomRange,
+            }}
             corePreview={corePreview}
             promFilters={{ sinceHours: promSinceHours, customRange: promCustomRange }}
             onEditConnection={() => setStep(1)}

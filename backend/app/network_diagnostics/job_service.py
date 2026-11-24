@@ -1,5 +1,6 @@
 import json
 import subprocess
+import logging
 
 from kubernetes import client
 from app.network_diagnostics.runtime_discovery import (
@@ -7,11 +8,25 @@ from app.network_diagnostics.runtime_discovery import (
     extract_sandbox_pid,
     resolve_pod_pid,
 )
+from kubernetes.client.exceptions import ApiException
 
 
 DIAGNOSTICS_NAMESPACE = "iomt-integration"
 NETSHOOT_IMAGE = "iomt-netshoot-worker:dev"
 CRI_SOCKET_PATH = "/run/k3s/containerd/containerd.sock"
+
+logger = logging.getLogger(__name__)
+
+
+class CaptureSchedulingCleanupError(RuntimeError):
+    """Raised when Job scheduling and subsequent cleanup both fail."""
+
+    def __init__(self, job_names: list[str]):
+        self.job_names = job_names
+        super().__init__(
+            "Unable to request cleanup for Jobs: "
+            + ", ".join(job_names)
+        )
 
 def build_netshoot_job(
     node_name: str,
@@ -37,7 +52,7 @@ def build_netshoot_job(
         image_pull_policy="IfNotPresent",
         resources=client.V1ResourceRequirements(
             requests={"cpu": "100m", "memory": "128Mi"},
-            limits={"cpu": "250m", "memory": "256Mi"},
+            limits={"cpu": "1000m", "memory": "256Mi"},
         ),
         env=[
             client.V1EnvVar(
@@ -52,6 +67,10 @@ def build_netshoot_job(
                 name="CAPTURE_OUTPUT_DIR",
                 value="/captures",
             ),
+            client.V1EnvVar(
+                name = "CAPTURE_COLLECT_GRACE_SECONDS",
+                value = "360"
+            )
         ],
         security_context=client.V1SecurityContext(
         privileged=True,
@@ -100,7 +119,7 @@ def build_netshoot_job(
         ),
         spec=client.V1JobSpec(
             backoff_limit=0,
-            active_deadline_seconds=duration_seconds + 300,
+            active_deadline_seconds=duration_seconds + 600,
             ttl_seconds_after_finished=600,
             template=client.V1PodTemplateSpec(
                 metadata=client.V1ObjectMeta(labels=labels),
@@ -115,13 +134,15 @@ def submit_netshoot_job(
     batch_api: client.BatchV1Api,
     node_name: str,
     targets: list[dict] | None = None,
+    duration_seconds: int = 60,
 ) -> str:
-    """
-    Submit a Netshoot Job to Kubernetes and return
-    its generated name.
-    """
+    """Create one Netshoot Job with the requested capture duration."""
 
-    job = build_netshoot_job(node_name, targets)
+    job = build_netshoot_job(
+        node_name=node_name,
+        targets=targets,
+        duration_seconds=duration_seconds,
+    )
 
     created_job = batch_api.create_namespaced_job(
         namespace=DIAGNOSTICS_NAMESPACE,
@@ -178,19 +199,56 @@ def discover_capture_targets(
     core_api: client.CoreV1Api,
     namespace: str,
 ) -> dict:
-    """
-    Discover eligible running pods and group them by node.
-    Does not deploy any Jobs.
-    """
+    """Discover eligible Pods in a specific namespace."""
 
     response = core_api.list_namespaced_pod(
         namespace=namespace,
         _request_timeout=10,
     )
 
-    targets_by_node = {}
+    return group_capture_targets(
+        response.items,
+        namespace=namespace,
+    )
 
-    for pod in response.items:
+
+def discover_all_capture_targets(
+    core_api: client.CoreV1Api,
+) -> dict:
+    """Discover Pod and host capture targets across the cluster."""
+
+    response = core_api.list_pod_for_all_namespaces(
+        _request_timeout=10,
+    )
+
+    targets_by_node = group_capture_targets(response.items)
+
+    for node_name, targets in targets_by_node.items():
+        if not any(
+            target.get("host_network", False)
+            for target in targets
+        ):
+            targets.append({
+                "name": "host-network",
+                "namespace": "(host)",
+                "uid": f"host:{node_name}",
+                "node": node_name,
+                "host_network": True,
+                "host_network_pods": [],
+            })
+
+    return targets_by_node
+
+
+def group_capture_targets(
+    pods: list,
+    namespace: str | None = None,
+) -> dict:
+    """Filter eligible Pods and group them by node."""
+
+    targets_by_node = {}
+    host_targets_by_node = {}
+    for pod in pods:
         metadata = pod.metadata
         spec = pod.spec
         status = pod.status
@@ -204,13 +262,24 @@ def discover_capture_targets(
         if metadata.deletion_timestamp is not None:
             continue
 
-        # Host-networked pods need separate capture handling.
-        if spec.host_network:
+        if spec.host_network and namespace is not None:
             continue
+
+        labels = getattr(metadata, "labels", None) or {}
+
+        if labels.get("app") == "netshoot-diagnostics":
+            continue
+
+        target_namespace = (
+            namespace
+            if namespace is not None
+            else metadata.namespace
+        )
 
         if not all([
             metadata.name,
             metadata.uid,
+            target_namespace,
             spec.node_name,
             status.pod_ip,
         ]):
@@ -220,45 +289,136 @@ def discover_capture_targets(
 
         target = {
             "name": metadata.name,
-            "namespace": namespace,
+            "namespace": target_namespace,
             "uid": metadata.uid,
             "ip": status.pod_ip,
         }
+
+        if spec.host_network:
+            if node in host_targets_by_node:
+                host_targets_by_node[node]["host_network_pods"].append(
+                    target
+                )
+                continue
+
+            target = {
+                **target,
+                "host_network": True,
+                "host_network_pods": [target],
+            }
+
+            host_targets_by_node[node] = target
 
         targets_by_node.setdefault(node, []).append(target)
 
     return targets_by_node
 
+def filter_capture_targets_by_scope(
+    targets_by_node: dict,
+    scope: str,
+) -> dict:
+    """Keep only the targets matching the requested capture scope."""
 
+    if scope not in ("both", "pod", "host"):
+        raise ValueError("Invalid Netshoot capture scope")
+
+    filtered_by_node = {}
+
+    for node_name, targets in targets_by_node.items():
+
+        if scope == "pod":
+            selected = [
+                target for target in targets
+                if not target.get("host_network", False)
+            ]
+
+        elif scope == "host":
+            selected = [
+                target for target in targets
+                if target.get("host_network", False)
+            ]
+
+        else:
+            selected = targets
+
+        if selected:
+            filtered_by_node[node_name] = selected
+
+    return filtered_by_node
 
 def schedule_capture_jobs(
     core_api: client.CoreV1Api,
     batch_api: client.BatchV1Api,
-    namespaces: list[str],
+    namespaces: list[str] | None,
+    duration_seconds: int = 60,
+    scope: str = "both",
 ) -> dict:
-    """
-    Discover targets across approved namespaces and
-    schedule one diagnostic Job per node.
-    """
+    """Schedule one Job per node, rolling back on partial failure."""
 
     targets_by_node = discover_targets_across_namespaces(
         core_api,
         namespaces,
     )
 
+    targets_by_node = filter_capture_targets_by_scope(
+        targets_by_node,
+        scope,
+    )
+
     scheduled_jobs = {}
+    created_job_names = []
 
-    for node_name, targets in targets_by_node.items():
-        job_name = submit_netshoot_job(
-            batch_api=batch_api,
-            node_name=node_name,
-            targets=targets,
-        )
+    try:
+        for node_name, targets in targets_by_node.items():
+            job_name = submit_netshoot_job(
+                batch_api=batch_api,
+                node_name=node_name,
+                targets=targets,
+                duration_seconds=duration_seconds,
+            )
 
-        scheduled_jobs[node_name] = {
-            "job_name": job_name,
-            "targets": targets,
-        }
+            created_job_names.append(job_name)
+
+            scheduled_jobs[node_name] = {
+                "job_name": job_name,
+                "targets": targets,
+            }
+
+    except Exception:
+        cleanup_failures = []
+
+        # Reverse order: clean up the most recently created Jobs first.
+        for job_name in reversed(created_job_names):
+            try:
+                batch_api.delete_namespaced_job(
+                    name=job_name,
+                    namespace=DIAGNOSTICS_NAMESPACE,
+                    propagation_policy="Foreground",
+                    _request_timeout=10,
+                )
+
+            except ApiException as exc:
+                if exc.status != 404:
+                    logger.exception(
+                        "Could not delete Netshoot Job %s",
+                        job_name,
+                    )
+                    cleanup_failures.append(job_name)
+
+            except Exception:
+                logger.exception(
+                    "Could not delete Netshoot Job %s",
+                    job_name,
+                )
+                cleanup_failures.append(job_name)
+
+        if cleanup_failures:
+            raise CaptureSchedulingCleanupError(
+                cleanup_failures
+            )
+
+        # Preserve the original scheduling exception.
+        raise
 
     return scheduled_jobs
 
@@ -266,12 +426,14 @@ def schedule_capture_jobs(
 
 def discover_targets_across_namespaces(
     core_api: client.CoreV1Api,
-    namespaces: list[str],
+    namespaces: list[str] | None,
 ) -> dict:
     """
     Discover capture targets across approved namespaces
     and group all resulting pods by Kubernetes node.
     """
+    if namespaces is None:
+        return discover_all_capture_targets(core_api)
 
     targets_by_node = {}
 

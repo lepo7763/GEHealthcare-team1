@@ -1,10 +1,10 @@
-
 import os
 import sys
 
 from app.network_diagnostics.capture_worker import run_capture_session
 from app.network_diagnostics.artifact_packaging import create_capture_archive
 from pathlib import Path
+from time import sleep
 
 
 def main() -> int:
@@ -18,6 +18,11 @@ def main() -> int:
 
         duration = int(os.environ.get("CAPTURE_DURATION_SECONDS", "60"))
         output_dir = os.environ.get("CAPTURE_OUTPUT_DIR", "/captures")
+
+        collect_grace_seconds = int(os.environ.get("CAPTURE_COLLECT_GRACE_SECONDS", "360"))
+
+        if not 1 <= collect_grace_seconds <= 360:
+            raise ValueError("Collection grace period must be 1-360 seconds")
 
         manifest = run_capture_session(
             raw_targets=raw_targets,
@@ -38,6 +43,10 @@ def main() -> int:
             archive_path = archive_path,
         )
 
+        #signal that the archive is ready for retrieval
+        done_path = Path(output_dir) / ".done"
+        done_path.touch()
+
     except(OSError, ValueError, KeyError) as exc:
         print(f"Artifact packaging failed: {exc}", file = sys.stderr)
         return 1
@@ -49,6 +58,9 @@ def main() -> int:
         f"{len(manifest['captures'])} captures, "
         f"{len(manifest['unavailable'])} unavailable targets"
     )
+
+    print(f"Waiting {collect_grace_seconds} seconds for artifact retrieval")
+    sleep(collect_grace_seconds)
 
     return 0
 

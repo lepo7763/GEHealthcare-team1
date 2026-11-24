@@ -613,7 +613,7 @@ code {
   margin-top: var(--eds-spacing-sm);
 }
 
-.service-options > .form-row:first-child {
+.service-options>.form-row:first-child {
   margin-top: 0;
 }
 
@@ -1182,4 +1182,60 @@ code {
   gap: 6px;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* Netshoot capture scope settings */
+
+.scope-field {
+  border: 0;
+  margin: 0 0 var(--eds-spacing-md);
+  padding: 0;
+  min-width: 0;
+}
+
+.scope-field legend {
+  padding: 0;
+  margin-bottom: var(--eds-spacing-xs);
+  font-weight: var(--eds-font-weight-semibold);
+}
+
+.scope-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--eds-spacing-xs);
+  margin-bottom: var(--eds-spacing-xs);
+}
+
+.scope-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--eds-color-gray-200);
+  border-radius: var(--eds-radius-md);
+  background: var(--eds-color-white);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.scope-option:hover {
+  background: var(--eds-color-gray-50);
+}
+
+.scope-option.selected {
+  border-color: var(--eds-color-purple);
+  background: rgba(96, 34, 166, 0.06);
+}
+
+.scope-option input {
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--eds-color-purple);
+}
+
+.scope-option:has(input:focus-visible) {
+  box-shadow: var(--eds-focus-ring);
 }

@@ -9,6 +9,8 @@ UMF_RTI_SERVICE_ID = "umf-rti"
 AXONE_LOGS_SERVICE_ID = "axone-logs"
 CORE_DUMPS_SERVICE_ID = "core-dumps"
 FIREWALL_SERVICE_ID = "firewall"
+NETSHOOT_SERVICE_ID = "netshoot"
+CMS_SERVICE_ID = "cms"
 PROMETHEUS_SERVICE_ID = "prometheus"
 
 CONTAINER_LOGS_LABEL = "Container Log Collection"
@@ -16,6 +18,8 @@ UMF_RTI_LABEL = "UMF RTI"
 AXONE_LOGS_LABEL = "Axone Logs"
 CORE_DUMPS_LABEL = "Core Dumps"
 FIREWALL_LABEL = "Firewall Settings"
+NETSHOOT_LABEL = "Netshoot Network Capture"
+CMS_LABEL = "CMS Snapshot"
 PROMETHEUS_LABEL = "Prometheus Database"
 
 # Statuses that mean a collection is actively running.

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-
+from typing import Literal
 
 class PodInfo(BaseModel):
     name: str
@@ -26,5 +26,45 @@ class CaptureTargetsResponse(BaseModel):
     namespace: str
     targets_by_node: dict[str, list[CaptureTargetInfo]]
 
+class NetshootCaptureStartRequest(BaseModel):
+    """Configuration supplied by an engineer to start Pod-level capture."""
 
-    
+    namespaces: list[str] = Field(
+        default_factory=lambda: ["iomt-dev-1"],
+        min_length=1,
+    )
+
+    duration_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=600,
+        strict=True,
+    )
+
+class ScheduledNetshootJob(BaseModel):
+    """Information about a Netshoot Job created on one node."""
+
+    job_name: str
+    targets: list[CaptureTargetInfo]
+
+
+class NetshootCaptureStartResponse(BaseModel):
+    """Response returned after Netshoot Jobs are scheduled."""
+
+    duration_seconds: int
+    jobs_by_node: dict[str, ScheduledNetshootJob]
+
+class NetshootCollectionParams(BaseModel):
+    """User-configurable network diagnostic parameters."""
+
+    netshoot_duration_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=600,
+        description="Packet capture duration in seconds",
+    )
+
+    netshoot_scope: Literal["both", "pod", "host"] = Field(
+        default="both",
+        description="Capture pod traffic, host traffic, or both",
+    )
