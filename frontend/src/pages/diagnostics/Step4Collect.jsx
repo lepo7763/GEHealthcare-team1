@@ -91,15 +91,26 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
   const [saveError, setSaveError] = useState('');
   const [savedTo, setSavedTo] = useState('');
 
-  const saveDownload = async (event) => {
-    if (typeof window.showSaveFilePicker !== 'function') {
-      // Firefox/Safari or plain http: fall back to the normal <a download>. Those
-      // browsers only show a picker if "Always ask where to save files" is enabled.
-      return;
-    }
-    event.preventDefault();
+  const canPickLocation = typeof window.showSaveFilePicker === 'function';
+
+  // The plain browser download (default Downloads folder, or the browser's own
+  // "ask where to save" dialog if that setting is on). Always the fallback.
+  const plainDownload = () => {
+    const a = document.createElement('a');
+    a.href = download.url;
+    a.download = download.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const saveDownload = async () => {
     setSaveError('');
     setSavedTo('');
+    if (!canPickLocation) {
+      plainDownload();
+      return;
+    }
 
     let handle;
     try {
@@ -108,8 +119,11 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
         types: [{ description: 'Zip archive', accept: { 'application/zip': ['.zip'] } }],
       });
     } catch (err) {
-      if (err.name !== 'AbortError') setSaveError(err.message || 'Could not open the save dialog.');
-      return; // AbortError = user cancelled the dialog
+      if (err.name === 'AbortError') return; // user cancelled the dialog
+      // Picker blocked (e.g. permissions policy): don't leave the user with nothing.
+      console.warn('Save dialog unavailable, using a normal download.', err);
+      plainDownload();
+      return;
     }
 
     setIsSaving(true);
@@ -118,15 +132,37 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
       const res = await fetch(download.url);
       if (!res.ok || !res.body) throw new Error(`Download failed (${res.status}).`);
       writable = await handle.createWritable();
-      await res.body.pipeTo(writable); // closes the writable on success
-      setSavedTo(handle.name);
+      // Write chunk by chunk and close explicitly. Chrome writes to a temporary
+      // "<name>.crswap" file and only puts the real file in place on close().
+      const reader = res.body.getReader();
+      let written = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        await writable.write(value);
+        written += value.byteLength;
+      }
+      await writable.close();
+      writable = null;
+
+      // Confirm the file really landed with all its bytes.
+      const saved = await handle.getFile();
+      if (saved.size !== written || (download.sizeBytes && written !== download.sizeBytes)) {
+        throw new Error(
+          `Saved file is incomplete (${formatBytes(saved.size)} of ${formatBytes(download.sizeBytes || written)}).`,
+        );
+      }
+      setSavedTo(`${handle.name} (${formatBytes(saved.size)})`);
     } catch (err) {
       try {
         await writable?.abort();
       } catch {
         /* already closed/aborted */
       }
-      setSaveError(err.message || 'Saving the package failed.');
+      console.error('Saving to the chosen location failed.', err);
+      setSaveError(
+        `${err.message || 'Saving the package failed.'} Use "Save to Downloads folder" instead.`,
+      );
     } finally {
       setIsSaving(false);
     }
@@ -207,19 +243,22 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
 
           {download && (
             <div className="action-row">
-              <a
+              <button
+                type="button"
                 className="btn btn-primary"
-                href={download.url}
-                download={download.filename}
                 onClick={saveDownload}
-                aria-disabled={isSaving}
+                disabled={isSaving}
                 aria-busy={isSaving}
-                style={isSaving ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
               >
                 {isSaving
                   ? 'Saving…'
                   : `Download diagnostic package (${formatBytes(download.sizeBytes)})`}
-              </a>
+              </button>
+              {canPickLocation && (
+                <a className="btn btn-secondary" href={download.url} download={download.filename}>
+                  Save to Downloads folder
+                </a>
+              )}
               <button
                 type="button"
                 className="btn btn-secondary"
