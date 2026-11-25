@@ -158,6 +158,9 @@ const Step4Collect = ({ collect, collectError, download, onBack }) => {
 
           {download && (
             <div className="action-row">
+              {/* Plain link download: the browser saves it straight to disk (any size)
+                  and, with "Ask where to save each file" on, asks for the folder
+                  (e.g. a USB drive) every time. */}
               <a className="btn btn-primary" href={download.url} download={download.filename}>
                 Download diagnostic package ({formatBytes(download.sizeBytes)})
               </a>
