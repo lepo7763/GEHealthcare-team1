@@ -55,9 +55,13 @@ class UmfRtiConfig:
     # --- DDS identity / transport ---
     # The image ships Test certs authorized for domains 7/12/13. no other secret needed.
     sdds_home: str = "/opt/axone-tools/sdds"
-    router_pod_peer: str = (
-        "udpv4://100.64.64.200"  # internal plain-UDP locator (router pod IP)
-    )
+    # Internal plain-UDP locator (router pod IP). The pod IP changes whenever the router
+    # pod is recreated (e.g. after the node reboots), so by default the capture looks
+    # the router pod up at run time (see service.resolve_router_peer) and this value is
+    # only the fallback. Setting UMF_RTI_ROUTER_PEER pins it and turns the lookup off.
+    router_pod_peer: str = "udpv4://100.64.64.200"
+    router_pod_prefix: str = "axone-router"  # router pod name (Deployment/StatefulSet)
+    discover_router_peer: bool = True
     wan_public: str = "192.168.0.3"  # router's DDS_RTWAN_SERVER_PUBLIC_ADDRESS
     wan_ports: Dict[int, int] = field(default_factory=lambda: dict(_DEFAULT_WAN_PORTS))
     max_message_size: int = 1400  # router's WAN message_size_max
@@ -103,7 +107,9 @@ def get_umf_rti_config() -> UmfRtiConfig:
         image=os.environ.get("UMF_RTI_IMAGE", _DEFAULT_IMAGE),
         job_prefix=os.environ.get("UMF_RTI_JOB_PREFIX", "umf-rti-capture"),
         sdds_home=os.environ.get("UMF_RTI_SDDS_HOME", "/opt/axone-tools/sdds"),
-        router_pod_peer=os.environ.get("UMF_RTI_ROUTER_PEER", "udpv4://100.64.64.200"),
+        router_pod_peer=os.environ.get("UMF_RTI_ROUTER_PEER") or "udpv4://100.64.64.200",
+        router_pod_prefix=os.environ.get("UMF_RTI_ROUTER_POD_PREFIX") or "axone-router",
+        discover_router_peer=not os.environ.get("UMF_RTI_ROUTER_PEER"),
         wan_public=os.environ.get("UMF_RTI_WAN_PUBLIC", "192.168.0.3"),
         max_message_size=int(os.environ.get("UMF_RTI_MAX_MESSAGE_SIZE", "1400")),
         type_object_max_serialized_length=int(

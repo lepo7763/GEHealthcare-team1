@@ -2,12 +2,14 @@ import base64
 import io
 import json
 import os
+import re
 import sqlite3
 import tarfile
 import tempfile
 import time
 import uuid
 import zipfile
+from dataclasses import replace
 
 from app.log_collection.progress import UMF_RTI_LABEL, UMF_RTI_SERVICE_ID, tracker
 from app.log_collection.schemas import CollectedService, LogCollectionManifest
@@ -265,6 +267,55 @@ def check_prerequisites(core: client.CoreV1Api, config: UmfRtiConfig) -> None:
     return None
 
 
+def _is_router_pod_name(name: str, prefix: str) -> bool:
+    """True for the router's own pods: `<prefix>-0` (StatefulSet) or
+    `<prefix>-<hash>-<id>` (Deployment). Not other workloads that merely share the
+    prefix (e.g. `axone-router-coredump-...`)."""
+    suffix = r"(?:\d+|[a-z0-9]{6,10}-[a-z0-9]{5})"
+    return re.fullmatch(rf"{re.escape(prefix)}-{suffix}", name) is not None
+
+
+def resolve_router_peer(
+    core: client.CoreV1Api, config: UmfRtiConfig
+) -> tuple[UmfRtiConfig, str | None]:
+    """Point the capture at the router pod's current IP.
+
+    The router pod IP changes whenever the pod is recreated, so a hardcoded IP makes
+    the recorder silently discover nothing after a reboot. Looks up the running router
+    pod in `router_namespace` and returns a config with `router_pod_peer` set to it.
+    If the lookup fails, keeps the configured peer and returns a warning instead of
+    failing the capture (the WAN peers may still match).
+    """
+    if not config.discover_router_peer:
+        return config, None
+    fallback = (
+        f"using the configured router address {config.router_pod_peer}"
+    )
+    try:
+        pods = core.list_namespaced_pod(namespace=config.router_namespace).items
+    except ApiException as e:
+        return config, (
+            f"Could not look up the router pod in {config.router_namespace} "
+            f"({e.reason or e.status}); {fallback}."
+        )
+    running = [
+        pod
+        for pod in pods
+        if pod.metadata
+        and _is_router_pod_name(pod.metadata.name or "", config.router_pod_prefix)
+        and pod.status
+        and pod.status.phase == "Running"
+        and pod.status.pod_ip
+    ]
+    if not running:
+        return config, (
+            f"No running {config.router_pod_prefix} pod found in "
+            f"{config.router_namespace}; {fallback}."
+        )
+    running.sort(key=lambda pod: pod.metadata.name)
+    return replace(config, router_pod_peer=f"udpv4://{running[0].status.pod_ip}"), None
+
+
 # Echoed by the in-pod probe when the capture script has finished recording.
 _DONE_MARKER = "__UMF_DONE__"
 # Container waiting reasons we treat as fatal (fail fast with a clear message
@@ -458,6 +509,7 @@ def capture_umf_rti(
     # Show an indeterminate bar while the Job/pod starts up.
     tracker.set_service_total(UMF_RTI_SERVICE_ID, 0, unit="seconds")
     tracker.set_service_current(UMF_RTI_SERVICE_ID, "Starting capture pod")
+    config, router_warning = resolve_router_peer(core, config)
     job = build_job_manifest(params, config)
     job_name = _create_job(batch, job, config)
     try:
@@ -476,7 +528,7 @@ def capture_umf_rti(
     db_files = [n for n in names if n.endswith(".db")]
     user_data_file = RECORDING_DB_BASENAME if RECORDING_DB_BASENAME in names else None
 
-    warnings = []
+    warnings = [router_warning] if router_warning else []
     rc = _read_recorder_rc(recording_dir)
     rc_ok = rc is None or rc in _RECORDER_OK_RCS
     if not rc_ok:

@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from app.log_collection.schemas import LogCollectionManifest
-from app.umf_rti.config import UmfRtiConfig
+from app.umf_rti.config import UmfRtiConfig, get_umf_rti_config
 from app.umf_rti.schemas import UmfRtiParams
 from app.umf_rti.service import (
     CAPTURE_QOS_PROFILE,
@@ -29,6 +29,7 @@ from app.umf_rti.service import (
     build_override_xml,
     build_recording_cfg_xml,
     capture_umf_rti,
+    resolve_router_peer,
     write_failure_artifacts,
 )
 from kubernetes.client.exceptions import ApiException
@@ -269,9 +270,28 @@ def _fake_stream_factory(tar_b64):
     return fake_stream
 
 
-def test_capture_happy_path(monkeypatch):
+def _router_pod(name="axone-router-7d9f8c6b5-x2k4q", ip="100.64.64.17", phase="Running"):
+    pod = _mock_pod(name=name, phase=phase)
+    pod.status.pod_ip = ip
+    return pod
+
+
+def _core_with_router(router_pods, job_pods):
+    """list_namespaced_pod returns the router pods for the router namespace and the
+    capture Job's pods for everything else."""
     core = MagicMock()
-    core.list_namespaced_pod.return_value.items = [_mock_pod()]
+
+    def list_pods(namespace, **kwargs):
+        result = MagicMock()
+        result.items = router_pods if namespace == config.router_namespace else job_pods
+        return result
+
+    core.list_namespaced_pod.side_effect = list_pods
+    return core
+
+
+def test_capture_happy_path(monkeypatch):
+    core = _core_with_router([_router_pod()], [_mock_pod()])
     core.read_namespaced_pod.return_value = _mock_pod()
     capture_db = _sqlite_db_bytes(
         {
@@ -311,6 +331,11 @@ def test_capture_happy_path(monkeypatch):
     assert result.topic_sample_counts == {"umfnum@13": 3, "umfwav@13": 5}
     assert result.total_samples == 8
     assert result.warnings == []  # clean rc, samples present -> no warning
+    # The Job talks to the router pod's current IP, not the hardcoded fallback.
+    _, job_kwargs = batch.create_namespaced_job.call_args
+    script = job_kwargs["body"].spec.template.spec.containers[0].command[-1]
+    assert "udpv4://100.64.64.17" in script
+    assert "100.64.64.200" not in script
     # The pulled files really landed in the temp dir.
     assert result.recording_dir and os.path.isdir(result.recording_dir)
     assert os.path.exists(os.path.join(result.recording_dir, "capture.db"))
@@ -491,3 +516,85 @@ def test_params_rejects_unauthorized_domains():
     for domain in (0, 32, 34, 232):
         with pytest.raises(pydantic.ValidationError):
             UmfRtiParams(umf_domain_id=domain)
+
+
+# --- router pod lookup --------------------------------------------------------
+
+
+def test_router_peer_uses_running_router_pod_ip():
+    core = _core_with_router(
+        [
+            _router_pod(name="axone-router-coredump-cleanup-abc12", ip="10.0.0.1"),
+            _router_pod(name="axone-router-5f6d7c8b9-old11", ip="10.0.0.2", phase="Pending"),
+            _router_pod(name="axone-router-5f6d7c8b9-ab3cd", ip="100.64.64.31"),
+        ],
+        [],
+    )
+
+    resolved, warning = resolve_router_peer(core, config)
+
+    assert warning is None
+    assert resolved.router_pod_peer == "udpv4://100.64.64.31"
+    assert resolved.initial_peers()[0] == "udpv4://100.64.64.31"
+    # Only the router peer changes; the WAN peers stay as configured.
+    assert resolved.initial_peers()[1:] == config.initial_peers()[1:]
+
+
+def test_router_peer_accepts_statefulset_pod_name():
+    core = _core_with_router([_router_pod(name="axone-router-0", ip="100.64.64.9")], [])
+    resolved, warning = resolve_router_peer(core, config)
+    assert warning is None
+    assert resolved.router_pod_peer == "udpv4://100.64.64.9"
+
+
+def test_router_peer_falls_back_with_warning_when_no_router_pod():
+    core = _core_with_router([], [])
+    resolved, warning = resolve_router_peer(core, config)
+    assert resolved.router_pod_peer == config.router_pod_peer
+    assert "No running axone-router pod" in warning
+
+
+def test_router_peer_falls_back_with_warning_on_api_error():
+    core = MagicMock()
+    core.list_namespaced_pod.side_effect = ApiException(status=403, reason="Forbidden")
+    resolved, warning = resolve_router_peer(core, config)
+    assert resolved.router_pod_peer == config.router_pod_peer
+    assert "Forbidden" in warning
+
+
+def test_router_peer_lookup_skipped_when_pinned():
+    core = MagicMock()
+    pinned = UmfRtiConfig(router_pod_peer="udpv4://10.1.2.3", discover_router_peer=False)
+    resolved, warning = resolve_router_peer(core, pinned)
+    assert (resolved, warning) == (pinned, None)
+    core.list_namespaced_pod.assert_not_called()
+
+
+def test_capture_reports_router_fallback_warning(monkeypatch):
+    core = _core_with_router([], [_mock_pod()])
+    core.read_namespaced_pod.return_value = _mock_pod()
+    capture_db = _sqlite_db_bytes({"umfnum@13": [{"n": 1}]})
+    tar_b64 = _recording_tar_b64({"capture.db": capture_db, ".rc": b"124\n"})
+    monkeypatch.setattr("app.umf_rti.service.stream", _fake_stream_factory(tar_b64))
+
+    result = capture_umf_rti(
+        core, _mock_batch(), UmfRtiParams(), UmfRtiConfig(poll_interval_seconds=0)
+    )
+
+    assert any("No running axone-router pod" in w for w in result.warnings)
+    shutil.rmtree(result.recording_dir, ignore_errors=True)
+
+
+def test_config_env_pins_router_peer(monkeypatch):
+    monkeypatch.setenv("UMF_RTI_ROUTER_PEER", "udpv4://10.9.9.9")
+    cfg = get_umf_rti_config()
+    assert cfg.router_pod_peer == "udpv4://10.9.9.9"
+    assert cfg.discover_router_peer is False
+
+
+def test_config_discovers_router_peer_by_default(monkeypatch):
+    monkeypatch.delenv("UMF_RTI_ROUTER_PEER", raising=False)
+    monkeypatch.setenv("UMF_RTI_ROUTER_POD_PREFIX", "my-router")
+    cfg = get_umf_rti_config()
+    assert cfg.discover_router_peer is True
+    assert cfg.router_pod_prefix == "my-router"
